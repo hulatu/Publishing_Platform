@@ -2,6 +2,10 @@ name: 构建并发布到 GitHub Pages
 
 # 推 main 就自动构建 + 跑回归 + 发布到 publish.hulatu.com。
 # 回归（scripts/check-*.ts）先跑再构建：解析层或摘要层退化时直接失败，不会把坏版本推上线。
+#
+# 前提：仓库 Settings → Pages → Source 必须选「GitHub Actions」。
+#   这一步只能人工点：GITHUB_TOKEN 没有仓库管理员权限，configure-pages 的 enablement
+#   会直接 403（已经踩过），所以不要加回去。
 
 on:
   push:
@@ -42,12 +46,6 @@ jobs:
 
       - name: 构建
         run: npm run build
-
-      - name: 准备 Pages
-        uses: actions/configure-pages@v5
-        with:
-          # 仓库还没开 Pages 时尝试自动开启；已经开过则这一步是空操作
-          enablement: true
 
       - name: 上传构建产物
         uses: actions/upload-pages-artifact@v3
