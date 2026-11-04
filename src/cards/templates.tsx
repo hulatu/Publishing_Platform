@@ -10,20 +10,33 @@
  * 版式骨架（四张卡共用，保证一套图看起来是同一套东西）：
  *
  *   ┌──────────────────────────────┐
- *   │  ▬▬  ← 顶部强调短横（34）      │
- *   │  KICKER                      │  ← 56 起
+ *   │  ▬▬  ← 顶部强调短横            │
+ *   │  KICKER                      │  ← padTop 起
  *   │                              │
  *   │  正文区（各版式自己排）        │
  *   │                              │
- *   │  ────────────────────────    │  ← 分隔线（82）
- *   │  署名              日期       │  ← 页脚（46）
+ *   │  ────────────────────────    │  ← 分隔线
+ *   │  署名              日期       │  ← 页脚
  *   └──────────────────────────────┘
  *
  * 所有装饰元素都锚在「正文区之外」的边带上，永远不会压到文字上。
+ *
+ * 多尺寸：三种比例共用同一套骨架，度量由 metricsOf(format) 现算。
+ * 不用「画一次再缩放」——16:9 的卡片如果整体缩到 540×720 再裁，
+ * 文字会小一半、左右全是空边。这里按比例重排：横向边距随宽度放宽，
+ * 纵向间距与字号随高度收紧，三种尺寸看起来才像同一套设计而不是同一张图的三种裁法。
  */
 
 import type { CSSProperties, ReactNode } from 'react'
-import { CARD_HEIGHT, CARD_WIDTH, fitFontSize, QUOTE_THRESHOLDS, TITLE_THRESHOLDS } from './types'
+import {
+  CARD_HEIGHT,
+  CARD_WIDTH,
+  fitFontSize,
+  getCardFormat,
+  QUOTE_THRESHOLDS,
+  TITLE_THRESHOLDS,
+  type CardFormatId,
+} from './types'
 import type { CardSpec } from './types'
 import type { CardTheme } from './themes'
 
@@ -31,22 +44,55 @@ const SERIF = '"Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia,
 const SANS = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
 const MONO = '"SF Mono", Menlo, Consolas, monospace'
 
-/** 左右边距 */
-const PAD_X = 52
-/** 正文区上边界 */
-const PAD_TOP = 56
-/** 正文区下边界：给分隔线 + 页脚留位 */
-const PAD_BOTTOM = 104
-/** 页脚基线距底 */
-const FOOT_BOTTOM = 46
-/** 正文与页脚之间的分隔线 */
-const RULE_BOTTOM = 82
+/* ------------------------------------------------------------------ */
+/* 度量                                                                */
+/* ------------------------------------------------------------------ */
+
+interface Metrics {
+  w: number
+  h: number
+  /** 左右边距 */
+  padX: number
+  /** 正文区上边界 */
+  padTop: number
+  /** 正文区下边界：给分隔线 + 页脚留位 */
+  padBottom: number
+  /** 页脚基线距底 */
+  footBottom: number
+  /** 正文与页脚之间的分隔线 */
+  ruleBottom: number
+  /** 字号/纵向间距的缩放系数（以 3:4 的 720 高为 1） */
+  s: number
+  /** 正文区净高度 */
+  contentH: number
+}
+
+function metricsOf(format: CardFormatId): Metrics {
+  const f = getCardFormat(format)
+  const s = f.h / CARD_HEIGHT
+  // 横向边距随宽度放宽，但设上限：16:9 的 960 宽如果按比例给 92px 边距，
+  // 中间只剩 776，横图会显得又窄又长
+  const padX = Math.round(52 * Math.min(1.55, f.w / CARD_WIDTH))
+  const padTop = Math.round(56 * s)
+  const padBottom = Math.round(104 * s)
+  return {
+    w: f.w,
+    h: f.h,
+    padX,
+    padTop,
+    padBottom,
+    footBottom: Math.round(46 * s),
+    ruleBottom: Math.round(82 * s),
+    s,
+    contentH: f.h - padTop - padBottom,
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* 装饰                                                               */
 /* ------------------------------------------------------------------ */
 
-function Ornament({ theme }: { theme: CardTheme }) {
+function Ornament({ theme, m }: { theme: CardTheme; m: Metrics }) {
   if (theme.ornament === 'none') return null
 
   if (theme.ornament === 'band') {
@@ -57,7 +103,7 @@ function Ornament({ theme }: { theme: CardTheme }) {
           left: 0,
           right: 0,
           bottom: 0,
-          height: 12,
+          height: Math.round(12 * m.s),
           background: theme.accent,
         }}
       />
@@ -66,14 +112,15 @@ function Ornament({ theme }: { theme: CardTheme }) {
 
   if (theme.ornament === 'corner') {
     // 右上角的大圆：往画布外推得足够远，只留一小片弧在角上，不进入文字行
+    const d = Math.round(340 * m.s)
     return (
       <div
         style={{
           position: 'absolute',
-          top: -170,
-          right: -170,
-          width: 340,
-          height: 340,
+          top: -Math.round(170 * m.s),
+          right: -Math.round(170 * m.s),
+          width: d,
+          height: d,
           borderRadius: '50%',
           background: theme.ornamentColor,
           opacity: 0.42,
@@ -89,10 +136,10 @@ function Ornament({ theme }: { theme: CardTheme }) {
       <div
         style={{
           position: 'absolute',
-          top: 34,
-          left: PAD_X,
-          width: 44,
-          height: 3,
+          top: Math.round(34 * m.s),
+          left: m.padX,
+          width: Math.round(44 * m.s),
+          height: Math.max(2, Math.round(3 * m.s)),
           borderRadius: 2,
           background: theme.ornamentColor,
         }}
@@ -100,9 +147,9 @@ function Ornament({ theme }: { theme: CardTheme }) {
       <div
         style={{
           position: 'absolute',
-          left: PAD_X,
-          right: PAD_X,
-          bottom: RULE_BOTTOM,
+          left: m.padX,
+          right: m.padX,
+          bottom: m.ruleBottom,
           height: 1,
           background: theme.line,
         }}
@@ -111,12 +158,12 @@ function Ornament({ theme }: { theme: CardTheme }) {
   )
 }
 
-function Frame({ theme, children }: { theme: CardTheme; children: ReactNode }) {
+function Frame({ theme, m, children }: { theme: CardTheme; m: Metrics; children: ReactNode }) {
   return (
     <div
       style={{
-        width: CARD_WIDTH,
-        height: CARD_HEIGHT,
+        width: m.w,
+        height: m.h,
         background: theme.bg,
         color: theme.ink,
         position: 'relative',
@@ -125,20 +172,20 @@ function Frame({ theme, children }: { theme: CardTheme; children: ReactNode }) {
         boxSizing: 'border-box',
       }}
     >
-      <Ornament theme={theme} />
+      <Ornament theme={theme} m={m} />
       {children}
     </div>
   )
 }
 
-function Kicker({ text, theme }: { text: string; theme: CardTheme }) {
+function Kicker({ text, theme, m }: { text: string; theme: CardTheme; m: Metrics }) {
   if (!text) return null
   return (
     <div
       style={{
-        fontSize: 11,
+        fontSize: Math.round(11 * m.s * 10) / 10,
         lineHeight: 1.2,
-        letterSpacing: 3.5,
+        letterSpacing: 3.5 * m.s,
         color: theme.accent,
         fontWeight: 600,
         textTransform: 'uppercase',
@@ -153,7 +200,7 @@ function Kicker({ text, theme }: { text: string; theme: CardTheme }) {
   )
 }
 
-function Foot({ left, right, theme }: { left?: string; right?: string; theme: CardTheme }) {
+function Foot({ left, right, theme, m }: { left?: string; right?: string; theme: CardTheme; m: Metrics }) {
   if (!left && !right) return null
   return (
     <div
@@ -162,7 +209,7 @@ function Foot({ left, right, theme }: { left?: string; right?: string; theme: Ca
         alignItems: 'baseline',
         justifyContent: 'space-between',
         gap: 16,
-        fontSize: 12,
+        fontSize: Math.round(12 * m.s * 10) / 10,
         lineHeight: 1.2,
         color: theme.muted,
         letterSpacing: 0.8,
@@ -170,7 +217,7 @@ function Foot({ left, right, theme }: { left?: string; right?: string; theme: Ca
       }}
     >
       <span style={{ fontFamily: SANS, overflow: 'hidden', textOverflow: 'ellipsis' }}>{left}</span>
-      <span style={{ fontFamily: MONO, fontSize: 11, flexShrink: 0 }}>{right}</span>
+      <span style={{ fontFamily: MONO, fontSize: Math.round(11 * m.s * 10) / 10, flexShrink: 0 }}>{right}</span>
     </div>
   )
 }
@@ -180,15 +227,25 @@ function Foot({ left, right, theme }: { left?: string; right?: string; theme: Ca
  * 页脚是绝对定位的，所以不管正文多长多短，四张卡的页脚永远在同一条基线上。
  * 顶栏用 flex 一行放「分类」和「页码」，两者共享基线，永远不会叠在一起。
  */
-function Shell({ spec, theme, children }: { spec: CardSpec; theme: CardTheme; children: ReactNode }) {
+function Shell({
+  spec,
+  theme,
+  m,
+  children,
+}: {
+  spec: CardSpec
+  theme: CardTheme
+  m: Metrics
+  children: ReactNode
+}) {
   const hasTop = Boolean(spec.kicker || spec.mark)
   return (
-    <Frame theme={theme}>
+    <Frame theme={theme} m={m}>
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          padding: `${PAD_TOP}px ${PAD_X}px ${PAD_BOTTOM}px`,
+          padding: `${m.padTop}px ${m.padX}px ${m.padBottom}px`,
           display: 'flex',
           flexDirection: 'column',
           boxSizing: 'border-box',
@@ -201,16 +258,16 @@ function Shell({ spec, theme, children }: { spec: CardSpec; theme: CardTheme; ch
               alignItems: 'baseline',
               justifyContent: 'space-between',
               gap: 14,
-              marginBottom: 20,
+              marginBottom: Math.round(20 * m.s),
               flexShrink: 0,
             }}
           >
-            <Kicker text={spec.kicker ?? ''} theme={theme} />
+            <Kicker text={spec.kicker ?? ''} theme={theme} m={m} />
             {spec.mark ? (
               <span
                 style={{
                   fontFamily: MONO,
-                  fontSize: 10.5,
+                  fontSize: Math.round(10.5 * m.s * 10) / 10,
                   lineHeight: 1.2,
                   letterSpacing: 1.2,
                   color: theme.muted,
@@ -224,8 +281,8 @@ function Shell({ spec, theme, children }: { spec: CardSpec; theme: CardTheme; ch
         ) : null}
         {children}
       </div>
-      <div style={{ position: 'absolute', left: PAD_X, right: PAD_X, bottom: FOOT_BOTTOM }}>
-        <Foot left={spec.footer} right={spec.date} theme={theme} />
+      <div style={{ position: 'absolute', left: m.padX, right: m.padX, bottom: m.footBottom }}>
+        <Foot left={spec.footer} right={spec.date} theme={theme} m={m} />
       </div>
     </Frame>
   )
@@ -235,10 +292,10 @@ function Shell({ spec, theme, children }: { spec: CardSpec; theme: CardTheme; ch
 /* 封面                                                               */
 /* ------------------------------------------------------------------ */
 
-function CoverCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
-  const titleSize = fitFontSize(spec.title, 44, 26, TITLE_THRESHOLDS)
+function CoverCard({ spec, theme, m }: { spec: CardSpec; theme: CardTheme; m: Metrics }) {
+  const titleSize = fitFontSize(spec.title, Math.round(44 * m.s), Math.round(26 * m.s), TITLE_THRESHOLDS)
   return (
-    <Shell spec={spec} theme={theme}>
+    <Shell spec={spec} theme={theme} m={m}>
       <div
         style={{
           flex: 1,
@@ -263,12 +320,12 @@ function CoverCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
         {spec.subtitle ? (
           <div
             style={{
-              marginTop: 20,
-              fontSize: 15,
+              marginTop: Math.round(20 * m.s),
+              fontSize: Math.round(15 * m.s * 10) / 10,
               lineHeight: 1.78,
               color: theme.muted,
               letterSpacing: 0.4,
-              maxHeight: 82,
+              maxHeight: Math.round(m.contentH * 0.24),
               overflow: 'hidden',
             }}
           >
@@ -284,10 +341,10 @@ function CoverCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
 /* 金句                                                               */
 /* ------------------------------------------------------------------ */
 
-function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
-  const size = fitFontSize(spec.title, 31, 18, QUOTE_THRESHOLDS)
+function QuoteCard({ spec, theme, m }: { spec: CardSpec; theme: CardTheme; m: Metrics }) {
+  const size = fitFontSize(spec.title, Math.round(31 * m.s), Math.round(18 * m.s), QUOTE_THRESHOLDS)
   return (
-    <Shell spec={spec} theme={theme}>
+    <Shell spec={spec} theme={theme} m={m}>
       <div
         style={{
           flex: 1,
@@ -300,10 +357,10 @@ function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
         <div
           style={{
             fontFamily: SERIF,
-            fontSize: 56,
+            fontSize: Math.round(56 * m.s),
             lineHeight: 0.86,
             color: theme.accent,
-            marginBottom: 14,
+            marginBottom: Math.round(14 * m.s),
             opacity: 0.9,
           }}
         >
@@ -316,6 +373,8 @@ function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
             lineHeight: 1.76,
             letterSpacing: 0.8,
             color: theme.ink,
+            maxHeight: Math.round(m.contentH * 0.78),
+            overflow: 'hidden',
           }}
         >
           {spec.title}
@@ -323,8 +382,8 @@ function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
         {spec.subtitle ? (
           <div
             style={{
-              marginTop: 28,
-              fontSize: 13,
+              marginTop: Math.round(28 * m.s),
+              fontSize: Math.round(13 * m.s * 10) / 10,
               color: theme.muted,
               letterSpacing: 1,
               display: 'flex',
@@ -332,7 +391,15 @@ function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
               gap: 10,
             }}
           >
-            <span style={{ width: 22, height: 1, background: theme.accent, display: 'inline-block', flexShrink: 0 }} />
+            <span
+              style={{
+                width: Math.round(22 * m.s),
+                height: 1,
+                background: theme.accent,
+                display: 'inline-block',
+                flexShrink: 0,
+              }}
+            />
             {spec.subtitle}
           </div>
         ) : null}
@@ -345,13 +412,15 @@ function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
 /* 要点                                                               */
 /* ------------------------------------------------------------------ */
 
-function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
+function PointsCard({ spec, theme, m }: { spec: CardSpec; theme: CardTheme; m: Metrics }) {
   const points = (spec.points ?? []).slice(0, 5)
-  const titleSize = fitFontSize(spec.title, 27, 18, TITLE_THRESHOLDS)
-  const bodySize = points.length >= 5 ? 16 : points.length === 4 ? 17 : 18
+  const titleSize = fitFontSize(spec.title, Math.round(27 * m.s), Math.round(18 * m.s), TITLE_THRESHOLDS)
+  const base = points.length >= 5 ? 16 : points.length === 4 ? 17 : 18
+  const bodySize = Math.round(base * m.s * 10) / 10
+  const gap = Math.round(26 * m.s * (m.h < 600 ? 0.82 : 1))
 
   return (
-    <Shell spec={spec} theme={theme}>
+    <Shell spec={spec} theme={theme} m={m}>
       <div
         style={{
           flex: 1,
@@ -368,24 +437,24 @@ function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
             lineHeight: 1.4,
             fontWeight: 700,
             letterSpacing: 0.8,
-            marginBottom: 28,
+            marginBottom: Math.round(28 * m.s),
             color: theme.ink,
             flexShrink: 0,
           }}
         >
           {spec.title}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap }}>
           {points.map((p, i) => (
-            <div key={i} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+            <div key={i} style={{ display: 'flex', gap: Math.round(16 * m.s), alignItems: 'flex-start' }}>
               <div
                 style={{
                   fontFamily: MONO,
-                  fontSize: 12.5,
+                  fontSize: Math.round(12.5 * m.s * 10) / 10,
                   fontWeight: 700,
                   color: theme.accent,
                   lineHeight: `${Math.round(bodySize * 1.6)}px`,
-                  width: 18,
+                  width: Math.round(18 * m.s),
                   flexShrink: 0,
                   letterSpacing: 0,
                 }}
@@ -416,10 +485,10 @@ function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
 /* 小节                                                               */
 /* ------------------------------------------------------------------ */
 
-function SectionCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
-  const titleSize = fitFontSize(spec.title, 29, 19, TITLE_THRESHOLDS)
+function SectionCard({ spec, theme, m }: { spec: CardSpec; theme: CardTheme; m: Metrics }) {
+  const titleSize = fitFontSize(spec.title, Math.round(29 * m.s), Math.round(19 * m.s), TITLE_THRESHOLDS)
   return (
-    <Shell spec={spec} theme={theme}>
+    <Shell spec={spec} theme={theme} m={m}>
       <div
         style={{
           flex: 1,
@@ -437,29 +506,33 @@ function SectionCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
             fontWeight: 700,
             letterSpacing: 0.6,
             color: theme.ink,
+            flexShrink: 0,
           }}
         >
           {spec.title}
         </div>
         <div
           style={{
-            width: 26,
+            width: Math.round(26 * m.s),
             height: 2,
             borderRadius: 1,
             background: theme.accent,
-            margin: '22px 0 20px',
+            margin: `${Math.round(22 * m.s)}px 0 ${Math.round(20 * m.s)}px`,
             opacity: 0.9,
+            flexShrink: 0,
           }}
         />
         {spec.subtitle ? (
           <div
             style={{
-              fontSize: 15.5,
+              fontSize: Math.round(15.5 * m.s * 10) / 10,
               lineHeight: 1.85,
               letterSpacing: 0.3,
               color: theme.ink,
               opacity: 0.86,
-              maxHeight: 190,
+              // 摘要的可用高度必须按画布算：16:9 只有 420 的正文区，
+              // 写死 190 会直接把最后两行顶到页脚下面
+              maxHeight: Math.round(m.contentH * 0.52),
               overflow: 'hidden',
             }}
           >
@@ -475,10 +548,10 @@ function SectionCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
 /* 结尾                                                               */
 /* ------------------------------------------------------------------ */
 
-function EndCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
-  const size = fitFontSize(spec.title, 30, 18, QUOTE_THRESHOLDS)
+function EndCard({ spec, theme, m }: { spec: CardSpec; theme: CardTheme; m: Metrics }) {
+  const size = fitFontSize(spec.title, Math.round(30 * m.s), Math.round(18 * m.s), QUOTE_THRESHOLDS)
   return (
-    <Shell spec={spec} theme={theme}>
+    <Shell spec={spec} theme={theme} m={m}>
       <div
         style={{
           flex: 1,
@@ -492,10 +565,10 @@ function EndCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
       >
         <div
           style={{
-            width: 36,
+            width: Math.round(36 * m.s),
             height: 2,
             background: theme.accent,
-            marginBottom: 30,
+            marginBottom: Math.round(30 * m.s),
             borderRadius: 1,
           }}
         />
@@ -506,12 +579,23 @@ function EndCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
             lineHeight: 1.72,
             letterSpacing: 0.8,
             color: theme.ink,
+            maxHeight: Math.round(m.contentH * 0.72),
+            overflow: 'hidden',
           }}
         >
           {spec.title}
         </div>
         {spec.subtitle ? (
-          <div style={{ marginTop: 24, fontSize: 14, color: theme.muted, lineHeight: 1.8 }}>{spec.subtitle}</div>
+          <div
+            style={{
+              marginTop: Math.round(24 * m.s),
+              fontSize: Math.round(14 * m.s * 10) / 10,
+              color: theme.muted,
+              lineHeight: 1.8,
+            }}
+          >
+            {spec.subtitle}
+          </div>
         ) : null}
       </div>
     </Shell>
@@ -520,18 +604,27 @@ function EndCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
 
 /* ------------------------------------------------------------------ */
 
-export function CardRenderer({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
+export function CardRenderer({
+  spec,
+  theme,
+  format = '3:4',
+}: {
+  spec: CardSpec
+  theme: CardTheme
+  format?: CardFormatId
+}) {
+  const m = metricsOf(format)
   switch (spec.layout) {
     case 'cover':
-      return <CoverCard spec={spec} theme={theme} />
+      return <CoverCard spec={spec} theme={theme} m={m} />
     case 'quote':
-      return <QuoteCard spec={spec} theme={theme} />
+      return <QuoteCard spec={spec} theme={theme} m={m} />
     case 'points':
-      return <PointsCard spec={spec} theme={theme} />
+      return <PointsCard spec={spec} theme={theme} m={m} />
     case 'section':
-      return <SectionCard spec={spec} theme={theme} />
+      return <SectionCard spec={spec} theme={theme} m={m} />
     case 'end':
-      return <EndCard spec={spec} theme={theme} />
+      return <EndCard spec={spec} theme={theme} m={m} />
   }
 }
 

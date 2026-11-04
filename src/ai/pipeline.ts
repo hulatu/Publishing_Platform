@@ -38,7 +38,7 @@ export interface PipelineCallbacks {
   onAttempt?: (attempt: number) => void
 }
 
-interface JsonRunOptions<T> {
+export interface JsonRunOptions<T> {
   provider: AIProvider
   base: PromptBuildResult
   parse: (raw: string) => { data: T | null; error: string | null }
@@ -48,7 +48,7 @@ interface JsonRunOptions<T> {
   cb?: PipelineCallbacks
 }
 
-interface JsonRunResult<T> {
+export interface JsonRunResult<T> {
   data: T | null
   /** 最终仍然存在的错误（null 表示完全成功） */
   error: string | null
@@ -59,8 +59,8 @@ interface JsonRunResult<T> {
   fatal: boolean
 }
 
-/** 通用的「带校验重试的 JSON 调用」 */
-async function runJson<T>(opts: JsonRunOptions<T>): Promise<JsonRunResult<T>> {
+/** 通用的「带校验重试的 JSON 调用」。标题/标签这一路也复用它。 */
+export async function runJson<T>(opts: JsonRunOptions<T>): Promise<JsonRunResult<T>> {
   const { provider, base, parse, validate, repair, signal, cb } = opts
   const notes: string[] = []
   let user = base.user

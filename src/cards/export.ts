@@ -65,6 +65,8 @@ export function downloadBlob(blob: Blob, fileName: string): void {
 export interface ZipEntry {
   node: HTMLElement
   name: string
+  /** 子目录名（多尺寸导出时按 3x4 / 1x1 / 16x9 分开放） */
+  folder?: string
 }
 
 /** 批量导出为 zip —— 逐张触发下载会被浏览器拦截 */
@@ -75,12 +77,12 @@ export async function exportCardsAsZip(
   onProgress?: (done: number, total: number) => void,
 ): Promise<void> {
   const zip = new JSZip()
-  const folder = zip.folder('cards') ?? zip
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]
     const blob = await renderCardToBlob(entry.node, opts)
-    folder.file(entry.name, blob)
+    const target = entry.folder ? (zip.folder(entry.folder) ?? zip) : zip
+    target.file(entry.name, blob)
     onProgress?.(i + 1, entries.length)
   }
 

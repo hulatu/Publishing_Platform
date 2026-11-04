@@ -7,6 +7,7 @@ import { splitSections } from './core/sections'
 import { copyByMode, copyPlain, downloadText, mimeFor } from './core/copy'
 import { splitByH2 } from './core/split'
 import { checkText, scopeOf, stripHtml } from './core/compliance'
+import { activeBlocks, readTailConfig, writeTailConfig, type TailConfig } from './core/tail'
 import {
   articleKeyOf,
   clearArticle,
@@ -21,15 +22,18 @@ import { WECHAT_CONTENT_LIMIT } from './renderers/wechat'
 import { ThemePicker } from './components/ThemePicker'
 import { wechatThemes } from './themes/wechat'
 import { runDigest, runPlatform } from './ai/pipeline'
+import { runMetaLab } from './ai/meta-lab'
 import { resolveProvider } from './ai/provider'
 import {
   emptyAIState,
   emptyDigestState,
+  emptyMetaLabState,
   emptyPlatformStates,
   rewriteIds,
   type AIState,
   type DigestSet,
   type DigestState,
+  type MetaLabState,
   type PlatformAIStates,
   type RewriteId,
   type RewriteTone,
@@ -45,6 +49,8 @@ import { SettingsSheet } from './components/SettingsSheet'
 import { ComplianceChip } from './components/ComplianceChip'
 import { PublishLedger } from './components/PublishLedger'
 import { ImageList } from './components/ImageList'
+import { MetaLab } from './components/MetaLab'
+import { TailSheet } from './components/TailSheet'
 import { NoticeStack, type NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
@@ -61,6 +67,16 @@ function isRewriteId(id: string): id is RewriteId {
 }
 
 const THEME_KEY = 'ad.wechat-theme'
+const ACCOUNT_KEY = 'ad.wechat-account'
+
+/** 公众号账号名，替换文末模板里的 {account} */
+function readStoredAccount(): string {
+  try {
+    return localStorage.getItem(ACCOUNT_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
 
 /** 记住上次选的公众号主题；存的值失效（主题改名或删掉）就回退到默认 */
 function readStoredTheme(): string {
@@ -87,6 +103,21 @@ export default function App() {
       // 写不进去不影响本次使用
     }
   }, [])
+
+  /** 文末配置改一个字就落盘：没有保存按钮，关掉弹层再打开还得是刚才的样子 */
+  const changeTail = useCallback((cfg: TailConfig) => {
+    setTail(cfg)
+    writeTailConfig(cfg)
+  }, [])
+
+  const changeAccount = useCallback((name: string) => {
+    setAccount(name)
+    try {
+      localStorage.setItem(ACCOUNT_KEY, name)
+    } catch {
+      // 同上
+    }
+  }, [])
   const [cardThemeId, setCardThemeId] = useState('paper')
   const [siteName, setSiteName] = useState(DEFAULT_SITE_NAME)
 
@@ -102,6 +133,13 @@ export default function App() {
   const [articleKey, setArticleKey] = useState('')
   const [ledgerOpen, setLedgerOpen] = useState(false)
   const [imagesOpen, setImagesOpen] = useState(false)
+  /** 标题候选 + 标签推荐 */
+  const [metaLab, setMetaLab] = useState<MetaLabState>(emptyMetaLabState)
+  const [metaOpen, setMetaOpen] = useState(false)
+  /** 公众号文末三块（账号级配置，和文章无关，所以存在 localStorage 而不是 doc 里） */
+  const [tail, setTail] = useState<TailConfig>(readTailConfig)
+  const [account, setAccount] = useState(readStoredAccount)
+  const [tailOpen, setTailOpen] = useState(false)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
   const abortRef = useRef<AbortController | null>(null)
@@ -119,6 +157,7 @@ export default function App() {
       setFileName(name)
       setDigest(emptyDigestState)
       setPlatformStates(emptyPlatformStates())
+      setMetaLab(emptyMetaLabState)
       setArticleKey(articleKeyOf(parsed))
       if (parsed.blocks.length === 0) {
         toast('解析后正文是空的，请检查文件内容', 'error')
@@ -140,7 +179,7 @@ export default function App() {
     const p = getConvertPlatform(platform)
     if (!p) return null
     try {
-      return p.render(doc, { wechatThemeId: themeId })
+      return p.render(doc, { wechatThemeId: themeId, tail, account })
     } catch (e) {
       return {
         primary: '',
@@ -151,7 +190,7 @@ export default function App() {
         stats: [],
       }
     }
-  }, [doc, platform, themeId, kind])
+  }, [doc, platform, themeId, kind, tail, account])
 
   const overLimit = Boolean(output && platform === 'wechat' && output.primary.length > WECHAT_CONTENT_LIMIT)
 
@@ -348,6 +387,46 @@ export default function App() {
     toast('已停止生成')
   }, [toast])
 
+  /* ---------------- 标题与标签 ---------------- */
+
+  const generateMetaLab = useCallback(async () => {
+    if (!doc) return
+    const controller = startJob()
+    setMetaLab({ ...emptyMetaLabState, status: 'running' })
+    const out = await runMetaLab(doc, digest.digest, sections, controller.signal, {
+      onStream: (text) => setMetaLab((prev) => ({ ...prev, status: 'running', streaming: text })),
+    })
+    setMetaLab(out.state)
+    if (out.state.error) toast(out.state.error, out.state.fallback ? 'info' : 'error')
+    else toast(`已生成 ${out.state.result?.titles.length ?? 0} 个标题候选`, 'success')
+  }, [doc, digest.digest, sections, startJob, toast])
+
+  const cancelMetaLab = useCallback(() => {
+    abortRef.current?.abort()
+    setMetaLab((prev) => (prev.status === 'running' ? { ...prev, status: 'idle', streaming: '' } : prev))
+  }, [])
+
+  const applyTitle = useCallback(
+    (title: string) => {
+      updateMeta({ title })
+      // 卡片不跟着变是刻意的：CardStudio 只在重新导入时重建，
+      // 否则每改一次元信息就把用户手工调过的卡片文字冲掉
+      toast('已换标题 · 配图里点「重新生成」封面才会跟着变', 'success')
+    },
+    [updateMeta, toast],
+  )
+
+  const applyTags = useCallback(
+    (tags: string[]) => {
+      if (!doc) return
+      const merged = [...doc.meta.tags]
+      for (const t of tags) if (!merged.includes(t)) merged.push(t)
+      updateMeta({ tags: merged })
+      toast(`已写入标签，现有 ${merged.length} 个`, 'success')
+    },
+    [doc, updateMeta, toast],
+  )
+
   useEffect(() => {
     return () => abortRef.current?.abort()
   }, [])
@@ -396,6 +475,23 @@ export default function App() {
     [toast, articleKey, platform, ledger],
   )
 
+  /**
+   * 只复制、不记台账。
+   * 标题和标签是从「标题/标签」弹层里复制的，跟当前停在哪个平台无关 ——
+   * 在小红书标签页里复制一个标题，不该被记成「小红书已发布」。
+   */
+  const copyTextOnly = useCallback(
+    async (text: string, label: string) => {
+      try {
+        await copyPlain(text)
+        toast(`已复制${label}`, 'success')
+      } catch {
+        toast('复制失败，浏览器拒绝了剪贴板访问', 'error')
+      }
+    },
+    [toast],
+  )
+
   const doCopyPrimary = useCallback(async () => {
     if (!output) return
     try {
@@ -438,7 +534,7 @@ export default function App() {
     const p = getConvertPlatform('wechat')
     if (!p) return
     parts.forEach((part, i) => {
-      const out = p.render(part, { wechatThemeId: themeId })
+      const out = p.render(part, { wechatThemeId: themeId, tail, account })
       setTimeout(() => {
         downloadText(
           out.primary,
@@ -448,7 +544,7 @@ export default function App() {
       }, i * 300)
     })
     toast(`已拆成 ${parts.length} 篇并开始下载`, 'success')
-  }, [doc, themeId, toast])
+  }, [doc, themeId, tail, account, toast])
 
   /* ---------------- 顶栏统计 ---------------- */
 
@@ -542,12 +638,30 @@ export default function App() {
                 {currentPlatformMeta?.limits ? (
                   <span className="limit-chip">{currentPlatformMeta.limits}</span>
                 ) : null}
+                {doc ? (
+                  <button
+                    className="head-chip meta-entry"
+                    onClick={() => setMetaOpen(true)}
+                    title="一次生成 8 个不同角度的标题，其中至少 3 条在 20 字内；另附标签建议"
+                  >
+                    {metaLab.result ? `标题 ${metaLab.result.titles.length}` : '标题 / 标签'}
+                  </button>
+                ) : null}
+                {platform === 'wechat' && doc ? (
+                  <button
+                    className="head-chip tail-entry"
+                    onClick={() => setTailOpen(true)}
+                    title="文末三块：关注引导 / 往期推荐 / 版权声明"
+                  >
+                    文末 {activeBlocks(tail)}/3
+                  </button>
+                ) : null}
                 {doc && kind !== 'card' && checkContent.length > 0 ? (
                   <ComplianceChip hits={complianceHits} scopeLabel={scopeLabel} />
                 ) : null}
                 {doc && kind !== 'card' && images.length > 0 ? (
                   <button
-                    className="head-chip"
+                    className="head-chip img-entry"
                     onClick={() => setImagesOpen(true)}
                     title="正文图片清单：按序号打包下载，方便传进公众号"
                   >
@@ -803,6 +917,33 @@ export default function App() {
         onClose={() => setImagesOpen(false)}
         images={images}
         title={doc?.meta.title ?? '文章'}
+      />
+
+      {doc ? (
+        <MetaLab
+          open={metaOpen}
+          onClose={() => setMetaOpen(false)}
+          state={metaLab}
+          currentTitle={doc.meta.title}
+          currentTags={doc.meta.tags}
+          onRun={generateMetaLab}
+          onCancel={cancelMetaLab}
+          onApplyTitle={applyTitle}
+          onApplyTags={applyTags}
+          onCopy={copyTextOnly}
+          providerReady={providerReady}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+      ) : null}
+
+      <TailSheet
+        open={tailOpen}
+        onClose={() => setTailOpen(false)}
+        cfg={tail}
+        account={account}
+        themeId={themeId}
+        onChange={changeTail}
+        onAccountChange={changeAccount}
       />
 
       <ToastLayer items={toasts} />

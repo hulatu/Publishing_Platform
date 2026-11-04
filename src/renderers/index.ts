@@ -9,6 +9,7 @@
  */
 
 import type { Doc } from '../core/ir'
+import type { TailConfig } from '../core/tail'
 import { renderSspai } from './sspai'
 import { renderZhihu } from './zhihu'
 import { renderWechat } from './wechat'
@@ -46,6 +47,10 @@ export interface RenderOutput {
 export interface ConvertOptions {
   /** 公众号主题 id */
   wechatThemeId: string
+  /** 公众号文末组件（关注引导 / 往期推荐 / 版权），只有公众号渲染器会用 */
+  tail?: TailConfig
+  /** 账号名，替换尾部模板里的 {account} */
+  account?: string
 }
 
 export interface ConvertPlatform {

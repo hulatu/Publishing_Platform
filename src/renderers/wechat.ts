@@ -19,6 +19,7 @@ import { collectImages, collectLinks } from '../core/ir'
 import { renderHtml } from '../core/html-inline'
 import { charCount } from '../core/cjk'
 import { getWechatTheme } from '../themes/wechat'
+import { activeBlocks, buildTailHtml } from '../core/tail'
 import type { ConvertOptions, RenderOutput } from './index'
 
 /** 微信公众号 content 字段的硬上限 */
@@ -38,6 +39,18 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
   const links = collectLinks(doc.blocks)
   const warnings: string[] = []
 
+  // 文末三块拼在正文（含参考链接）之后：关注引导放最后是公众号的惯例
+  const tail = opts.tail ? buildTailHtml(opts.tail, theme, opts.account ?? '') : null
+  const html = tail?.html ? result.html + tail.html : result.html
+  const charTotal = [...html].length
+  const tailBlocks = opts.tail ? activeBlocks(opts.tail) : 0
+
+  if (tail && tail.droppedLinks > 0) {
+    warnings.push(
+      `往期推荐有 ${tail.droppedLinks} 条带链接，微信会剥离正文外链，粘贴后需在编辑器里用「超链接」重新挂上。`,
+    )
+  }
+
   if (images.length > 0) {
     warnings.push(
       `正文有 ${images.length} 张外链图片。公众号只认 mmbiz.qpic.cn，粘贴后需逐张替换，否则会裂图。`,
@@ -47,18 +60,18 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
     warnings.push(`${links.length} 个外链已抽成文末「参考链接」编号表（未认证号正文链接会失效）`)
   }
 
-  const overLimit = result.charCount > WECHAT_CONTENT_LIMIT
+  const overLimit = charTotal > WECHAT_CONTENT_LIMIT
   if (overLimit) {
     warnings.push(
-      `HTML 已达 ${result.charCount} 字符，超过 20000 上限。请用「按 H2 拆篇」拆成多篇发布。`,
+      `HTML 已达 ${charTotal} 字符，超过 20000 上限。请用「按 H2 拆篇」拆成多篇发布。`,
     )
   }
 
-  const pct = Math.round((result.charCount / WECHAT_CONTENT_LIMIT) * 100)
+  const pct = Math.round((charTotal / WECHAT_CONTENT_LIMIT) * 100)
 
   return {
-    primary: result.html,
-    html: result.html,
+    primary: html,
+    html,
     text: result.text,
     format: 'html',
     copyMode: 'rich',
@@ -66,7 +79,7 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
     stats: [
       {
         label: 'HTML 字符',
-        value: `${result.charCount} / ${WECHAT_CONTENT_LIMIT}（${pct}%）`,
+        value: `${charTotal} / ${WECHAT_CONTENT_LIMIT}（${pct}%）`,
         level: overLimit ? 'error' : pct > 85 ? 'warn' : 'ok',
       },
       { label: '正文', value: `${charCount(result.text)} 字` },
@@ -76,6 +89,7 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
         level: images.length > 0 ? 'warn' : 'ok',
       },
       { label: '外链', value: `${links.length} 个已转文末` },
+      { label: '文末', value: tailBlocks > 0 ? `${tailBlocks} 块` : '未启用' },
     ],
     extras:
       images.length > 0

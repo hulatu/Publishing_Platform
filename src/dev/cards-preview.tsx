@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CardRenderer } from '../cards/templates'
 import { getCardTheme } from '../cards/themes'
-import type { CardSpec } from '../cards/types'
+import type { CardSpec, CardFormatId } from '../cards/types'
 import { ThemePicker } from '../components/ThemePicker'
 import { CardStudio } from '../components/CardStudio'
 import { parseArticle } from '../core/parse'
@@ -98,13 +98,26 @@ const STRESS: Record<string, Partial<CardSpec>> = {
   },
 }
 
-function Cards({ themeId, stress }: { themeId: string; stress: boolean }) {
+function Cards({ themeId, stress, formats }: { themeId: string; stress: boolean; formats: CardFormatId[] }) {
   const theme = getCardTheme(themeId)
   return (
-    <div style={{ display: 'flex', gap: 24, padding: 24, background: '#ddd' }}>
-      {SPECS.map((s) => (
-        <div key={s.id} data-card={s.id}>
-          <CardRenderer spec={{ ...s, themeId, ...(stress ? STRESS[s.id] : {}) }} theme={theme} />
+    <div style={{ padding: 24, background: '#ddd' }}>
+      {formats.map((f) => (
+        <div key={f} style={{ marginBottom: 32 }}>
+          <div style={{ font: '600 12px/1 -apple-system, sans-serif', color: '#555', marginBottom: 10 }}>
+            {f}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+            {SPECS.map((s) => (
+              <div key={s.id} data-card={s.id} data-format={f}>
+                <CardRenderer
+                  spec={{ ...s, themeId, ...(stress ? STRESS[s.id] : {}) }}
+                  theme={theme}
+                  format={f}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       ))}
     </div>
@@ -140,6 +153,21 @@ function Studio() {
       .then((src) => setDoc(parseArticle({ source: src, fileName: 'fixture-long.md' })))
   }, [])
 
+  // ?drag=1：模拟把第 4 张卡拖到第 1 位，用来验证排序与页码重算
+  useEffect(() => {
+    if (!doc || new URLSearchParams(location.search).get('drag') !== '1') return
+    const t = setTimeout(() => {
+      const items = document.querySelectorAll<HTMLElement>('.card-item')
+      if (items.length < 4) return
+      const dt = new DataTransfer()
+      items[3].dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }))
+      items[0].dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }))
+      items[0].dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }))
+      items[3].dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [doc])
+
   if (!doc) return <div style={{ padding: 40 }}>加载中…</div>
   const sections = splitSections(doc)
 
@@ -163,12 +191,23 @@ function Studio() {
 
 const params = new URLSearchParams(location.search)
 const root = createRoot(document.getElementById('root')!)
+const fmtParam = params.get('fmt')
+const formats: CardFormatId[] = params.get('allformats')
+  ? ['3:4', '1:1', '16:9']
+  : fmtParam === '1:1' || fmtParam === '16:9'
+    ? [fmtParam]
+    : ['3:4']
+
 root.render(
   params.get('studio') ? (
     <Studio />
   ) : params.get('picker') ? (
     <Picker />
   ) : (
-    <Cards themeId={params.get('theme') ?? 'paper'} stress={params.get('stress') === '1'} />
+    <Cards
+      themeId={params.get('theme') ?? 'paper'}
+      stress={params.get('stress') === '1'}
+      formats={formats}
+    />
   ),
 )

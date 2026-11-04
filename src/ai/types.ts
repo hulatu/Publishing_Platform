@@ -113,6 +113,60 @@ export function emptyPlatformStates(): PlatformAIStates {
 }
 
 /* ------------------------------------------------------------------ */
+/* 标题与标签                                                           */
+/* ------------------------------------------------------------------ */
+
+/** 标题的角度。不是分类学，是给用户看「这 8 个为什么不一样」 */
+export type TitleStyle = 'statement' | 'number' | 'question' | 'contrast' | 'howto' | 'judgement'
+
+export const titleStyleLabels: Record<TitleStyle, string> = {
+  statement: '陈述',
+  number: '数字',
+  question: '疑问',
+  contrast: '对比',
+  howto: '做法',
+  judgement: '判断',
+}
+
+export interface TitleCandidate {
+  text: string
+  style: TitleStyle
+  /** 选填：一句话说明这条的角度，AI 有时会给 */
+  note?: string
+}
+
+export interface TagSuggestion {
+  name: string
+  /** 选填：为什么推这个标签 */
+  why?: string
+}
+
+export interface MetaLabSet {
+  titles: TitleCandidate[]
+  tags: TagSuggestion[]
+}
+
+export interface MetaLabState {
+  status: JobStatus
+  streaming: string
+  result: MetaLabSet | null
+  error: string | null
+  fallback: boolean
+  retries: number
+  providerLabel: string
+}
+
+export const emptyMetaLabState: MetaLabState = {
+  status: 'idle',
+  streaming: '',
+  result: null,
+  error: null,
+  fallback: false,
+  retries: 0,
+  providerLabel: '',
+}
+
+/* ------------------------------------------------------------------ */
 /* 平台限制（UI 与校验共用）                                            */
 /* ------------------------------------------------------------------ */
 
@@ -129,6 +183,15 @@ export const LIMITS = {
   digestMin: 18,
   digestMax: 130,
   oneLinerMax: 60,
+  /** 标题候选：一次给 8 个，其中至少 3 个要能塞进小红书 20 字标题 */
+  titleCount: 8,
+  titleMax: 40,
+  titleShort: 20,
+  titleMinShort: 3,
+  /** 标签建议条数 */
+  tagCount: 14,
+  tagMin: 8,
+  tagMaxChars: 10,
 } as const
 
 /** 改写强度：影响各平台 prompt 的「像不像平台原生」程度 */
