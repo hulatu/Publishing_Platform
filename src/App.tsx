@@ -9,6 +9,18 @@ import { splitByH2 } from './core/split'
 import { checkText, scopeOf, stripHtml } from './core/compliance'
 import { activeBlocks, readTailConfig, writeTailConfig, type TailConfig } from './core/tail'
 import {
+  clearDrafts,
+  deleteDraft,
+  draftValue,
+  fingerprintOf,
+  formatAgo,
+  listDrafts,
+  readDraft,
+  sanitizeForStore,
+  writeDraft,
+  type DraftSnapshot,
+} from './core/drafts'
+import {
   articleKeyOf,
   clearArticle,
   markPublished as markRecord,
@@ -51,6 +63,7 @@ import { PublishLedger } from './components/PublishLedger'
 import { ImageList } from './components/ImageList'
 import { MetaLab } from './components/MetaLab'
 import { TailSheet } from './components/TailSheet'
+import { DraftsSheet } from './components/DraftsSheet'
 import { NoticeStack, type NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
@@ -140,6 +153,11 @@ export default function App() {
   const [tail, setTail] = useState<TailConfig>(readTailConfig)
   const [account, setAccount] = useState(readStoredAccount)
   const [tailOpen, setTailOpen] = useState(false)
+  /** 导入时的完整原文（含 front matter），草稿要连正文一起存才恢复得回来 */
+  const [sourceText, setSourceText] = useState('')
+  const [drafts, setDrafts] = useState<DraftSnapshot[]>(listDrafts)
+  const [draftsOpen, setDraftsOpen] = useState(false)
+  const saveTimer = useRef<number | null>(null)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
   const abortRef = useRef<AbortController | null>(null)
@@ -150,17 +168,46 @@ export default function App() {
 
   /* ---------------- 载入 ---------------- */
 
+  /**
+   * 导入。
+   *
+   * 若这篇（同 slug）已经有草稿、且正文结构没变，就把草稿里的 AI 产物接回来。
+   * 只接 AI 产物、不接 meta：文件才是元信息的权威；而摘要 / 四平台文案 / 标题候选
+   * 是花钱生成的，重来一次代价大得多。想沿用旧标题也不亏 —— 标题弹层里的候选
+   * 一并恢复了，点一下就能重新套上。
+   *
+   * 正文结构变了（增删小节、大段增删）就不套旧文案：小节数对不上时，
+   * AI 面板会显示「N 节」而摘要只有 M 条，看着像坏了，其实是两份东西。
+   */
   const load = useCallback(
     (source: string, name: string) => {
       const parsed = parseArticle({ source, fileName: name })
+      const key = articleKeyOf(parsed)
+      const fp = fingerprintOf(parsed, splitSections(parsed).length)
+      const saved = readDraft(key)
+
       setDoc(parsed)
       setFileName(name)
+      setSourceText(source)
+      setArticleKey(key)
+
+      if (saved && parsed.blocks.length > 0 && saved.fingerprint === fp && draftValue(saved).worth) {
+        setDigest(saved.digest)
+        setPlatformStates(saved.platformStates)
+        setMetaLab(saved.metaLab)
+        setTone(saved.tone)
+        toast(`已解析「${parsed.meta.title}」· 接回 ${formatAgo(saved.updatedAt)} 的草稿`, 'success')
+        return
+      }
+
       setDigest(emptyDigestState)
       setPlatformStates(emptyPlatformStates())
       setMetaLab(emptyMetaLabState)
-      setArticleKey(articleKeyOf(parsed))
+
       if (parsed.blocks.length === 0) {
         toast('解析后正文是空的，请检查文件内容', 'error')
+      } else if (saved && saved.fingerprint !== fp) {
+        toast(`已解析「${parsed.meta.title}」· 正文结构变了，旧草稿不再套用`, 'info')
       } else {
         toast(`已解析「${parsed.meta.title}」`, 'success')
       }
@@ -264,6 +311,88 @@ export default function App() {
   /* ---------------- 章节切分 ---------------- */
 
   const sections = useMemo(() => (doc ? splitSections(doc) : []), [doc])
+
+  /* ---------------- 草稿箱 ---------------- */
+
+  /**
+   * 自动保存，延迟 800ms。
+   *
+   * 没有保存按钮：用户会忘。但也不能每次按键都写盘 —— 一篇文章的草稿带正文
+   * 约 30–60KB，逐字序列化会把主线程卡出明显的输入延迟。
+   *
+   * 生成过程中整个跳过：streaming 每 100ms 涨一次，写进去既没用又浪费配额。
+   */
+  useEffect(() => {
+    if (!doc || !articleKey || !sourceText) return
+    const busy =
+      digest.status === 'running' ||
+      metaLab.status === 'running' ||
+      Object.values(platformStates).some((s) => s.status === 'running')
+    if (busy) return
+
+    if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    saveTimer.current = window.setTimeout(() => {
+      const snap = sanitizeForStore({
+        key: articleKey,
+        doc,
+        source: sourceText,
+        fileName,
+        tone,
+        themeId,
+        platform,
+        digest,
+        platformStates,
+        metaLab,
+        sectionCount: sections.length,
+      })
+      writeDraft(snap)
+      setDrafts(listDrafts())
+    }, 800)
+
+    return () => {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    }
+  }, [doc, articleKey, sourceText, fileName, tone, themeId, platform, digest, platformStates, metaLab, sections.length])
+
+  /** 从草稿箱显式打开：这次连 meta 一起还原，用户要的就是「回到当时那一刻」 */
+  const restoreDraft = useCallback(
+    (key: string) => {
+      const d = readDraft(key)
+      if (!d) {
+        toast('草稿不见了，可能已被清空', 'error')
+        setDrafts(listDrafts())
+        return
+      }
+      const parsed = parseArticle({ source: d.source, fileName: d.fileName })
+      setDoc({ ...parsed, meta: d.meta })
+      setFileName(d.fileName)
+      setSourceText(d.source)
+      setArticleKey(d.key)
+      setDigest(d.digest)
+      setPlatformStates(d.platformStates)
+      setMetaLab(d.metaLab)
+      setTone(d.tone)
+      setThemeId(d.themeId)
+      if (d.platform) setPlatform(d.platform)
+      setDraftsOpen(false)
+      toast(`已打开草稿「${d.meta.title}」`, 'success')
+    },
+    [toast, setThemeId],
+  )
+
+  const removeDraft = useCallback(
+    (key: string) => {
+      setDrafts(deleteDraft(key))
+      toast('已删除这篇草稿')
+    },
+    [toast],
+  )
+
+  const wipeDrafts = useCallback(() => {
+    clearDrafts()
+    setDrafts([])
+    toast('草稿箱已清空')
+  }, [toast])
 
   /* ---------------- AI 编排 ---------------- */
 
@@ -607,6 +736,17 @@ export default function App() {
           </button>
         ) : null}
 
+        <button
+          className={`btn btn-sm btn-quiet drafts-entry ${drafts.length > 0 ? 'has' : ''}`}
+          onClick={() => {
+            setDrafts(listDrafts())
+            setDraftsOpen(true)
+          }}
+          title="草稿箱：自动保存正文、摘要与 AI 文案，关掉页面也不会丢"
+        >
+          草稿{drafts.length > 0 ? ` ${drafts.length}` : ''}
+        </button>
+
         <button className="btn btn-sm btn-quiet" onClick={() => setSettingsOpen(true)}>
           设置
         </button>
@@ -944,6 +1084,16 @@ export default function App() {
         themeId={themeId}
         onChange={changeTail}
         onAccountChange={changeAccount}
+      />
+
+      <DraftsSheet
+        open={draftsOpen}
+        onClose={() => setDraftsOpen(false)}
+        drafts={drafts}
+        currentKey={articleKey}
+        onOpen={restoreDraft}
+        onDelete={removeDraft}
+        onClearAll={wipeDrafts}
       />
 
       <ToastLayer items={toasts} />

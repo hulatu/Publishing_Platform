@@ -2985,6 +2985,123 @@ select {
   justify-content: space-between;
 }
 
+/* ---------- 草稿箱 ---------- */
+
+.drafts-modal {
+  max-width: 780px;
+}
+
+.drafts-body {
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+}
+
+.draft-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.draft-row:last-child {
+  border-bottom: none;
+}
+
+/* 当前打开的那篇压暗一点、左侧加一条竖线：一眼看出「这个不用点」 */
+.draft-row.current {
+  padding-left: 10px;
+  border-left: 2px solid var(--accent-line);
+  margin-left: -12px;
+}
+
+.draft-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.draft-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.draft-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-tag {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.draft-tag.muted {
+  background: var(--panel-soft);
+  color: var(--ink-muted);
+}
+
+.draft-meta {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.draft-dot {
+  opacity: 0.5;
+}
+
+.draft-marks {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.draft-mark {
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line-soft);
+  color: var(--ink-soft);
+}
+
+.draft-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-danger,
+.draft-del.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+
+.btn-danger:hover,
+.draft-del.danger:hover {
+  background: #9d1f18;
+  border-color: #9d1f18;
+  color: #fff;
+}
+
 /* ---------- 图片清单 ---------- */
 
 .img-modal {
@@ -3429,6 +3546,18 @@ select {
   .tail-item .field-input,
   .tail-item .tail-item-url {
     flex: 1 1 100%;
+  }
+  /* 草稿行：标题和按钮挤在一行会把标题压成一条竖线，按钮折到下面 */
+  .draft-row {
+    flex-wrap: wrap;
+  }
+  .draft-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .draft-row.current {
+    margin-left: -8px;
+    padding-left: 8px;
   }
 }
 

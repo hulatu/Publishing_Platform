@@ -1,7 +1,13 @@
 /**
  * 临时预览页（只在本地核对视觉用，不参与构建）
- * /app-preview.html            → 载入 fixture 后停在公众号
- * /app-preview.html?open=ledger|check|images
+ *
+ * 入口是 /dev/app-preview.html —— 注意不在根路径。根路径的 /app-preview.html
+ * 会被 vite 的 SPA 回退兜到 index.html，那样载入的是正式 App，不是这个壳子，
+ * 表现是「页面正常但永远是空状态」，很容易误判成数据加载坏了。
+ *
+ * /dev/app-preview.html             → 载入 fixture 后停在公众号
+ * /dev/app-preview.html?open=ledger|check|images|meta|tail|drafts
+ * 另有 seed=1 / tail=full / drafts=full / run=1 / tab=preview / scroll=bottom
  */
 
 import { useEffect, useState } from 'react'
@@ -75,7 +81,9 @@ function Harness() {
               ? '.meta-entry'
               : open === 'tail'
                 ? '.tail-entry'
-                : ''
+                : open === 'drafts'
+                  ? '.drafts-entry'
+                  : ''
     if (!sel) return
     const t = setTimeout(() => {
       document.querySelector<HTMLButtonElement>(sel)?.click()
@@ -89,6 +97,14 @@ function Harness() {
       if (params.get('tab') === 'preview') {
         setTimeout(() => {
           document.querySelectorAll<HTMLButtonElement>('.tail-tabs button')[1]?.click()
+        }, 300)
+      }
+      // ?pick=N：点草稿箱第 N 行的「打开」，用来核对恢复流程
+      const pick = Number(params.get('pick') ?? '0')
+      if (pick > 0) {
+        setTimeout(() => {
+          const rows = document.querySelectorAll<HTMLElement>('.drafts-body .draft-row')
+          rows[pick - 1]?.querySelector<HTMLButtonElement>('.btn-primary')?.click()
         }, 300)
       }
     }, 200)
@@ -123,6 +139,99 @@ if (bootParams.get('tail') === 'full') {
       copyright: { on: true, text: '© {year} {account} · 转载请注明出处与原文链接' },
     }),
   )
+}
+
+// ?drafts=full：同样要在 App 挂载前写盘（drafts 的初值就是 listDrafts()）
+if (bootParams.get('drafts') === 'full') {
+  const at = (h: number) => new Date(Date.now() - h * 3600_000).toISOString()
+  const body = 'x'.repeat(4800)
+  const seed = {
+    'why-i-write': {
+      key: 'why-i-write',
+      title: '我为什么把写作流程拆成七段',
+      fileName: 'why-i-write.md',
+      source: body,
+      fingerprint: '6:2418',
+      meta: { title: '我为什么把写作流程拆成七段', categories: [], tags: [], summary: '', description: '', extra: {} },
+      tone: 'original',
+      themeId: 'paper',
+      platform: 'wechat',
+      digest: {
+        status: 'done',
+        streaming: '',
+        digest: { sections: [{ index: 1, heading: 'a', summary: 'b' }], oneLiner: 'c' },
+        error: null,
+        fallback: false,
+        retries: 0,
+        providerLabel: 'DeepSeek',
+      },
+      platformStates: {
+        xiaohongshu: { status: 'done', streaming: '', result: { xhs: { title: 't', body: 'b', tags: [] } }, error: null, fallback: false, retries: 0, providerLabel: 'DeepSeek' },
+        twitter: { status: 'done', streaming: '', result: { twitter: { thread: ['a'] } }, error: null, fallback: false, retries: 0, providerLabel: 'DeepSeek' },
+        jike: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+        weibo: { status: 'done', streaming: '', result: { weibo: { text: 'x', topics: [] } }, error: null, fallback: false, retries: 0, providerLabel: 'DeepSeek' },
+      },
+      metaLab: {
+        status: 'done',
+        streaming: '',
+        result: { titles: [{ text: 'a', style: 'statement' }], tags: [] },
+        error: null,
+        fallback: false,
+        retries: 0,
+        providerLabel: 'DeepSeek',
+      },
+      updatedAt: at(0.2),
+    },
+    'ledger-retro': {
+      key: 'ledger-retro',
+      title: '110 篇博客要发 8 个平台，我是怎么做的',
+      fileName: 'ledger-retro.md',
+      source: body,
+      fingerprint: '9:6120',
+      meta: { title: '110 篇博客要发 8 个平台，我是怎么做的', categories: [], tags: [], summary: '', description: '', extra: {} },
+      tone: 'light',
+      themeId: 'ink',
+      platform: 'xiaohongshu',
+      digest: {
+        status: 'done',
+        streaming: '',
+        digest: { sections: [], oneLiner: 'c' },
+        error: null,
+        fallback: false,
+        retries: 0,
+        providerLabel: 'DeepSeek',
+      },
+      platformStates: {
+        xiaohongshu: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+        twitter: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+        jike: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+        weibo: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+      },
+      metaLab: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+      updatedAt: at(6),
+    },
+    'plain-one': {
+      key: 'plain-one',
+      title: '关于「坚持」这件事的一点怀疑',
+      fileName: 'plain-one.md',
+      source: body,
+      fingerprint: '4:1902',
+      meta: { title: '关于「坚持」这件事的一点怀疑', categories: [], tags: [], summary: '', description: '', extra: {} },
+      tone: 'original',
+      themeId: 'paper',
+      platform: 'wechat',
+      digest: { status: 'idle', streaming: '', digest: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+      platformStates: {
+        xiaohongshu: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+        twitter: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+        jike: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+        weibo: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+      },
+      metaLab: { status: 'idle', streaming: '', result: null, error: null, fallback: false, retries: 0, providerLabel: '' },
+      updatedAt: at(30),
+    },
+  }
+  localStorage.setItem('ad.drafts.v1', JSON.stringify(seed))
 }
 
 createRoot(document.getElementById('root')!).render(<Harness />)
