@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check": "npm run check:parse && npm run check:digest",
+    "icons": "bash scripts/build-icons.sh",
     "check:fixtures": "POSTS_DIR=scripts/fixtures npm run check",
     "check:parse": "esbuild scripts/check-parse.ts --bundle --platform=node --format=esm --outfile=.tmp/check-parse.mjs --log-level=warning && node .tmp/check-parse.mjs",
     "check:digest": "esbuild scripts/check-digest.ts --bundle --platform=node --format=esm --outfile=.tmp/check-digest.mjs --log-level=warning && node .tmp/check-digest.mjs"

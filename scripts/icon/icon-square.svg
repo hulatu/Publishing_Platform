@@ -1,0 +1,16 @@
+<!-- 满幅方形版本：给 apple-touch-icon / android-chrome / maskable 用。
+     iOS 和 Android 会自己裁形状，源图必须铺满、不能有透明圆角，
+     否则四角会被填成黑色。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#C0392B"/>
+  <path
+    d="M148 104 H288 L380 196 V392 A16 16 0 0 1 364 408 H148 A16 16 0 0 1 132 392 V120 A16 16 0 0 1 148 104 Z"
+    fill="#FFFFFF"
+  />
+  <path d="M288 104 L380 196 H288 Z" fill="#C0392B" opacity="0.55"/>
+  <g fill="#C0392B" opacity="0.85">
+    <rect x="172" y="228" width="168" height="22" rx="11"/>
+    <rect x="172" y="278" width="168" height="22" rx="11"/>
+    <rect x="172" y="328" width="104" height="22" rx="11"/>
+  </g>
+</svg>

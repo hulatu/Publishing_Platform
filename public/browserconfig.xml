@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Windows 开始菜单固定磁贴用。现代 Windows 已改用 site.webmanifest，
+     这里保留是为了老 Edge / 企业环境的固定磁贴不变成空白方块。 -->
+<browserconfig>
+  <msapplication>
+    <tile>
+      <square150x150logo src="mstile-150x150.png"/>
+      <TileColor>#C0392B</TileColor>
+    </tile>
+  </msapplication>
+</browserconfig>

@@ -104,6 +104,34 @@ npx wrangler pages deploy dist --project-name hulatu-publish
 ```
 
 
+## 图标
+
+`public/` 下是一整套按平台拆开的图标，母版只有三个 SVG（都在 `scripts/icon/`）：
+
+| 文件 | 用在哪 |
+| --- | --- |
+| `icon.svg` | 现代浏览器标签页（矢量，任意缩放） |
+| `favicon.ico` | 老浏览器、Windows 快捷方式（内含 16/32/48 三档） |
+| `favicon-16x16.png` / `32` | 标签页小图标（用的是**简化版**，没有正文行） |
+| `favicon-48x48.png` | 书签栏、桌面快捷方式（完整版） |
+| `apple-touch-icon.png` | iOS 添加到主屏（满幅方图，iOS 自己裁圆角） |
+| `android-chrome-192/512.png` | Android 主屏、PWA 安装 |
+| `maskable-512x512.png` | Android 自适应图标（内容缩进 80% 安全区，不会被裁边） |
+| `mstile-150x150.png` | Windows 开始菜单磁贴 |
+| `safari-pinned-tab.svg` | Safari 固定标签页（单色蒙版） |
+
+改图标只需要改 SVG 再重新生成：
+
+```bash
+npm run icons
+```
+
+脚本用 Chromium 渲染 SVG（ImageMagick 自带的 MSVG 会丢圆角、圆头描边和透明度，
+出来是坏的），再用 ImageMagick 缩放拼装。默认找 Helium，换浏览器：
+`BROWSER=/path/to/chrome npm run icons`。
+
+小尺寸单独一套是刻意的：16px 下正文行会糊成一团，所以 16/32 用只含纸张轮廓的简化版。
+
 ## 目录结构
 
 ```
@@ -125,7 +153,7 @@ src/
     provider.ts  服务商适配（BYOK / 云服务）
   cards/       小红书配图卡片（DOM → PNG）
   components/  界面
-scripts/       回归检查
+scripts/       回归检查、图标生成（icon/ 里放 SVG 母版）
 ```
 
 ## 已知取舍
