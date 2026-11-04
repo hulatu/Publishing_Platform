@@ -14,6 +14,7 @@ import { renderSspai } from './sspai'
 import { renderZhihu } from './zhihu'
 import { renderWechat } from './wechat'
 import { renderDouban } from './douban'
+import { renderBilibili, renderToutiao, renderBaijiahao } from './cn-blogs'
 
 export type PlatformKind = 'convert' | 'rewrite' | 'card'
 
@@ -96,6 +97,30 @@ export const convertPlatforms: ConvertPlatform[] = [
     hint: '日记支持有限 HTML，保留链接与图片',
     limits: '不支持自定义字体与复杂样式',
     render: renderDouban,
+  },
+  {
+    id: 'bilibili',
+    name: 'B 站专栏',
+    kind: 'convert',
+    hint: '富文本粘贴，标题层级与表格保真',
+    limits: '代码块退化成普通段落；图片需上传 B 站图床',
+    render: renderBilibili,
+  },
+  {
+    id: 'toutiao',
+    name: '头条号',
+    kind: 'convert',
+    hint: '富文本粘贴，样式会被归一化',
+    limits: '正文外链被清除（已转文末参考）；代码块被清洗',
+    render: renderToutiao,
+  },
+  {
+    id: 'baijiahao',
+    name: '百家号',
+    kind: 'convert',
+    hint: '只保留段落、加粗、标题、图片',
+    limits: '清洗最狠：外链与 <pre> 都会被剥掉',
+    render: renderBaijiahao,
   },
 ]
 

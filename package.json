@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "npm run check:parse && npm run check:digest && npm run check:themes && npm run check:cards && npm run check:ledger && npm run check:compliance && npm run check:titles && npm run check:tail",
+    "check": "npm run check:parse && npm run check:digest && npm run check:themes && npm run check:cards && npm run check:ledger && npm run check:compliance && npm run check:titles && npm run check:tail && npm run check:platforms",
     "check:cards": "esbuild scripts/check-cards.ts --bundle --platform=node --format=esm --outfile=.tmp/check-cards.mjs --log-level=warning && node .tmp/check-cards.mjs",
     "check:ledger": "esbuild scripts/check-ledger.ts --bundle --platform=node --format=esm --outfile=.tmp/check-ledger.mjs --log-level=warning && node .tmp/check-ledger.mjs",
     "check:themes": "esbuild scripts/check-themes.ts --bundle --platform=node --format=esm --outfile=.tmp/check-themes.mjs --log-level=warning && node .tmp/check-themes.mjs",
@@ -18,7 +18,8 @@
     "check:digest": "esbuild scripts/check-digest.ts --bundle --platform=node --format=esm --outfile=.tmp/check-digest.mjs --log-level=warning && node .tmp/check-digest.mjs",
     "check:compliance": "esbuild scripts/check-compliance.ts --bundle --platform=node --format=esm --outfile=.tmp/check-compliance.mjs --log-level=warning && node .tmp/check-compliance.mjs",
     "check:titles": "esbuild scripts/check-titles.ts --bundle --platform=node --format=esm --outfile=.tmp/check-titles.mjs --log-level=warning && node .tmp/check-titles.mjs",
-    "check:tail": "esbuild scripts/check-tail.ts --bundle --platform=node --format=esm --outfile=.tmp/check-tail.mjs --log-level=warning && node .tmp/check-tail.mjs"
+    "check:tail": "esbuild scripts/check-tail.ts --bundle --platform=node --format=esm --outfile=.tmp/check-tail.mjs --log-level=warning && node .tmp/check-tail.mjs",
+    "check:platforms": "esbuild scripts/check-platforms.ts --bundle --platform=node --format=esm --outfile=.tmp/check-platforms.mjs --log-level=warning && node .tmp/check-platforms.mjs"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
