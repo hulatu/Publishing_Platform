@@ -298,6 +298,7 @@ function makeTheme(spec: ThemeSpec): HtmlTheme {
     name: spec.name,
     group: spec.group,
     hint: spec.hint,
+    swatch: { bg: p.bg, accent: p.accent, ink: p.text },
 
     root,
 

@@ -140,6 +140,8 @@ export function buildCards(doc: Doc, themeId: string, siteName = DEFAULT_SITE_NA
       layout: 'quote',
       title: quote.text,
       subtitle: quote.source ?? '—— 摘自本文',
+      // 四张卡都带同一条顶部小标签，一套图才有统一的「刊头」
+      kicker,
       footer: siteName,
       date,
       themeId,
@@ -164,6 +166,7 @@ export function buildCards(doc: Doc, themeId: string, siteName = DEFAULT_SITE_NA
     layout: 'end',
     title: doc.meta.summary || '感谢阅读',
     subtitle: doc.meta.tags.length ? `#${doc.meta.tags.slice(0, 3).join('　#')}` : undefined,
+    kicker: '结语',
     footer: siteName,
     date,
     themeId,

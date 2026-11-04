@@ -6,6 +6,20 @@
  * - 禁用 backdrop-filter / filter:blur / mix-blend-mode / mask / position:fixed
  * - 不引用任何外部图片（外链图会污染 canvas，toPng 直接抛 SecurityError）
  * - 只用系统字体，不内嵌 webfont（跨域字体会让导出结果整张空白）
+ *
+ * 版式骨架（四张卡共用，保证一套图看起来是同一套东西）：
+ *
+ *   ┌──────────────────────────────┐
+ *   │  ▬▬  ← 顶部强调短横（34）      │
+ *   │  KICKER                      │  ← 56 起
+ *   │                              │
+ *   │  正文区（各版式自己排）        │
+ *   │                              │
+ *   │  ────────────────────────    │  ← 分隔线（82）
+ *   │  署名              日期       │  ← 页脚（46）
+ *   └──────────────────────────────┘
+ *
+ * 所有装饰元素都锚在「正文区之外」的边带上，永远不会压到文字上。
  */
 
 import type { CSSProperties, ReactNode } from 'react'
@@ -17,10 +31,20 @@ const SERIF = '"Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia,
 const SANS = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
 const MONO = '"SF Mono", Menlo, Consolas, monospace'
 
-interface FrameProps {
-  theme: CardTheme
-  children: ReactNode
-}
+/** 左右边距 */
+const PAD_X = 52
+/** 正文区上边界 */
+const PAD_TOP = 56
+/** 正文区下边界：给分隔线 + 页脚留位 */
+const PAD_BOTTOM = 104
+/** 页脚基线距底 */
+const FOOT_BOTTOM = 46
+/** 正文与页脚之间的分隔线 */
+const RULE_BOTTOM = 82
+
+/* ------------------------------------------------------------------ */
+/* 装饰                                                               */
+/* ------------------------------------------------------------------ */
 
 function Ornament({ theme }: { theme: CardTheme }) {
   if (theme.ornament === 'none') return null
@@ -33,7 +57,7 @@ function Ornament({ theme }: { theme: CardTheme }) {
           left: 0,
           right: 0,
           bottom: 0,
-          height: 14,
+          height: 12,
           background: theme.accent,
         }}
       />
@@ -41,42 +65,44 @@ function Ornament({ theme }: { theme: CardTheme }) {
   }
 
   if (theme.ornament === 'corner') {
+    // 右上角的大圆：往画布外推得足够远，只留一小片弧在角上，不进入文字行
     return (
       <div
         style={{
           position: 'absolute',
-          top: -120,
-          right: -120,
-          width: 320,
-          height: 320,
+          top: -170,
+          right: -170,
+          width: 340,
+          height: 340,
           borderRadius: '50%',
           background: theme.ornamentColor,
-          opacity: 0.55,
+          opacity: 0.42,
         }}
       />
     )
   }
 
-  // rule：左上角一段短竖线 + 底部一条细横线
+  // rule：顶部一段强调短横 + 正文与页脚之间一条细线
+  // 两者都落在正文区上下边界之外，不会压字
   return (
     <>
       <div
         style={{
           position: 'absolute',
-          top: 54,
-          left: 52,
-          width: 3,
-          height: 34,
-          background: theme.ornamentColor,
+          top: 34,
+          left: PAD_X,
+          width: 44,
+          height: 3,
           borderRadius: 2,
+          background: theme.ornamentColor,
         }}
       />
       <div
         style={{
           position: 'absolute',
-          left: 52,
-          right: 52,
-          bottom: 46,
+          left: PAD_X,
+          right: PAD_X,
+          bottom: RULE_BOTTOM,
           height: 1,
           background: theme.line,
         }}
@@ -85,7 +111,7 @@ function Ornament({ theme }: { theme: CardTheme }) {
   )
 }
 
-function Frame({ theme, children }: FrameProps) {
+function Frame({ theme, children }: { theme: CardTheme; children: ReactNode }) {
   return (
     <div
       style={{
@@ -111,11 +137,13 @@ function Kicker({ text, theme }: { text: string; theme: CardTheme }) {
     <div
       style={{
         fontSize: 11,
+        lineHeight: 1.2,
         letterSpacing: 3.5,
         color: theme.accent,
         fontWeight: 600,
         textTransform: 'uppercase',
-        marginBottom: 22,
+        marginBottom: 20,
+        flexShrink: 0,
       }}
     >
       {text}
@@ -123,30 +151,52 @@ function Kicker({ text, theme }: { text: string; theme: CardTheme }) {
   )
 }
 
-function Foot({
-  left,
-  right,
-  theme,
-}: {
-  left?: string
-  right?: string
-  theme: CardTheme
-}) {
+function Foot({ left, right, theme }: { left?: string; right?: string; theme: CardTheme }) {
   if (!left && !right) return null
   return (
     <div
       style={{
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'baseline',
         justifyContent: 'space-between',
+        gap: 16,
         fontSize: 12,
+        lineHeight: 1.2,
         color: theme.muted,
         letterSpacing: 0.8,
+        whiteSpace: 'nowrap',
       }}
     >
-      <span style={{ fontFamily: SANS }}>{left}</span>
-      <span style={{ fontFamily: MONO, fontSize: 11 }}>{right}</span>
+      <span style={{ fontFamily: SANS, overflow: 'hidden', textOverflow: 'ellipsis' }}>{left}</span>
+      <span style={{ fontFamily: MONO, fontSize: 11, flexShrink: 0 }}>{right}</span>
     </div>
+  )
+}
+
+/**
+ * 四张卡共用的骨架：顶部小标签 + 正文区 + 分隔线 + 页脚。
+ * 页脚是绝对定位的，所以不管正文多长多短，四张卡的页脚永远在同一条基线上。
+ */
+function Shell({ spec, theme, children }: { spec: CardSpec; theme: CardTheme; children: ReactNode }) {
+  return (
+    <Frame theme={theme}>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          padding: `${PAD_TOP}px ${PAD_X}px ${PAD_BOTTOM}px`,
+          display: 'flex',
+          flexDirection: 'column',
+          boxSizing: 'border-box',
+        }}
+      >
+        <Kicker text={spec.kicker ?? ''} theme={theme} />
+        {children}
+      </div>
+      <div style={{ position: 'absolute', left: PAD_X, right: PAD_X, bottom: FOOT_BOTTOM }}>
+        <Foot left={spec.footer} right={spec.date} theme={theme} />
+      </div>
+    </Frame>
   )
 }
 
@@ -157,51 +207,45 @@ function Foot({
 function CoverCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
   const titleSize = fitFontSize(spec.title, 44, 26, TITLE_THRESHOLDS)
   return (
-    <Frame theme={theme}>
+    <Shell spec={spec} theme={theme}>
       <div
         style={{
-          position: 'absolute',
-          inset: 0,
-          padding: '58px 52px 46px',
+          flex: 1,
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
-          boxSizing: 'border-box',
+          justifyContent: 'center',
         }}
       >
-        <div style={{ paddingTop: 34 }}>
-          <Kicker text={spec.kicker ?? ''} theme={theme} />
+        <div
+          style={{
+            fontFamily: SERIF,
+            fontSize: titleSize,
+            lineHeight: 1.34,
+            letterSpacing: 1,
+            fontWeight: 700,
+            color: theme.ink,
+          }}
+        >
+          {spec.title}
+        </div>
+        {spec.subtitle ? (
           <div
             style={{
-              fontFamily: SERIF,
-              fontSize: titleSize,
-              lineHeight: 1.34,
-              letterSpacing: 1,
-              fontWeight: 700,
-              color: theme.ink,
+              marginTop: 20,
+              fontSize: 15,
+              lineHeight: 1.78,
+              color: theme.muted,
+              letterSpacing: 0.4,
+              maxHeight: 82,
+              overflow: 'hidden',
             }}
           >
-            {spec.title}
+            {spec.subtitle}
           </div>
-          {spec.subtitle ? (
-            <div
-              style={{
-                marginTop: 22,
-                fontSize: 15,
-                lineHeight: 1.78,
-                color: theme.muted,
-                letterSpacing: 0.4,
-                maxHeight: 82,
-                overflow: 'hidden',
-              }}
-            >
-              {spec.subtitle}
-            </div>
-          ) : null}
-        </div>
-        <Foot left={spec.footer} right={spec.date} theme={theme} />
+        ) : null}
       </div>
-    </Frame>
+    </Shell>
   )
 }
 
@@ -212,29 +256,27 @@ function CoverCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
 function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
   const size = fitFontSize(spec.title, 31, 18, QUOTE_THRESHOLDS)
   return (
-    <Frame theme={theme}>
+    <Shell spec={spec} theme={theme}>
       <div
         style={{
-          position: 'absolute',
-          inset: 0,
-          padding: '62px 54px 48px',
+          flex: 1,
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
-          boxSizing: 'border-box',
         }}
       >
         <div
           style={{
             fontFamily: SERIF,
-            fontSize: 58,
-            lineHeight: 0.7,
+            fontSize: 56,
+            lineHeight: 0.86,
             color: theme.accent,
-            marginBottom: 26,
-            opacity: 0.85,
+            marginBottom: 14,
+            opacity: 0.9,
           }}
         >
-          「
+          “
         </div>
         <div
           style={{
@@ -250,7 +292,7 @@ function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
         {spec.subtitle ? (
           <div
             style={{
-              marginTop: 30,
+              marginTop: 28,
               fontSize: 13,
               color: theme.muted,
               letterSpacing: 1,
@@ -259,22 +301,12 @@ function QuoteCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
               gap: 10,
             }}
           >
-            <span style={{ width: 22, height: 1, background: theme.accent, display: 'inline-block' }} />
+            <span style={{ width: 22, height: 1, background: theme.accent, display: 'inline-block', flexShrink: 0 }} />
             {spec.subtitle}
           </div>
         ) : null}
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          left: 54,
-          right: 54,
-          bottom: 44,
-        }}
-      >
-        <Foot left={spec.footer} right={spec.date} theme={theme} />
-      </div>
-    </Frame>
+    </Shell>
   )
 }
 
@@ -288,18 +320,16 @@ function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
   const bodySize = points.length >= 5 ? 16 : points.length === 4 ? 17 : 18
 
   return (
-    <Frame theme={theme}>
+    <Shell spec={spec} theme={theme}>
       <div
         style={{
-          position: 'absolute',
-          inset: 0,
-          padding: '56px 52px 46px',
+          flex: 1,
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
-          boxSizing: 'border-box',
+          justifyContent: 'center',
         }}
       >
-        <Kicker text={spec.kicker ?? ''} theme={theme} />
         <div
           style={{
             fontFamily: SERIF,
@@ -307,24 +337,26 @@ function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
             lineHeight: 1.4,
             fontWeight: 700,
             letterSpacing: 0.8,
-            marginBottom: 30,
+            marginBottom: 28,
             color: theme.ink,
+            flexShrink: 0,
           }}
         >
           {spec.title}
         </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
           {points.map((p, i) => (
-            <div key={i} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div key={i} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
               <div
                 style={{
                   fontFamily: MONO,
-                  fontSize: 13,
+                  fontSize: 12.5,
                   fontWeight: 700,
                   color: theme.accent,
-                  lineHeight: `${bodySize * 1.62}px`,
-                  width: 20,
+                  lineHeight: `${Math.round(bodySize * 1.6)}px`,
+                  width: 18,
                   flexShrink: 0,
+                  letterSpacing: 0,
                 }}
               >
                 {String(i + 1).padStart(2, '0')}
@@ -332,10 +364,11 @@ function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
               <div
                 style={{
                   fontSize: bodySize,
-                  lineHeight: 1.62,
+                  lineHeight: 1.6,
                   color: theme.ink,
                   letterSpacing: 0.3,
                   flex: 1,
+                  minWidth: 0,
                 }}
               >
                 {p}
@@ -343,9 +376,8 @@ function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
             </div>
           ))}
         </div>
-        <Foot left={spec.footer} right={spec.date} theme={theme} />
       </div>
-    </Frame>
+    </Shell>
   )
 }
 
@@ -356,18 +388,16 @@ function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
 function EndCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
   const size = fitFontSize(spec.title, 30, 18, QUOTE_THRESHOLDS)
   return (
-    <Frame theme={theme}>
+    <Shell spec={spec} theme={theme}>
       <div
         style={{
-          position: 'absolute',
-          inset: 0,
-          padding: '62px 54px 52px',
+          flex: 1,
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
           textAlign: 'center',
-          boxSizing: 'border-box',
         }}
       >
         <div
@@ -375,7 +405,7 @@ function EndCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
             width: 36,
             height: 2,
             background: theme.accent,
-            marginBottom: 32,
+            marginBottom: 30,
             borderRadius: 1,
           }}
         />
@@ -391,18 +421,10 @@ function EndCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
           {spec.title}
         </div>
         {spec.subtitle ? (
-          <div style={{ marginTop: 26, fontSize: 14, color: theme.muted, lineHeight: 1.8 }}>
-            {spec.subtitle}
-          </div>
+          <div style={{ marginTop: 24, fontSize: 14, color: theme.muted, lineHeight: 1.8 }}>{spec.subtitle}</div>
         ) : null}
       </div>
-      <div style={{ position: 'absolute', left: 54, right: 54, bottom: 50, textAlign: 'center' }}>
-        <div style={{ fontSize: 12.5, color: theme.muted, letterSpacing: 1.2 }}>
-          {spec.footer}
-          {spec.date ? `　·　${spec.date}` : ''}
-        </div>
-      </div>
-    </Frame>
+    </Shell>
   )
 }
 

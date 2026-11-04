@@ -28,6 +28,8 @@ export interface HtmlTheme {
   group?: string
   /** 一句话说明，显示在选择卡片上 */
   hint?: string
+  /** 三色示意（底 / 强调 / 正文），只给选择器画色点用，不参与渲染 */
+  swatch?: { bg: string; accent: string; ink: string }
   /** 外层容器：字体、行高、字距、颜色全靠这里继承 */
   root: StyleMap
   heading: { 2: StyleMap; 3: StyleMap; 4: StyleMap }

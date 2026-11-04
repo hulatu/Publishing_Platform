@@ -94,10 +94,16 @@ export function CardStudio({ doc, cardThemeId, onThemeChange, siteName, onSiteNa
   }
 
   const exportAll = async () => {
+    // 同版式的自定义卡会重名，zip 里后一张会覆盖前一张，所以按出现次数加后缀
+    const used = new Map<string, number>()
     const entries = cards
       .map((c) => {
         const node = nodeRefs.current[c.id]
-        return node ? { node, name: `${safeFileName(doc.meta.title)}-${layoutNames[c.layout]}.png` } : null
+        if (!node) return null
+        const base = `${safeFileName(doc.meta.title)}-${layoutNames[c.layout]}`
+        const n = (used.get(base) ?? 0) + 1
+        used.set(base, n)
+        return { node, name: n === 1 ? `${base}.png` : `${base}-${n}.png` }
       })
       .filter((x): x is { node: HTMLDivElement; name: string } => Boolean(x))
 

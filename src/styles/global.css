@@ -2377,6 +2377,20 @@ select {
   color: var(--ink-muted);
 }
 
+.theme-swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.theme-swatches span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(27, 25, 23, 0.1);
+}
+
 .theme-bar-current {
   font-weight: 600;
   color: var(--ink);
@@ -2397,36 +2411,69 @@ select {
   flex-shrink: 0;
 }
 
-.theme-picker {
-  max-height: 424px;
-  overflow-y: auto;
-  padding: 4px 28px 20px;
-  background: var(--main-bg);
-  border-bottom: 1px solid var(--line);
-  animation: slide-down var(--dur) var(--ease-out) both;
-}
+/* ---------- 主题墙（弹层 + 全宽网格） ---------- */
 
-.theme-group {
-  padding-top: 12px;
-}
-
-.theme-group-label {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  color: var(--ink-muted);
-  margin-bottom: 8px;
-}
-
-.theme-strip {
+.theme-sheet {
+  width: min(1180px, 94vw);
+  max-height: 88vh;
   display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 32px 70px -24px rgba(27, 25, 23, 0.42);
+  overflow: hidden;
+  animation: modal-in var(--dur-slow) var(--ease-out) both;
+}
+
+.theme-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.theme-sheet-sub {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.theme-sheet-body {
+  padding: 16px 22px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.theme-sheet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 6px;
+  padding: 11px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--panel-soft);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.theme-sheet-current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 列数由可用宽度决定：宽屏 6 列两行放得下全部主题，不再横向浪费 */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 14px;
 }
 
 .theme-card {
-  flex: 0 0 auto;
-  width: 184px;
+  position: relative;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -2451,14 +2498,16 @@ select {
 }
 
 .theme-frame {
-  height: 118px;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   background: #fff;
 }
 
+/* 宽度固定 558，缩放比由 ResizeObserver 按列宽算，等比铺满 */
 .theme-scaled {
   width: 558px;
-  transform: scale(0.33);
   transform-origin: top left;
   pointer-events: none;
 }
@@ -2466,15 +2515,41 @@ select {
 .theme-meta {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 7px 10px 8px;
+  gap: 2px;
+  padding: 7px 9px 8px;
   border-top: 1px solid var(--line-soft);
+}
+
+.theme-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .theme-name {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink);
+}
+
+.theme-tag {
+  font-size: 9.5px;
+  line-height: 1.6;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.theme-check {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .theme-hint {
@@ -2556,12 +2631,31 @@ select {
     padding-left: 20px;
     padding-right: 20px;
   }
-  .theme-picker {
-    padding-left: 20px;
-    padding-right: 20px;
+  .theme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   }
   .md-preview {
     padding: 34px 34px 40px;
+  }
+}
+
+@media (max-width: 760px) {
+  .theme-sheet {
+    width: 96vw;
+    max-height: 92vh;
+  }
+  .theme-sheet-head,
+  .theme-sheet-body,
+  .theme-sheet-foot {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .theme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    gap: 10px;
+  }
+  .theme-sheet-current .muted {
+    display: none;
   }
 }
 
