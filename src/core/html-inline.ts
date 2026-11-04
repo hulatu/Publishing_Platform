@@ -24,6 +24,10 @@ export type StyleMap = Record<string, string>
 export interface HtmlTheme {
   id: string
   name: string
+  /** 主题选择器里的分组名（可选，仅用于界面归类） */
+  group?: string
+  /** 一句话说明，显示在选择卡片上 */
+  hint?: string
   /** 外层容器：字体、行高、字距、颜色全靠这里继承 */
   root: StyleMap
   heading: { 2: StyleMap; 3: StyleMap; 4: StyleMap }
@@ -52,6 +56,12 @@ export interface HtmlTheme {
   refsItem: StyleMap
   fnTitle: StyleMap
   fnItem: StyleMap
+  /**
+   * H2 自动编号。
+   * 公众号会把 `::before` 伪元素整条剥掉，所以编号只能在渲染时作为
+   * 真实 <span> 注入；不设此项则不加编号。
+   */
+  headingIndex?: { format: 'pad' | 'plain'; style: StyleMap }
 }
 
 /* ------------------------------------------------------------------ */
@@ -69,7 +79,10 @@ function escapeHtml(s: string): string {
 function attr(map: StyleMap): string {
   const body = Object.entries(map)
     .filter(([, v]) => v !== '' && v !== undefined)
-    .map(([k, v]) => `${k}:${v}`)
+    // 值里可能出现双引号（font-family: "PingFang SC"）。不转义的话 style="..."
+    // 会从引号处被截断，后面所有声明都被浏览器当成非法属性丢弃 ——
+    // 表现为「只有第一条样式生效」，极难往属性编码上想。
+    .map(([k, v]) => `${k}:${String(v).replace(/"/g, '&quot;')}`)
     .join(';')
   return body ? ` style="${body}"` : ''
 }
@@ -107,6 +120,8 @@ interface Ctx {
   fnOrder: string[]
   fnMap: Map<string, Block & { t: 'fn' }>
   warnings: string[]
+  /** H2 计数器（编号主题用）；用对象是为了能在渲染过程中原地累加 */
+  h2: { n: number }
 }
 
 /* ------------------------------------------------------------------ */
@@ -191,7 +206,22 @@ function alignStyle(a: Align): string {
 function renderHeading(b: Block & { t: 'heading' }, ctx: Ctx): string {
   const { theme, opts } = ctx
   const style = theme.heading[b.level] ?? theme.heading[2]
-  const inner = renderInline(b.inline, ctx)
+  let inner = renderInline(b.inline, ctx)
+
+  // H2 编号：只给二级标题编，H3/H4 是二级下的细分，编号反而乱
+  const idx = theme.headingIndex
+  if (idx && b.level === 2) {
+    // 标题自己已经带编号（「二、」「3.」）时不再叠加，否则会变成「02二、拆成两段」
+    const alreadyNumbered = /^\s*([0-9]+|[一二三四五六七八九十百]+)\s*[、.．)）]/.test(
+      inlineText(b.inline),
+    )
+    if (!alreadyNumbered) {
+      ctx.h2.n += 1
+      const label = idx.format === 'pad' ? String(ctx.h2.n).padStart(2, '0') : String(ctx.h2.n)
+      inner = `<span${attr(idx.style)}>${label}</span>${inner}`
+    }
+  }
+
   if (opts.target === 'web') {
     const tag = `h${b.level}`
     return `<${tag}${attr(style)}>${inner}</${tag}>`
@@ -384,6 +414,7 @@ export function renderHtml(blocks: Block[], opts: HtmlRenderOptions): HtmlRender
     fnOrder: [],
     fnMap,
     warnings: [],
+    h2: { n: 0 },
   }
 
   const body = renderBlocks(blocks, ctx)

@@ -1535,6 +1535,141 @@ select {
   font-size: 10.5px;
 }
 
+/* ---------- 公众号主题选择器 ---------- */
+
+.theme-bar-wrap {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.theme-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 24px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.theme-bar:hover {
+  background: var(--panel-soft);
+}
+
+.theme-bar-label {
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  color: var(--ink-muted);
+}
+
+.theme-bar-current {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.theme-bar-hint {
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.theme-bar-action {
+  margin-left: auto;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.theme-picker {
+  max-height: 424px;
+  overflow-y: auto;
+  padding: 2px 24px 18px;
+  background: var(--panel-soft);
+}
+
+.theme-group {
+  padding-top: 12px;
+}
+
+.theme-group-label {
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  color: var(--ink-muted);
+  margin-bottom: 8px;
+}
+
+.theme-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.theme-card {
+  flex: 0 0 auto;
+  width: 184px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.theme-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.theme-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* 固定高度裁切：缩放后的元素布局盒不会跟着缩小，必须靠外层定高 */
+.theme-frame {
+  height: 118px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.theme-scaled {
+  width: 558px;
+  transform: scale(0.33);
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.theme-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px 8px;
+  border-top: 1px solid var(--line);
+}
+
+.theme-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.theme-hint {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---------- 加载态 ---------- */
 
 .spinner {

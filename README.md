@@ -65,6 +65,43 @@ npm run build      # 类型检查 + 生产构建到 dist/
 npm run preview    # 预览构建产物
 ```
 
+## 公众号排版主题
+
+12 套主题，四组。差别不只是换色——标题形态、是否衬线、首行缩进、引用块、代码块明暗、
+表格线条都是独立开关，所以同一篇文章在不同主题下是**结构**不同，不是换了件衣服。
+
+| 组 | 主题 | 特征 |
+| --- | --- | --- |
+| 极简 | 纸白 / 素页 / 墨线 | 左竖线 / 零装饰 / 下划线标题 |
+| 书卷 | 宋刻 / 米黄 / 铅字 | 衬线 + 首行缩进 + 居中标题 / 暖棕旧纸 / 报纸式粗横线 |
+| 色块 | 靛蓝 / 序号 / 薄荷 | 标题带底色块 / 01·02 编号 / 浅绿圆角 |
+| 商务 | 藏青 / 石墨 / 莫兰迪 | 深色代码块 / 无装饰标题 + 深色代码 / 低饱和豆沙色 |
+
+选择器里的缩略图是用**真实渲染管线**跑出来的，不是示意图——卡片上看到什么，
+复制到公众号就是什么。
+
+加一套主题只需要在 `src/themes/wechat.ts` 里追加一个 `ThemeSpec`：
+
+```ts
+const myTheme = makeTheme({
+  id: 'my', name: '我的', group: '极简', hint: '一句话说明',
+  heading: 'underline',   // bar | plain | underline | center | block | index
+  quote: 'box',           // bar | box | plain
+  code: 'dark',           // light | dark
+  table: 'minimal',       // bordered | minimal
+  serif: false, indent: false,
+  palette: { /* 11 个色值 */ },
+})
+```
+
+`npm run check:themes` 会把 109 篇文章 × 全部主题真渲染一遍，检查输出里没有
+`class` / `id` / `<pre>`、`style` 属性没被引号截断、字符数比基准主题涨幅不超过 20%、
+编号主题真的注入了 01/02。
+
+> 两个踩过的坑：微信会把 `::before` 伪元素整条剥掉，所以 H2 编号只能在渲染时注入真实
+> `<span>`；`style="..."` 里的 `font-family` 如果带双引号，属性会被提前闭合，后面所有
+> 声明全部失效——表现为「只有第一条样式生效」，非常难查。字体名一律用单引号。
+
 ## 部署
 
 托管在 **Cloudflare Pages**，域名 `publish.hulatu.com`（和主站 `hulatu.com` 同一个

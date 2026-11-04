@@ -8,6 +8,7 @@ import { copyByMode, copyPlain, downloadText, mimeFor } from './core/copy'
 import { splitByH2 } from './core/split'
 import { convertPlatforms, getConvertPlatform, rewritePlatforms, type RenderOutput } from './renderers'
 import { WECHAT_CONTENT_LIMIT } from './renderers/wechat'
+import { ThemePicker } from './components/ThemePicker'
 import { wechatThemes } from './themes/wechat'
 import { runDigest, runPlatform } from './ai/pipeline'
 import { resolveProvider } from './ai/provider'
@@ -45,11 +46,33 @@ function isRewriteId(id: string): id is RewriteId {
   return (rewriteIds as string[]).includes(id)
 }
 
+const THEME_KEY = 'ad.wechat-theme'
+
+/** 记住上次选的公众号主题；存的值失效（主题改名或删掉）就回退到默认 */
+function readStoredTheme(): string {
+  try {
+    const saved = localStorage.getItem(THEME_KEY)
+    if (saved && wechatThemes.some((t) => t.id === saved)) return saved
+  } catch {
+    // 隐私模式下 localStorage 会抛异常，忽略即可
+  }
+  return 'paper'
+}
+
 export default function App() {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [fileName, setFileName] = useState('')
   const [platform, setPlatform] = useState('wechat')
-  const [themeId, setThemeId] = useState('paper')
+  const [themeId, setThemeIdRaw] = useState(readStoredTheme)
+
+  const setThemeId = useCallback((id: string) => {
+    setThemeIdRaw(id)
+    try {
+      localStorage.setItem(THEME_KEY, id)
+    } catch {
+      // 写不进去不影响本次使用
+    }
+  }, [])
   const [cardThemeId, setCardThemeId] = useState('paper')
   const [siteName, setSiteName] = useState(DEFAULT_SITE_NAME)
 
@@ -393,15 +416,6 @@ export default function App() {
                     {s.value}
                   </span>
                 ))}
-                {kind === 'convert' && platform === 'wechat' ? (
-                  <span className="segmented" style={{ marginLeft: 'auto' }}>
-                    {wechatThemes.map((t) => (
-                      <button key={t.id} className={themeId === t.id ? 'active' : ''} onClick={() => setThemeId(t.id)}>
-                        {t.name}
-                      </button>
-                    ))}
-                  </span>
-                ) : null}
                 {kind === 'rewrite' && sections.length > 0 ? (
                   <span className="stat-chip" style={{ marginLeft: 'auto' }}>
                     <span className="stat-label">按 ## 切分</span>
@@ -411,6 +425,10 @@ export default function App() {
               </div>
             ) : null}
           </div>
+
+          {kind === 'convert' && platform === 'wechat' && doc ? (
+            <ThemePicker value={themeId} onChange={setThemeId} />
+          ) : null}
 
           {/* ---------- 预览区 ---------- */}
           <div className="preview-scroll">
