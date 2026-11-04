@@ -162,25 +162,10 @@ export function CardStudio({ doc, cardThemeId, onThemeChange, siteName, onSiteNa
                 className={`card-item ${c.id === selectedId ? 'active' : ''}`}
                 onClick={() => setSelectedId(c.id)}
               >
-                <div className="card-thumb" style={{ background: t.bg }}>
-                  <div
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: t.ink,
-                      fontFamily: '"Songti SC", serif',
-                      fontSize: 8,
-                      lineHeight: 1.3,
-                      padding: 3,
-                      textAlign: 'center',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {c.title.slice(0, 12)}
-                  </div>
+                {/* 缩略图只表示配色，不塞文字 —— 34px 宽放字必然糊成一团 */}
+                <div className="card-thumb" style={{ background: t.bg, borderColor: t.line, color: t.ink }}>
+                  <span className="card-thumb-bar" style={{ background: t.accent }} />
+                  <span className="card-thumb-lines" />
                 </div>
                 <div className="card-item-body">
                   <div className="card-item-title">

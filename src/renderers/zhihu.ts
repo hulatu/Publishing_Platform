@@ -33,10 +33,10 @@ export function renderZhihu(doc: Doc, _opts: ConvertOptions): RenderOutput {
 
   if (images.length > 0) {
     warnings.push(
-      `正文有 ${images.length} 张外链图片。知乎会尝试转存，带防盗链的图床可能失败——导入后请检查图片是否都正常显示。`,
+      `正文有 ${images.length} 张外链图片，知乎会尝试转存；带防盗链的图床可能失败。`,
     )
   }
-  warnings.push('推荐用「下载 .md」再走知乎专栏的 Markdown 导入；富文本粘贴会丢失代码块结构')
+  warnings.push('推荐「下载 .md」再走知乎专栏导入；富文本粘贴会丢代码块结构')
 
   const hasCode = doc.blocks.some((b) => b.t === 'code')
   if (hasCode) {

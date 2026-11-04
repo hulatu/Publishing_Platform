@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Doc, DocMeta } from './core/ir'
 import { blocksToText } from './core/ir'
-import { parseArticle } from './core/parse'
+import { parseArticle, renderPreviewHtml } from './core/parse'
 import { charCount } from './core/cjk'
 import { splitSections } from './core/sections'
 import { copyByMode, copyPlain, downloadText, mimeFor } from './core/copy'
@@ -32,6 +32,7 @@ import { PlatformNav } from './components/PlatformNav'
 import { AIPanel } from './components/AIPanel'
 import { CardStudio } from './components/CardStudio'
 import { SettingsSheet } from './components/SettingsSheet'
+import { NoticeStack, type NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
 type Kind = 'convert' | 'rewrite' | 'card'
@@ -82,7 +83,10 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsVersion, setSettingsVersion] = useState(0)
+  /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
+  const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
   const abortRef = useRef<AbortController | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const { items: toasts, push: toast } = useToasts()
 
   const kind = kindOf(platform)
@@ -130,6 +134,30 @@ export default function App() {
   }, [doc, platform, themeId, kind])
 
   const overLimit = Boolean(output && platform === 'wechat' && output.primary.length > WECHAT_CONTENT_LIMIT)
+
+  /** Markdown 平台的阅读预览：和转换器共用同一套前置处理 */
+  const previewHtml = useMemo(() => {
+    if (!doc || kind !== 'convert' || !output || output.format !== 'markdown') return ''
+    try {
+      return renderPreviewHtml(doc.rawMd)
+    } catch {
+      return ''
+    }
+  }, [doc, kind, output])
+
+  /** 能切「预览 / 源码」的平台：md 走渲染预览，公众号走富文本预览 */
+  const canPreview = Boolean(
+    output && (output.format === 'markdown' ? previewHtml : output.format === 'html' && output.html),
+  )
+
+  const notices: NoticeItem[] = useMemo(() => {
+    if (!output) return []
+    const hasError = output.stats.some((s) => s.level === 'error')
+    return output.warnings.map((text, i) => ({
+      text,
+      level: i === 0 && hasError ? 'error' : 'warn',
+    }))
+  }, [output])
 
   /* ---------------- 章节切分 ---------------- */
 
@@ -261,6 +289,11 @@ export default function App() {
     return () => abortRef.current?.abort()
   }, [])
 
+  // 切平台/切视图后回到顶部 —— 否则从长文滚到一半再切走，新面板会停在中间
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [platform, viewMode])
+
   /* ---------------- 摘要编辑 ---------------- */
 
   const editSummary = useCallback((index: number, summary: string) => {
@@ -365,12 +398,15 @@ export default function App() {
   return (
     <div className="app">
       {/* ================= 顶栏 ================= */}
-      <div className="topbar">
+      <header className="topbar">
         <div className="brand">
+          <img className="brand-icon" src="./icon.svg" alt="" width={26} height={26} />
           <span className="brand-mark">文章分发台</span>
           <span className="brand-sub">Dispatch</span>
         </div>
+
         <div className="topbar-spacer" />
+
         {doc ? (
           <div className="topbar-stat">
             <span>正文</span>
@@ -378,37 +414,62 @@ export default function App() {
             <span>字</span>
           </div>
         ) : null}
+
         <button
-          className={`topbar-stat topbar-ai ${providerReady ? 'ok' : 'idle'}`}
+          className={`topbar-ai ${providerReady ? 'ok' : 'idle'}`}
           onClick={() => setSettingsOpen(true)}
           title={providerReady ? '点击修改模型设置' : '点击填入自己的 API Key'}
         >
           <span className={`dot ${providerReady ? 'dot-ok' : 'dot-idle'}`} />
           <span>{providerReady ? 'AI 已就绪' : '填入 API Key'}</span>
         </button>
-        <button className="btn btn-sm" onClick={() => setSettingsOpen(true)}>
+
+        <button className="btn btn-sm btn-quiet" onClick={() => setSettingsOpen(true)}>
           设置
         </button>
-      </div>
+      </header>
 
       <div className="app-body">
         {/* ================= 侧栏 ================= */}
-        <div className="sidebar">
+        <aside className="sidebar">
           <ImportPanel currentName={fileName} onLoad={load} onError={(m) => toast(m, 'error')} />
           {doc ? <MetaEditor meta={doc.meta} onChange={updateMeta} /> : null}
           <PlatformNav active={platform} onSelect={setPlatform} platformStatus={navStatus} />
-        </div>
+        </aside>
 
         {/* ================= 主区域 ================= */}
-        <div className="main">
+        <main className="main">
           <div className="main-head">
-            <div className="main-head-row">
-              <span className="main-title">{currentPlatformMeta?.name}</span>
-              <span className="main-hint">{currentPlatformMeta?.hint}</span>
-            </div>
-            {currentPlatformMeta?.limits ? <div className="main-limits">{currentPlatformMeta.limits}</div> : null}
+            <div className="head-row">
+              <div className="head-title">
+                <h1 className="main-title">{currentPlatformMeta?.name}</h1>
+                <p className="main-hint">{currentPlatformMeta?.hint}</p>
+              </div>
 
-            {doc ? (
+              <div className="head-tools">
+                {currentPlatformMeta?.limits ? (
+                  <span className="limit-chip">{currentPlatformMeta.limits}</span>
+                ) : null}
+                {canPreview ? (
+                  <div className="segmented view-switch">
+                    <button
+                      className={viewMode === 'preview' ? 'active' : ''}
+                      onClick={() => setViewMode('preview')}
+                    >
+                      预览
+                    </button>
+                    <button
+                      className={viewMode === 'source' ? 'active' : ''}
+                      onClick={() => setViewMode('source')}
+                    >
+                      源码
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {doc && (output?.stats.length || kind === 'rewrite') ? (
               <div className="stats-bar">
                 {output?.stats.map((s, i) => (
                   <span key={i} className={`stat-chip ${s.level ?? ''}`}>
@@ -417,7 +478,7 @@ export default function App() {
                   </span>
                 ))}
                 {kind === 'rewrite' && sections.length > 0 ? (
-                  <span className="stat-chip" style={{ marginLeft: 'auto' }}>
+                  <span className="stat-chip">
                     <span className="stat-label">按 ## 切分</span>
                     {sections.length} 节
                   </span>
@@ -431,41 +492,50 @@ export default function App() {
           ) : null}
 
           {/* ---------- 预览区 ---------- */}
-          <div className="preview-scroll">
+          <div className="preview-scroll" ref={scrollRef}>
             {!doc ? (
               <div className="empty-state">
-                <div className="empty-mark">MD</div>
+                <div className="empty-art" aria-hidden>
+                  <span />
+                  <span />
+                  <span />
+                </div>
                 <div className="empty-text">先导入一篇博客文章</div>
                 <div className="empty-hint">
-                  支持拖入 .md 文件或直接粘贴。会读出 front matter 里的标题、分类、标签与摘要，
-                  然后按 8 个平台各自的规则产出对应格式。
+                  支持拖入 .md 或直接粘贴。会读出 front matter 里的标题、分类、标签与摘要，
+                  再按各平台规则产出对应格式。
+                </div>
+                <div className="empty-steps">
+                  <span>
+                    <b>1</b>拖入 .md
+                  </span>
+                  <span>
+                    <b>2</b>选平台
+                  </span>
+                  <span>
+                    <b>3</b>复制粘贴
+                  </span>
                 </div>
               </div>
-            ) : kind === 'convert' && output ? (
+            ) : (
               <>
-                {output.warnings.length > 0 ? (
-                  <div style={{ maxWidth: 760, margin: '0 auto 14px' }}>
-                    {output.warnings.map((w, i) => (
-                      <div
-                        key={i}
-                        className={`notice ${
-                          i === 0 && output.stats.some((s) => s.level === 'error') ? 'notice-error' : 'notice-warn'
-                        }`}
-                      >
-                        <span className="notice-mark">!</span>
-                        <span>{w}</span>
-                      </div>
-                    ))}
-                    {overLimit ? (
-                      <button className="btn btn-sm btn-accent" onClick={doSplitExport}>
-                        按 H2 拆篇并分别导出
-                      </button>
-                    ) : null}
+                {notices.length > 0 ? (
+                  <div className="notice-holder">
+                    <NoticeStack
+                      items={notices}
+                      action={
+                        overLimit ? (
+                          <button className="btn btn-sm btn-accent" onClick={doSplitExport}>
+                            按 H2 拆篇导出
+                          </button>
+                        ) : undefined
+                      }
+                    />
                   </div>
                 ) : null}
 
-                {output.extras?.map((extra, i) => (
-                  <details key={i} className="details" style={{ maxWidth: 760, margin: '0 auto 14px' }}>
+                {output?.extras?.map((extra, i) => (
+                  <details key={i} className="details">
                     <summary>
                       {extra.title}（{extra.items.length}）
                     </summary>
@@ -477,45 +547,56 @@ export default function App() {
                   </details>
                 ))}
 
-                {output.format === 'html' && output.html ? (
-                  <div className="rich-preview" dangerouslySetInnerHTML={{ __html: output.html }} />
-                ) : (
-                  <div className="preview-card">
-                    <pre className="code-preview">{output.primary}</pre>
-                  </div>
-                )}
+                <div className="stage" key={`${platform}-${viewMode}`}>
+                  {kind === 'convert' && output ? (
+                    viewMode === 'preview' && canPreview ? (
+                      output.format === 'html' && output.html ? (
+                        <div className="rich-preview" dangerouslySetInnerHTML={{ __html: output.html }} />
+                      ) : (
+                        <div className="md-preview-wrap" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                      )
+                    ) : (
+                      <div className="source-card">
+                        <div className="source-head">
+                          <span className="source-lang">{output.format === 'markdown' ? 'Markdown' : 'HTML'}</span>
+                          <span className="source-note">复制时用的就是这份源码</span>
+                        </div>
+                        <pre className="code-preview">{output.primary}</pre>
+                      </div>
+                    )
+                  ) : kind === 'rewrite' && isRewriteId(platform) ? (
+                    <div className="panel-card">
+                      <AIPanel
+                        platform={platform}
+                        ai={currentAI}
+                        digest={digest}
+                        sections={sections}
+                        tone={tone}
+                        providerReady={providerReady}
+                        providerLabel={currentAI.providerLabel || digest.providerLabel}
+                        onToneChange={setTone}
+                        onGenerateDigest={generateDigest}
+                        onCancel={cancelGenerate}
+                        onCopy={copyPlainText}
+                        onEditSummary={editSummary}
+                        onEditOneLiner={editOneLiner}
+                        onOpenSettings={() => setSettingsOpen(true)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="panel-card">
+                      <CardStudio
+                        doc={doc}
+                        cardThemeId={cardThemeId}
+                        onThemeChange={setCardThemeId}
+                        siteName={siteName}
+                        onSiteNameChange={setSiteName}
+                        onToast={toast}
+                      />
+                    </div>
+                  )}
+                </div>
               </>
-            ) : kind === 'rewrite' && isRewriteId(platform) ? (
-              <div className="preview-card plain">
-                <AIPanel
-                  platform={platform}
-                  ai={currentAI}
-                  digest={digest}
-                  sections={sections}
-                  tone={tone}
-                  providerReady={providerReady}
-                  providerLabel={currentAI.providerLabel || digest.providerLabel}
-                  onToneChange={setTone}
-                  onGenerate={generateCurrent}
-                  onGenerateDigest={generateDigest}
-                  onCancel={cancelGenerate}
-                  onCopy={copyPlainText}
-                  onEditSummary={editSummary}
-                  onEditOneLiner={editOneLiner}
-                  onOpenSettings={() => setSettingsOpen(true)}
-                />
-              </div>
-            ) : (
-              <div className="preview-card plain">
-                <CardStudio
-                  doc={doc}
-                  cardThemeId={cardThemeId}
-                  onThemeChange={setCardThemeId}
-                  siteName={siteName}
-                  onSiteNameChange={setSiteName}
-                  onToast={toast}
-                />
-              </div>
             )}
           </div>
 
@@ -525,11 +606,14 @@ export default function App() {
               {kind === 'convert' && output ? (
                 <>
                   <button className="btn btn-accent" onClick={doCopyPrimary}>
-                    {output.copyMode === 'rich' ? '复制富文本' : '复制全文'}
+                    {output.copyMode === 'rich' ? '复制富文本' : output.copyMode === 'markdown' ? '复制 Markdown' : '复制全文'}
                   </button>
-                  <button className="btn" onClick={doCopySource}>
-                    复制源码
-                  </button>
+                  {/* markdown 平台的 primary 就是 text，两个按钮会做同一件事 */}
+                  {output.format !== 'markdown' ? (
+                    <button className="btn" onClick={doCopySource}>
+                      复制源码
+                    </button>
+                  ) : null}
                   <button className="btn" onClick={doDownload}>
                     下载 {output.format === 'markdown' ? '.md' : '.html'}
                   </button>
@@ -543,7 +627,9 @@ export default function App() {
                     onClick={generateCurrent}
                     disabled={currentAI.status === 'running' || digest.status === 'running'}
                   >
-                    {currentAI.status === 'running' || digest.status === 'running' ? <span className="spinner" /> : null}
+                    {currentAI.status === 'running' || digest.status === 'running' ? (
+                      <span className="spinner" />
+                    ) : null}
                     {currentAI.status === 'running' || digest.status === 'running'
                       ? '生成中…'
                       : currentAI.result
@@ -561,14 +647,13 @@ export default function App() {
               ) : null}
 
               {kind === 'card' ? (
-                <span className="muted" style={{ fontSize: 12.5 }}>
-                  在右侧选择卡片、改文字、换配色，然后导出 PNG
-                </span>
+                <span className="muted actionbar-note">左侧选卡片、改文字、换配色，然后导出 PNG</span>
               ) : null}
 
               <div className="actionbar-spacer" />
+
               {doc.warnings.length > 0 ? (
-                <details className="details" style={{ margin: 0, maxWidth: 420 }}>
+                <details className="details details-inline">
                   <summary>解析提示（{doc.warnings.length}）</summary>
                   <div className="details-body">
                     {doc.warnings.map((w, i) => (
@@ -579,7 +664,7 @@ export default function App() {
               ) : null}
             </div>
           ) : null}
-        </div>
+        </main>
       </div>
 
       <SettingsSheet

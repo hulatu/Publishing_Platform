@@ -22,7 +22,6 @@ interface Props {
   providerReady: boolean
   providerLabel: string
   onToneChange: (tone: RewriteTone) => void
-  onGenerate: () => void
   onGenerateDigest: () => void
   onCancel: () => void
   onCopy: (text: string, label: string) => void
@@ -57,7 +56,6 @@ export function AIPanel({
   providerReady,
   providerLabel,
   onToneChange,
-  onGenerate,
   onGenerateDigest,
   onCancel,
   onCopy,
@@ -140,19 +138,18 @@ export function AIPanel({
           <div className="ai-stream mono">{ai.streaming.slice(-1200) || '正在读摘要…'}</div>
         ) : null}
 
-        {/* 还没有生成 */}
+        {/* 还没有生成：不再放第二个主按钮，主按钮统一在底部操作条 */}
         {!running && !result ? (
-          <div className="empty-state compact">
-            <div className="empty-mark">AI</div>
-            <div className="empty-text">从摘要组装一篇{PLATFORM_NAME[platform]}文案</div>
-            <div className="empty-hint">
+          <div className="stage-empty">
+            <div className="stage-empty-title">还没有{PLATFORM_NAME[platform]}文案</div>
+            <div className="stage-empty-hint">
               {digestReady
-                ? `会用到上面 ${digest.digest?.sections.length ?? 0} 条摘要，一条对应一个要点。`
-                : '会先按 ## 切节做摘要，再组装成平台文案。'}
+                ? `会用上面 ${digest.digest?.sections.length ?? 0} 条摘要组装，一条对应一个要点。`
+                : '会先按 ## 切节做摘要，再从摘要组装成平台文案。'}
             </div>
-            <button className="btn btn-accent" onClick={onGenerate} style={{ marginTop: 8 }}>
-              生成{PLATFORM_NAME[platform]}文案
-            </button>
+            <div className="stage-empty-arrow" aria-hidden>
+              ↓ 用底部的「生成{PLATFORM_NAME[platform]}文案」
+            </div>
           </div>
         ) : null}
 
@@ -315,12 +312,6 @@ export function AIPanel({
                 </div>
               </div>
             ) : null}
-
-            <div className="ai-result-foot">
-              <button className="btn btn-sm" onClick={onGenerate} disabled={running}>
-                重新生成{PLATFORM_NAME[platform]}
-              </button>
-            </div>
           </>
         ) : null}
       </div>

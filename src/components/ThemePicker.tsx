@@ -80,7 +80,7 @@ export function ThemePicker({ value, onChange }: Props) {
           {themeGroups.map((group) => (
             <div className="theme-group" key={group.name}>
               <div className="theme-group-label">{group.name}</div>
-              <div className="theme-row">
+              <div className="theme-strip">
                 {group.themes.map((t) => (
                   <button
                     key={t.id}

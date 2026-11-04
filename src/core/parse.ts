@@ -54,16 +54,25 @@ md.use(footnote)
 
 const BLOCKED_TAGS = 'script|style|iframe|object|embed|noscript'
 
-/** 清洗裸 HTML：移除危险标签、事件属性，以及 class / id */
-export function sanitizeHtml(raw: string): string {
-  return raw
+/**
+ * 清洗裸 HTML：移除危险标签、事件属性，以及 class / id。
+ *
+ * `keepClasses` 只给站内阅读预览用 —— 预览渲染在我们自己的页面里，
+ * class 有用（脚注、表格的对齐都要靠它）；而交给微信的那份必须剥干净。
+ */
+export function sanitizeHtml(raw: string, opts: { keepClasses?: boolean } = {}): string {
+  let out = raw
     .replace(new RegExp(`<(${BLOCKED_TAGS})\\b[^>]*>[\\s\\S]*?</\\1>`, 'gi'), '')
     .replace(new RegExp(`</?(${BLOCKED_TAGS})\\b[^>]*>`, 'gi'), '')
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\s(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '')
-    // class / id 必须剥掉：微信编辑器会静默丢弃它们，留着只会让人误以为样式生效；
-    // 而 style 是唯一能在微信里活下来的内联属性，保留。
-    .replace(/\s(class|id)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+
+  // class / id 必须剥掉：微信编辑器会静默丢弃它们，留着只会让人误以为样式生效；
+  // 而 style 是唯一能在微信里活下来的内联属性，保留。
+  if (!opts.keepClasses) {
+    out = out.replace(/\s(class|id)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+  }
+  return out
 }
 
 export interface PreprocessResult {
@@ -94,6 +103,12 @@ export function preprocess(src: string): PreprocessResult {
   }
   // 残留的孤立 iframe 开标签直接去掉
   out = out.replace(/<\/?iframe\b[^>]*>/gi, '')
+
+  // Hugo / Pandoc 的标题属性：`## 标题 {#anchor .cls}`。
+  // 这是渲染期指令，Goldmark 会把它变成 id 而不显示；但 markdown-it 会当成正文，
+  // 结果 `{#first-section}` 原样出现在公众号、少数派、知乎的标题里。
+  // 静默去掉即可 —— 它本来就不该被读者看见，报成「提示」只会制造噪音。
+  out = out.replace(/^([ \t]{0,3}#{1,6}[ \t]+.*?)[ \t]*\{(?:[#.][\w:-]+)(?:[ \t]+[#.][\w:-]+)*\}[ \t]*$/gm, '$1')
 
   return { src: out, warnings }
 }
@@ -512,4 +527,19 @@ export function parseArticle({ source, fileName = '' }: ParseInput): Doc {
     rawMd: split.body,
     warnings,
   }
+}
+
+/**
+ * 渲染「阅读预览」用的 HTML。
+ *
+ * 和转换器走同一套前置处理（去 front matter、iframe 降级、HTML 消毒），
+ * 所以预览里看到的结构就是转换器看到的结构 —— 不会出现「预览挺好、粘出来变形」。
+ *
+ * 输出只用于站内预览，不进入剪贴板，所以这里允许 class（外层容器靠 class 上样式）。
+ */
+export function renderPreviewHtml(source: string): string {
+  const split = splitFrontMatter(source)
+  const pre = preprocess(split.body)
+  const body = md.render(pre.src, {})
+  return `<div class="md-preview">${sanitizeHtml(body, { keepClasses: true })}</div>`
 }

@@ -27,9 +27,9 @@ export function renderDouban(doc: Doc, _opts: ConvertOptions): RenderOutput {
   const warnings: string[] = []
 
   if (images.length > 0) {
-    warnings.push(`正文有 ${images.length} 张外链图片，豆瓣会自动转存；若个别不显示，改用豆瓣相册图地址`)
+    warnings.push(`正文有 ${images.length} 张外链图片，豆瓣会自动转存；不显示时改用相册图地址`)
   }
-  warnings.push('豆瓣不支持自定义字体与复杂背景，这里已自动降级为标准 HTML 标签')
+  warnings.push('豆瓣不支持自定义字体与复杂背景，已降级为标准 HTML 标签')
 
   return {
     primary: result.html,

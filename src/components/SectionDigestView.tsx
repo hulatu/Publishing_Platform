@@ -114,7 +114,7 @@ export function SectionDigestView({
                         <span className="digest-num">{String(s.index).padStart(2, '0')}</span>
                         <span className="digest-title">{s.heading}</span>
                         <span className="digest-src">
-                          {section ? `${section.chars} 字` : ''}
+                          {section ? `原文 ${section.chars} 字` : ''}
                           {section?.merged ? ' · 含合并小节' : ''}
                         </span>
                       </div>

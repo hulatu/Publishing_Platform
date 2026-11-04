@@ -40,18 +40,17 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
 
   if (images.length > 0) {
     warnings.push(
-      `正文有 ${images.length} 张外链图片。公众号正文图片必须来自微信自己的域名（mmbiz.qpic.cn）——` +
-        '粘贴后请逐张删除，再用公众号后台的「图片」按钮重新上传，否则发布时会出现裂图。',
+      `正文有 ${images.length} 张外链图片。公众号只认 mmbiz.qpic.cn，粘贴后需逐张替换，否则会裂图。`,
     )
   }
   if (links.length > 0) {
-    warnings.push(`${links.length} 个外链已自动抽成文末「参考链接」编号表（未认证号正文里的 <a> 会整体失效）`)
+    warnings.push(`${links.length} 个外链已抽成文末「参考链接」编号表（未认证号正文链接会失效）`)
   }
 
   const overLimit = result.charCount > WECHAT_CONTENT_LIMIT
   if (overLimit) {
     warnings.push(
-      `HTML 已达 ${result.charCount} 字符，超过公众号 20000 字符上限。请用「按 H2 拆篇」把文章拆成多篇发布。`,
+      `HTML 已达 ${result.charCount} 字符，超过 20000 上限。请用「按 H2 拆篇」拆成多篇发布。`,
     )
   }
 

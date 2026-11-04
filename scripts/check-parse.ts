@@ -146,6 +146,17 @@ for (const c of cases) {
   const douban = renderDouban(doc, { wechatThemeId: 'paper' })
   if (!douban.html!.trim()) fail('豆瓣 HTML 为空')
 
+  // Hugo 的标题锚点（`## 标题 {#anchor}`）是渲染期指令，Goldmark 会吃掉，
+  // markdown-it 不会 —— 一旦漏进产物，标题里就会明晃晃多出一串 {#first-section}
+  for (const [label, text] of [
+    ['公众号', wx.html!],
+    ['少数派', sspai.primary],
+    ['知乎', zhihu.primary],
+    ['豆瓣', douban.html!],
+  ] as const) {
+    if (/\{#[^}]*\}/.test(text)) fail(`${label} 输出残留 Hugo 锚点 {#…}`)
+  }
+
   // Markdown 往返：把输出的 md 再解析一次，块数应基本一致
   const round = parseArticle({ source: sspai.primary, fileName: c.file })
   const delta = Math.abs(round.blocks.length - doc.blocks.length)
@@ -213,5 +224,21 @@ if (overList.length > 0) {
   console.log('\n需要按 H2 拆篇的文章：')
   for (const o of overList) console.log(`  ${o.chars}  ${o.file}`)
 }
+
+/* ---------------- 全量扫描：Hugo 锚点不得漏进产物 ---------------- */
+let anchorPosts = 0
+let anchorLeaks = 0
+for (const c of all) {
+  const src = readFileSync(join(POSTS, c.file), 'utf8')
+  if (!/^#{1,6}\s.*\{#[^}]*\}/m.test(src)) continue
+  anchorPosts++
+  const doc = parseArticle({ source: src, fileName: c.file })
+  const wx = renderWechat(doc, { wechatThemeId: 'paper' })
+  if (/\{#[^}]*\}/.test(wx.html!)) {
+    anchorLeaks++
+    fail(`${c.file}：公众号输出残留 Hugo 锚点`)
+  }
+}
+console.log(`\n带 Hugo 锚点的文章 ${anchorPosts} 篇，泄漏 ${anchorLeaks} 篇`)
 
 process.exit(failures === 0 ? 0 : 1)
