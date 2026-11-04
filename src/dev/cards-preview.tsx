@@ -4,12 +4,16 @@
  * /cards-preview.html?picker=1         → 主题墙
  */
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CardRenderer } from '../cards/templates'
 import { getCardTheme } from '../cards/themes'
 import type { CardSpec } from '../cards/types'
 import { ThemePicker } from '../components/ThemePicker'
+import { CardStudio } from '../components/CardStudio'
+import { parseArticle } from '../core/parse'
+import { splitSections } from '../core/sections'
+import type { Doc } from '../core/ir'
 import '../styles/global.css'
 
 const SPECS: CardSpec[] = [
@@ -49,6 +53,18 @@ const SPECS: CardSpec[] = [
     themeId: 'paper',
   },
   {
+    id: 'section',
+    layout: 'section',
+    title: '三、把初稿放一夜',
+    subtitle:
+      '写完当天不要改。第二天再看，你会发现真正的问题在结构上，而不在字句上——这也是为什么第一遍改稿只动结构，不动措辞。',
+    kicker: '方法论',
+    mark: '04 / 08',
+    footer: '胡拉图说',
+    date: '2026.11.03',
+    themeId: 'paper',
+  },
+  {
     id: 'end',
     layout: 'end',
     title: '写作不是表达，是把想法重新排一次序。',
@@ -75,6 +91,11 @@ const STRESS: Record<string, Partial<CardSpec>> = {
     ],
   },
   end: { title: '写作不是表达，是把想法重新排一次序，然后把它交给一个具体的人。' },
+  section: {
+    title: '四、把初稿放一夜，第二天只改结构不动字句',
+    subtitle:
+      '写完当天不要改。第二天再看，你会发现真正的问题在结构上，而不在字句上——这也是为什么第一遍改稿只动结构，不动措辞。先把段落顺序调对，再逐句打磨，否则打磨的是一段本来就要删掉的话。',
+  },
 }
 
 function Cards({ themeId, stress }: { themeId: string; stress: boolean }) {
@@ -107,10 +128,45 @@ function Picker() {
   )
 }
 
+/** ?studio=1：拿真实文章喂进 CardStudio，看整套面板（含卡片列表） */
+function Studio() {
+  const [doc, setDoc] = useState<Doc | null>(null)
+  const [theme, setTheme] = useState('paper')
+  const [site, setSite] = useState('胡拉图说')
+
+  useEffect(() => {
+    fetch('/scripts/fixtures/fixture-long.md')
+      .then((r) => r.text())
+      .then((src) => setDoc(parseArticle({ source: src, fileName: 'fixture-long.md' })))
+  }, [])
+
+  if (!doc) return <div style={{ padding: 40 }}>加载中…</div>
+  const sections = splitSections(doc)
+
+  return (
+    <div style={{ padding: 24, background: 'var(--main-bg)', minHeight: '100vh' }}>
+      <div className="panel-card">
+        <CardStudio
+          doc={doc}
+          sections={sections}
+          summaries={null}
+          cardThemeId={theme}
+          onThemeChange={setTheme}
+          siteName={site}
+          onSiteNameChange={setSite}
+          onToast={() => {}}
+        />
+      </div>
+    </div>
+  )
+}
+
 const params = new URLSearchParams(location.search)
 const root = createRoot(document.getElementById('root')!)
 root.render(
-  params.get('picker') ? (
+  params.get('studio') ? (
+    <Studio />
+  ) : params.get('picker') ? (
     <Picker />
   ) : (
     <Cards themeId={params.get('theme') ?? 'paper'} stress={params.get('stress') === '1'} />

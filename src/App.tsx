@@ -587,6 +587,8 @@ export default function App() {
                     <div className="panel-card">
                       <CardStudio
                         doc={doc}
+                        sections={sections}
+                        summaries={digest.digest?.sections ?? null}
                         cardThemeId={cardThemeId}
                         onThemeChange={setCardThemeId}
                         siteName={siteName}

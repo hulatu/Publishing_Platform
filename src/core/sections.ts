@@ -21,8 +21,14 @@ export interface ArticleSection {
   index: number
   /** ## 标题原文；第一个 ## 之前的内容叫「开篇」；无 ## 时按段落分组 */
   heading: string
-  /** 该节正文纯文本（未截断） */
+  /** 该节正文纯文本（未截断，含三级标题） */
   bodyText: string
+  /**
+   * 该节正文去掉标题后的纯文本。
+   * 配图卡片的摘要用它 —— bodyText 里夹着三级标题，直接抽句子会得到
+   * 「科研 作为一个工科研究生……」这种把标题粘进正文的句子。
+   */
+  proseText: string
   chars: number
   /** 该节是否由多个小节合并而来（合并时 heading 取第一个） */
   merged?: boolean
@@ -51,13 +57,26 @@ function blocksText(blocks: Block[]): string {
   return stripHeadingAnchor(blocksToText(blocks).trim())
 }
 
+/** 去掉所有标题后的正文，给卡片摘要用 */
+function proseText(blocks: Block[]): string {
+  return blocksText(blocks.filter((b) => b.t !== 'heading'))
+}
+
 /** 把没有 ## 的文章按段落切成若干块 */
 function chunkByParagraphs(doc: Doc, target: number): ArticleSection[] {
   const paragraphs = doc.blocks.filter((b) => b.t === 'p')
   if (paragraphs.length === 0) {
     const all = blocksText(doc.blocks)
     return all
-      ? [{ index: 1, heading: doc.meta.title || '全文', bodyText: all, chars: charCount(all) }]
+      ? [
+          {
+            index: 1,
+            heading: doc.meta.title || '全文',
+            bodyText: all,
+            proseText: proseText(doc.blocks),
+            chars: charCount(all),
+          },
+        ]
       : []
   }
 
@@ -83,6 +102,7 @@ function chunkByParagraphs(doc: Doc, target: number): ArticleSection[] {
       index: i + 1,
       heading: `第 ${i + 1} 部分`,
       bodyText: text,
+      proseText: proseText(g),
       chars: charCount(text),
     }
   })
@@ -132,6 +152,7 @@ export function splitSections(doc: Doc, opts: SplitSectionsOptions = {}): Articl
     if (sections.length > 0 && chars < minChars) {
       const prev = sections[sections.length - 1]
       prev.bodyText = `${prev.bodyText}\n\n${item.heading}\n${text}`.trim()
+      prev.proseText = `${prev.proseText}\n\n${proseText(item.blocks)}`.trim()
       prev.chars = charCount(prev.bodyText)
       prev.merged = true
       continue
@@ -144,6 +165,7 @@ export function splitSections(doc: Doc, opts: SplitSectionsOptions = {}): Articl
       index: sections.length + 1,
       heading: item.heading,
       bodyText: text,
+      proseText: proseText(item.blocks),
       chars,
     })
   }
@@ -167,6 +189,7 @@ function mergeToCap(sections: ArticleSection[], cap: number): ArticleSection[] {
     const a = list[bestIdx]
     const b = list[bestIdx + 1]
     a.bodyText = `${a.bodyText}\n\n${b.heading}\n${b.bodyText}`.trim()
+    a.proseText = `${a.proseText}\n\n${b.proseText}`.trim()
     a.chars = charCount(a.bodyText)
     a.merged = true
     list.splice(bestIdx + 1, 1)

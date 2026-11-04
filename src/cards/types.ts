@@ -1,18 +1,20 @@
 /** 卡片数据模型 */
 
-export type CardLayout = 'cover' | 'quote' | 'points' | 'end'
+export type CardLayout = 'cover' | 'quote' | 'points' | 'section' | 'end'
 
 export interface CardSpec {
   id: string
   layout: CardLayout
-  /** 主文字：封面标题 / 金句正文 / 要点标题 / 结尾总结 */
+  /** 主文字：封面标题 / 金句正文 / 要点标题 / 小节标题 / 结尾总结 */
   title: string
-  /** 副文字 */
+  /** 副文字：封面摘要 / 金句出处 / 小节摘要 / 结尾标签 */
   subtitle?: string
   /** 要点列表（仅 points 版式） */
   points?: string[]
   /** 左上角小标签，通常是分类 */
   kicker?: string
+  /** 右上角页码，形如 03 / 08；一套图连起来读时知道进度 */
+  mark?: string
   /** 底部左侧署名 */
   footer?: string
   /** 底部右侧日期 */
@@ -27,6 +29,7 @@ export const layoutNames: Record<CardLayout, string> = {
   cover: '封面',
   quote: '金句',
   points: '要点',
+  section: '小节',
   end: '结尾',
 }
 

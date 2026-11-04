@@ -142,8 +142,10 @@ function Kicker({ text, theme }: { text: string; theme: CardTheme }) {
         color: theme.accent,
         fontWeight: 600,
         textTransform: 'uppercase',
-        marginBottom: 20,
-        flexShrink: 0,
+        minWidth: 0,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
       }}
     >
       {text}
@@ -176,8 +178,10 @@ function Foot({ left, right, theme }: { left?: string; right?: string; theme: Ca
 /**
  * 四张卡共用的骨架：顶部小标签 + 正文区 + 分隔线 + 页脚。
  * 页脚是绝对定位的，所以不管正文多长多短，四张卡的页脚永远在同一条基线上。
+ * 顶栏用 flex 一行放「分类」和「页码」，两者共享基线，永远不会叠在一起。
  */
 function Shell({ spec, theme, children }: { spec: CardSpec; theme: CardTheme; children: ReactNode }) {
+  const hasTop = Boolean(spec.kicker || spec.mark)
   return (
     <Frame theme={theme}>
       <div
@@ -190,7 +194,34 @@ function Shell({ spec, theme, children }: { spec: CardSpec; theme: CardTheme; ch
           boxSizing: 'border-box',
         }}
       >
-        <Kicker text={spec.kicker ?? ''} theme={theme} />
+        {hasTop ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              gap: 14,
+              marginBottom: 20,
+              flexShrink: 0,
+            }}
+          >
+            <Kicker text={spec.kicker ?? ''} theme={theme} />
+            {spec.mark ? (
+              <span
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 10.5,
+                  lineHeight: 1.2,
+                  letterSpacing: 1.2,
+                  color: theme.muted,
+                  flexShrink: 0,
+                }}
+              >
+                {spec.mark}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {children}
       </div>
       <div style={{ position: 'absolute', left: PAD_X, right: PAD_X, bottom: FOOT_BOTTOM }}>
@@ -382,6 +413,65 @@ function PointsCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 小节                                                               */
+/* ------------------------------------------------------------------ */
+
+function SectionCard({ spec, theme }: { spec: CardSpec; theme: CardTheme }) {
+  const titleSize = fitFontSize(spec.title, 29, 19, TITLE_THRESHOLDS)
+  return (
+    <Shell spec={spec} theme={theme}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            fontFamily: SERIF,
+            fontSize: titleSize,
+            lineHeight: 1.42,
+            fontWeight: 700,
+            letterSpacing: 0.6,
+            color: theme.ink,
+          }}
+        >
+          {spec.title}
+        </div>
+        <div
+          style={{
+            width: 26,
+            height: 2,
+            borderRadius: 1,
+            background: theme.accent,
+            margin: '22px 0 20px',
+            opacity: 0.9,
+          }}
+        />
+        {spec.subtitle ? (
+          <div
+            style={{
+              fontSize: 15.5,
+              lineHeight: 1.85,
+              letterSpacing: 0.3,
+              color: theme.ink,
+              opacity: 0.86,
+              maxHeight: 190,
+              overflow: 'hidden',
+            }}
+          >
+            {spec.subtitle}
+          </div>
+        ) : null}
+      </div>
+    </Shell>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* 结尾                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -438,6 +528,8 @@ export function CardRenderer({ spec, theme }: { spec: CardSpec; theme: CardTheme
       return <QuoteCard spec={spec} theme={theme} />
     case 'points':
       return <PointsCard spec={spec} theme={theme} />
+    case 'section':
+      return <SectionCard spec={spec} theme={theme} />
     case 'end':
       return <EndCard spec={spec} theme={theme} />
   }
