@@ -1,0 +1,15 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.tmp/
+
+# 系统与编辑器
+.DS_Store
+*.local
+.vscode/
+.idea/
+
+# WorkBuddy 工具目录（项目记忆、部署卡片）
+.workbuddy/
+.workbuddy-ai/
+.wbapp_*.genie

@@ -1,0 +1,32 @@
+{
+  "name": "article-dispatch",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run check:parse && npm run check:digest",
+    "check:fixtures": "POSTS_DIR=scripts/fixtures npm run check",
+    "check:parse": "esbuild scripts/check-parse.ts --bundle --platform=node --format=esm --outfile=.tmp/check-parse.mjs --log-level=warning && node .tmp/check-parse.mjs",
+    "check:digest": "esbuild scripts/check-digest.ts --bundle --platform=node --format=esm --outfile=.tmp/check-digest.mjs --log-level=warning && node .tmp/check-digest.mjs"
+  },
+  "dependencies": {
+    "html-to-image": "^1.11.13",
+    "jszip": "^3.10.1",
+    "markdown-it": "^14.1.0",
+    "markdown-it-footnote": "^4.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

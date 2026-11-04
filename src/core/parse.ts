@@ -1,0 +1,515 @@
+/**
+ * Markdown → IR
+ *
+ * 关于 markdown-it 的配置选择：
+ * - `html: true` 是刻意的。若设 false，正文里的 `<iframe>`、`<script>` 会作为可见文本
+ *   漏进段落（博客里有 2 个腾讯视频 iframe 和 1 个 Twikoo script），反而更糟。
+ *   打开 html 后由 sanitizeHtml 统一清洗，iframe 在预处理阶段就降级成「视频链接」文本。
+ * - `linkify: false` / `breaks: false`：与 Hugo goldmark 默认行为一致，
+ *   避免单换行被转成 <br> 导致段落结构与博客不一致。
+ * - `typographer: false`：绝不替换中文全角标点与「」引号。
+ */
+
+import MarkdownIt from 'markdown-it'
+import footnote from 'markdown-it-footnote'
+import type { Align, Block, Doc, Inline } from './ir'
+import { buildMeta, parseFrontMatter, splitFrontMatter } from './frontmatter'
+import { blocksToText } from './ir'
+
+/* ------------------------------------------------------------------ */
+/* 最小化的 token 结构（避免依赖 @types/markdown-it 的内部类型路径）      */
+/* ------------------------------------------------------------------ */
+
+interface MdToken {
+  type: string
+  tag: string
+  attrs: [string, string][] | null
+  map: [number, number] | null
+  nesting: number
+  level: number
+  children: MdToken[] | null
+  content: string
+  markup: string
+  info: string
+  meta: Record<string, unknown> | null
+  hidden: boolean
+  block: boolean
+}
+
+/* ------------------------------------------------------------------ */
+/* markdown-it 实例                                                    */
+/* ------------------------------------------------------------------ */
+
+const md = new MarkdownIt({
+  html: true,
+  linkify: false,
+  breaks: false,
+  typographer: false,
+})
+md.use(footnote)
+
+/* ------------------------------------------------------------------ */
+/* 预处理：处理无法安全进入 IR 的裸 HTML                                 */
+/* ------------------------------------------------------------------ */
+
+const BLOCKED_TAGS = 'script|style|iframe|object|embed|noscript'
+
+/** 清洗裸 HTML：移除危险标签、事件属性，以及 class / id */
+export function sanitizeHtml(raw: string): string {
+  return raw
+    .replace(new RegExp(`<(${BLOCKED_TAGS})\\b[^>]*>[\\s\\S]*?</\\1>`, 'gi'), '')
+    .replace(new RegExp(`</?(${BLOCKED_TAGS})\\b[^>]*>`, 'gi'), '')
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '')
+    // class / id 必须剥掉：微信编辑器会静默丢弃它们，留着只会让人误以为样式生效；
+    // 而 style 是唯一能在微信里活下来的内联属性，保留。
+    .replace(/\s(class|id)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+}
+
+export interface PreprocessResult {
+  src: string
+  warnings: string[]
+}
+
+/** 预处理正文：iframe 降级为链接文本，script/style 移除 */
+export function preprocess(src: string): PreprocessResult {
+  const warnings: string[] = []
+  let out = src
+
+  // <script> / <style> 整块移除
+  const beforeScripts = out
+  out = out.replace(new RegExp(`<(${BLOCKED_TAGS})\\b[^>]*>[\\s\\S]*?</\\1>`, 'gi'), '')
+  if (out !== beforeScripts) {
+    warnings.push('正文内嵌的 script / style 代码块已移除（公众号与知乎都不支持）')
+  }
+
+  // iframe 降级为一行链接
+  let iframeCount = 0
+  out = out.replace(/<iframe\b[^>]*?src\s*=\s*["']([^"']+)["'][^>]*>\s*<\/iframe>/gi, (_m, url: string) => {
+    iframeCount++
+    return `\n\n视频链接：${url}\n\n`
+  })
+  if (iframeCount > 0) {
+    warnings.push(`正文里的 ${iframeCount} 个内嵌视频已降级为链接文本（各平台编辑器不支持 iframe）`)
+  }
+  // 残留的孤立 iframe 开标签直接去掉
+  out = out.replace(/<\/?iframe\b[^>]*>/gi, '')
+
+  return { src: out, warnings }
+}
+
+/* ------------------------------------------------------------------ */
+/* 解析游标                                                            */
+/* ------------------------------------------------------------------ */
+
+class Cursor {
+  i = 0
+  constructor(
+    readonly tokens: MdToken[],
+    readonly lines: string[],
+  ) {}
+
+  peek(): MdToken | undefined {
+    return this.tokens[this.i]
+  }
+
+  next(): MdToken | undefined {
+    return this.tokens[this.i++]
+  }
+}
+
+function rawOf(tok: MdToken, lines: string[]): string {
+  if (!tok.map) return ''
+  const [start, end] = tok.map
+  return lines.slice(start, end).join('\n')
+}
+
+function attrOf(tok: MdToken, name: string): string | undefined {
+  return tok.attrs?.find((a) => a[0] === name)?.[1]
+}
+
+/* ------------------------------------------------------------------ */
+/* Inline 解析                                                         */
+/* ------------------------------------------------------------------ */
+
+function parseInline(tokens: MdToken[]): Inline[] {
+  let i = 0
+
+  const walk = (stop: string): Inline[] => {
+    const out: Inline[] = []
+    while (i < tokens.length) {
+      const tok = tokens[i]
+      if (tok.type === stop) return out
+
+      switch (tok.type) {
+        case 'text':
+          out.push({ t: 'text', v: tok.content })
+          i++
+          break
+
+        case 'code_inline':
+          out.push({ t: 'code', v: tok.content })
+          i++
+          break
+
+        case 'strong_open': {
+          i++
+          const c = walk('strong_close')
+          if (tokens[i]?.type === 'strong_close') i++
+          out.push({ t: 'strong', c })
+          break
+        }
+
+        case 'em_open': {
+          i++
+          const c = walk('em_close')
+          if (tokens[i]?.type === 'em_close') i++
+          out.push({ t: 'em', c })
+          break
+        }
+
+        case 's_open': {
+          i++
+          const c = walk('s_close')
+          if (tokens[i]?.type === 's_close') i++
+          out.push({ t: 'del', c })
+          break
+        }
+
+        case 'link_open': {
+          const href = attrOf(tok, 'href') ?? ''
+          i++
+          const c = walk('link_close')
+          if (tokens[i]?.type === 'link_close') i++
+          out.push({ t: 'link', href, c })
+          break
+        }
+
+        case 'image': {
+          const src = attrOf(tok, 'src') ?? ''
+          const alt = attrOf(tok, 'alt') ?? ''
+          const title = attrOf(tok, 'title')
+          out.push({ t: 'img', src, alt, ...(title ? { title } : {}) })
+          i++
+          break
+        }
+
+        case 'softbreak':
+          // 中文段落内的软换行不应产生空格
+          i++
+          break
+
+        case 'hardbreak':
+          out.push({ t: 'br' })
+          i++
+          break
+
+        case 'html_inline': {
+          const clean = sanitizeHtml(tok.content)
+          if (clean.trim()) out.push({ t: 'html', raw: clean })
+          i++
+          break
+        }
+
+        case 'footnote_ref': {
+          out.push({ t: 'fnref', id: String(tok.meta?.id ?? '') })
+          i++
+          break
+        }
+
+        case 'footnote_anchor':
+          i++
+          break
+
+        default:
+          // 未知 inline token：把内容当纯文本保底，避免丢字
+          if (tok.content) out.push({ t: 'text', v: tok.content })
+          i++
+          break
+      }
+    }
+    return out
+  }
+
+  return walk('')
+}
+
+/* ------------------------------------------------------------------ */
+/* Block 解析                                                          */
+/* ------------------------------------------------------------------ */
+
+function parseBlocks(cur: Cursor, stopTypes: ReadonlySet<string>): Block[] {
+  const out: Block[] = []
+
+  while (cur.i < cur.tokens.length) {
+    const tok = cur.peek()
+    if (!tok) break
+    if (stopTypes.has(tok.type)) break
+
+    switch (tok.type) {
+      /* ---------------- 标题 ---------------- */
+      case 'heading_open': {
+        // H1 统一降为 H2：正文 H1 会抢掉公众号/知乎的标题位
+        const rawLevel = Number(tok.tag.slice(1)) || 2
+        const level = Math.min(4, Math.max(2, rawLevel)) as 2 | 3 | 4
+        const raw = rawOf(tok, cur.lines)
+        cur.next()
+        const inlineTok = cur.peek()
+        const inline = inlineTok?.type === 'inline' ? parseInline(inlineTok.children ?? []) : []
+        if (inlineTok?.type === 'inline') cur.next()
+        if (cur.peek()?.type === 'heading_close') cur.next()
+        out.push({ t: 'heading', level, inline, raw })
+        break
+      }
+
+      /* ---------------- 段落 ---------------- */
+      case 'paragraph_open': {
+        const raw = rawOf(tok, cur.lines)
+        cur.next()
+        const inlineTok = cur.peek()
+        const inline = inlineTok?.type === 'inline' ? parseInline(inlineTok.children ?? []) : []
+        if (inlineTok?.type === 'inline') cur.next()
+        if (cur.peek()?.type === 'paragraph_close') cur.next()
+        out.push({ t: 'p', inline, raw })
+        break
+      }
+
+      /* ---------------- 列表 ---------------- */
+      case 'bullet_list_open':
+      case 'ordered_list_open': {
+        const ordered = tok.type === 'ordered_list_open'
+        const startAttr = attrOf(tok, 'start')
+        const raw = rawOf(tok, cur.lines)
+        const closeType = ordered ? 'ordered_list_close' : 'bullet_list_close'
+        cur.next()
+
+        const items: Block[][] = []
+        while (cur.i < cur.tokens.length) {
+          const t = cur.peek()
+          if (!t || t.type === closeType) break
+          if (t.type === 'list_item_open') {
+            cur.next()
+            const itemBlocks = parseBlocks(cur, new Set(['list_item_close']))
+            if (cur.peek()?.type === 'list_item_close') cur.next()
+            items.push(itemBlocks)
+          } else {
+            cur.next()
+          }
+        }
+        if (cur.peek()?.type === closeType) cur.next()
+
+        const start = startAttr ? Number(startAttr) : undefined
+        out.push({
+          t: 'list',
+          ordered,
+          ...(start !== undefined && Number.isFinite(start) && start !== 1 ? { start } : {}),
+          items,
+          raw,
+        })
+        break
+      }
+
+      /* ---------------- 代码 ---------------- */
+      case 'fence': {
+        const info = tok.info.trim()
+        const lang = info ? info.split(/\s+/)[0] : ''
+        out.push({
+          t: 'code',
+          ...(lang ? { lang } : {}),
+          text: tok.content.replace(/\n$/, ''),
+          raw: rawOf(tok, cur.lines),
+        })
+        cur.next()
+        break
+      }
+
+      case 'code_block': {
+        out.push({ t: 'code', text: tok.content.replace(/\n$/, ''), raw: rawOf(tok, cur.lines) })
+        cur.next()
+        break
+      }
+
+      /* ---------------- 引用 ---------------- */
+      case 'blockquote_open': {
+        const raw = rawOf(tok, cur.lines)
+        cur.next()
+        const children = parseBlocks(cur, new Set(['blockquote_close']))
+        if (cur.peek()?.type === 'blockquote_close') cur.next()
+        out.push({ t: 'quote', children, raw })
+        break
+      }
+
+      /* ---------------- 表格 ---------------- */
+      case 'table_open': {
+        const raw = rawOf(tok, cur.lines)
+        cur.next()
+        const align: Align[] = []
+        const head: Inline[][] = []
+        const rows: Inline[][][] = []
+        let inHead = false
+        let currentRow: Inline[][] | null = null
+
+        while (cur.i < cur.tokens.length) {
+          const t = cur.peek()
+          if (!t || t.type === 'table_close') break
+
+          switch (t.type) {
+            case 'thead_open':
+              inHead = true
+              cur.next()
+              break
+            case 'thead_close':
+              inHead = false
+              cur.next()
+              break
+            case 'tbody_open':
+            case 'tbody_close':
+              cur.next()
+              break
+            case 'tr_open':
+              currentRow = []
+              cur.next()
+              break
+            case 'tr_close':
+              if (currentRow) {
+                if (inHead) head.push(...currentRow)
+                else rows.push(currentRow)
+              }
+              currentRow = null
+              cur.next()
+              break
+            case 'th_open': {
+              const style = attrOf(t, 'style') ?? ''
+              const m = /text-align:\s*(left|center|right)/i.exec(style)
+              align.push(m ? (m[1].toLowerCase() === 'left' ? 'l' : m[1].toLowerCase() === 'center' ? 'c' : 'r') : null)
+              cur.next()
+              break
+            }
+            case 'td_open':
+            case 'th_close':
+            case 'td_close':
+              cur.next()
+              break
+            case 'inline':
+              if (currentRow) currentRow.push(parseInline(t.children ?? []))
+              cur.next()
+              break
+            default:
+              cur.next()
+              break
+          }
+        }
+        if (cur.peek()?.type === 'table_close') cur.next()
+
+        out.push({ t: 'table', align, head, rows, raw })
+        break
+      }
+
+      /* ---------------- 脚注 ---------------- */
+      case 'footnote_block_open': {
+        cur.next()
+        while (cur.i < cur.tokens.length) {
+          const t = cur.peek()
+          if (!t || t.type === 'footnote_block_close') break
+          if (t.type === 'footnote_open') {
+            const id = String(t.meta?.id ?? '')
+            const label = String(t.meta?.label ?? '')
+            cur.next()
+            const children = parseBlocks(cur, new Set(['footnote_close']))
+            if (cur.peek()?.type === 'footnote_close') cur.next()
+            out.push({ t: 'fn', id, ...(label ? { label } : {}), children, raw: '' })
+          } else {
+            cur.next()
+          }
+        }
+        if (cur.peek()?.type === 'footnote_block_close') cur.next()
+        break
+      }
+
+      /* ---------------- 分隔线 / 裸 HTML ---------------- */
+      case 'hr':
+        out.push({ t: 'hr', raw: rawOf(tok, cur.lines) })
+        cur.next()
+        break
+
+      case 'html_block': {
+        const clean = sanitizeHtml(tok.content)
+        if (clean.trim()) out.push({ t: 'html', raw: clean })
+        cur.next()
+        break
+      }
+
+      /* ---------------- 顶层图片（独立成段的 ![alt](src)） ---------------- */
+      case 'inline': {
+        const inline = parseInline(tok.children ?? [])
+        const raw = rawOf(tok, cur.lines)
+        cur.next()
+        // 若整段只有一个图片，提升为图片块，便于各平台单独处理
+        if (inline.length === 1 && inline[0].t === 'img') {
+          const img = inline[0]
+          out.push({ t: 'img', src: img.src, alt: img.alt, ...(img.title ? { title: img.title } : {}), raw })
+        } else if (inline.length > 0) {
+          out.push({ t: 'p', inline, raw })
+        }
+        break
+      }
+
+      default:
+        cur.next()
+        break
+    }
+  }
+
+  return out
+}
+
+/* ------------------------------------------------------------------ */
+/* 对外入口                                                            */
+/* ------------------------------------------------------------------ */
+
+export interface ParseInput {
+  source: string
+  /** 文件名，用于 front matter 缺 title 时兜底 */
+  fileName?: string
+}
+
+export function parseArticle({ source, fileName = '' }: ParseInput): Doc {
+  const warnings: string[] = []
+
+  const split = splitFrontMatter(source)
+  if (!split.found) {
+    warnings.push('没有检测到 front matter（--- 包裹的头部），已按纯正文处理')
+  }
+
+  const fm = parseFrontMatter(split.raw)
+  warnings.push(...fm.warnings)
+
+  const pre = preprocess(split.body)
+  warnings.push(...pre.warnings)
+
+  const lines = pre.src.split('\n')
+  const tokens = md.parse(pre.src, {}) as unknown as MdToken[]
+  const blocks = parseBlocks(new Cursor(tokens, lines), new Set<string>())
+
+  const bodyText = blocksToText(blocks)
+  const fallbackTitle = fileName.replace(/\.md$/i, '').replace(/^\d{4}-\d{2}-\d{2}-/, '')
+
+  const built = buildMeta(fm.data, fallbackTitle, bodyText)
+  warnings.push(...built.warnings)
+
+  // H1 降级提示
+  if (/^#\s+\S/m.test(pre.src)) {
+    warnings.push('正文里的一级标题已统一降为二级 —— 避免与公众号/知乎的标题位冲突')
+  }
+
+  if (blocks.length === 0) {
+    warnings.push('解析后正文为空，请检查文件内容')
+  }
+
+  return {
+    meta: built.meta,
+    blocks,
+    rawMd: split.body,
+    warnings,
+  }
+}

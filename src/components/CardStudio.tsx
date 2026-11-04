@@ -1,0 +1,361 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Doc } from '../core/ir'
+import { buildCards, DEFAULT_SITE_NAME } from '../cards/build'
+import { CardRenderer } from '../cards/templates'
+import { cardThemes, getCardTheme } from '../cards/themes'
+import { exportCardsAsZip, renderCardToBlob, downloadBlob, safeFileName } from '../cards/export'
+import { CARD_HEIGHT, CARD_WIDTH, layoutNames, type CardSpec } from '../cards/types'
+
+interface Props {
+  doc: Doc
+  cardThemeId: string
+  onThemeChange: (id: string) => void
+  siteName: string
+  onSiteNameChange: (name: string) => void
+  onToast: (text: string, kind?: 'info' | 'success' | 'error') => void
+}
+
+const PREVIEW_SCALE = 0.72
+
+export function CardStudio({ doc, cardThemeId, onThemeChange, siteName, onSiteNameChange, onToast }: Props) {
+  const [cards, setCards] = useState<CardSpec[]>(() => buildCards(doc, cardThemeId, siteName))
+  const [selectedId, setSelectedId] = useState('cover')
+  const [exporting, setExporting] = useState(false)
+  const [progress, setProgress] = useState('')
+
+  // 导出的节点引用：离屏渲染完整尺寸，避免被预览缩放影响
+  const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  // 只在「换了一篇文章」时重建卡片。
+  // 不能依赖 doc 对象本身 —— App 里改标题/摘要会产生新的 doc 对象，
+  // 那样每次改元信息都会把用户在卡片上改过的文字冲掉。
+  // rawMd 只在重新导入文件时变化，正是我们想要的信号。
+  const articleKey = doc.rawMd
+  useEffect(() => {
+    const next = buildCards(doc, cardThemeId, siteName)
+    setCards(next)
+    setSelectedId(next[0]?.id ?? 'cover')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [articleKey])
+
+  // 主题/署名变化时同步到所有卡片
+  useEffect(() => {
+    setCards((prev) => prev.map((c) => ({ ...c, themeId: cardThemeId, footer: siteName })))
+  }, [cardThemeId, siteName])
+
+  const selected = useMemo(() => cards.find((c) => c.id === selectedId) ?? cards[0], [cards, selectedId])
+  const theme = getCardTheme(selected?.themeId ?? cardThemeId)
+
+  const patch = (id: string, changes: Partial<CardSpec>) => {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, ...changes } : c)))
+  }
+
+  const addCard = () => {
+    const id = `custom-${Date.now()}`
+    setCards((prev) => [
+      ...prev,
+      {
+        id,
+        layout: 'quote',
+        title: '在这里写一句想强调的话',
+        subtitle: '—— 摘自本文',
+        footer: siteName,
+        themeId: cardThemeId,
+      },
+    ])
+    setSelectedId(id)
+  }
+
+  const removeCard = (id: string) => {
+    setCards((prev) => {
+      const next = prev.filter((c) => c.id !== id)
+      if (selectedId === id) setSelectedId(next[0]?.id ?? '')
+      return next
+    })
+  }
+
+  const exportOne = async () => {
+    if (!selected) return
+    const node = nodeRefs.current[selected.id]
+    if (!node) {
+      onToast('渲染节点还没准备好，请稍后重试', 'error')
+      return
+    }
+    setExporting(true)
+    try {
+      const blob = await renderCardToBlob(node, { backgroundColor: theme.bg })
+      downloadBlob(blob, `${safeFileName(doc.meta.title)}-${layoutNames[selected.layout]}.png`)
+      onToast('已导出 1080×1440 PNG', 'success')
+    } catch (e) {
+      onToast(`导出失败：${e instanceof Error ? e.message : String(e)}`, 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const exportAll = async () => {
+    const entries = cards
+      .map((c) => {
+        const node = nodeRefs.current[c.id]
+        return node ? { node, name: `${safeFileName(doc.meta.title)}-${layoutNames[c.layout]}.png` } : null
+      })
+      .filter((x): x is { node: HTMLDivElement; name: string } => Boolean(x))
+
+    if (entries.length === 0) {
+      onToast('没有可导出的卡片', 'error')
+      return
+    }
+
+    setExporting(true)
+    setProgress('')
+    try {
+      await exportCardsAsZip(
+        entries,
+        `${safeFileName(doc.meta.title)}-配图.zip`,
+        { backgroundColor: theme.bg },
+        (done, total) => setProgress(`${done}/${total}`),
+      )
+      onToast(`已导出 ${entries.length} 张图`, 'success')
+    } catch (e) {
+      onToast(`导出失败：${e instanceof Error ? e.message : String(e)}`, 'error')
+    } finally {
+      setExporting(false)
+      setProgress('')
+    }
+  }
+
+  return (
+    <div className="studio">
+      {/* ---------- 预览 ---------- */}
+      <div className="studio-canvas">
+        <div
+          style={{
+            width: CARD_WIDTH * PREVIEW_SCALE,
+            height: CARD_HEIGHT * PREVIEW_SCALE,
+            overflow: 'hidden',
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+          }}
+        >
+          <div style={{ transform: `scale(${PREVIEW_SCALE})`, transformOrigin: 'top left' }}>
+            {selected ? <CardRenderer spec={selected} theme={theme} /> : null}
+          </div>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>
+          1080 × 1440 · 小红书 3:4
+        </div>
+      </div>
+
+      {/* ---------- 控制面板 ---------- */}
+      <div className="studio-panel">
+        <div className="side-title">
+          <span>卡片</span>
+          <span className="count">{cards.length} 张</span>
+        </div>
+
+        <div className="card-list" style={{ marginBottom: 16 }}>
+          {cards.map((c) => {
+            const t = getCardTheme(c.themeId)
+            return (
+              <button
+                key={c.id}
+                className={`card-item ${c.id === selectedId ? 'active' : ''}`}
+                onClick={() => setSelectedId(c.id)}
+              >
+                <div className="card-thumb" style={{ background: t.bg }}>
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: t.ink,
+                      fontFamily: '"Songti SC", serif',
+                      fontSize: 8,
+                      lineHeight: 1.3,
+                      padding: 3,
+                      textAlign: 'center',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {c.title.slice(0, 12)}
+                  </div>
+                </div>
+                <div className="card-item-body">
+                  <div className="card-item-title">
+                    {layoutNames[c.layout]}
+                    {c.id.startsWith('custom') ? '（自定义）' : ''}
+                  </div>
+                  <div className="card-item-sub">{c.title.slice(0, 26)}</div>
+                </div>
+                {c.id.startsWith('custom') ? (
+                  <span
+                    className="icon-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeCard(c.id)
+                    }}
+                    title="删除这张卡"
+                  >
+                    ×
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+          <button className="btn btn-sm" onClick={addCard}>
+            + 加一张卡
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              setCards(buildCards(doc, cardThemeId, siteName))
+              onToast('已按当前文章内容重新生成')
+            }}
+          >
+            重新生成
+          </button>
+        </div>
+
+        {/* 配色 */}
+        <div className="field">
+          <label className="field-label">配色</label>
+          <div className="theme-row">
+            {cardThemes.map((t) => (
+              <button
+                key={t.id}
+                className={`theme-chip ${cardThemeId === t.id ? 'active' : ''}`}
+                onClick={() => onThemeChange(t.id)}
+              >
+                <span className="theme-swatch" style={{ background: t.bg, borderColor: t.line }} />
+                <span
+                  className="theme-swatch"
+                  style={{ background: t.accent, borderColor: 'transparent', marginLeft: -4 }}
+                />
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label">署名（卡片底部）</label>
+          <input
+            className="field-input"
+            value={siteName}
+            onChange={(e) => onSiteNameChange(e.target.value)}
+            placeholder={DEFAULT_SITE_NAME}
+          />
+        </div>
+
+        {/* 编辑当前卡 */}
+        {selected ? (
+          <>
+            <div className="field">
+              <label className="field-label">
+                主文字
+                {selected.layout === 'cover' ? '（标题）' : selected.layout === 'points' ? '（小标题）' : ''}
+              </label>
+              <textarea
+                className="field-textarea"
+                value={selected.title}
+                onChange={(e) => patch(selected.id, { title: e.target.value })}
+              />
+            </div>
+
+            {selected.layout === 'points' ? (
+              <div className="field">
+                <label className="field-label">要点（每行一条，最多 5 条生效）</label>
+                <textarea
+                  className="field-textarea"
+                  style={{ minHeight: 110 }}
+                  value={(selected.points ?? []).join('\n')}
+                  onChange={(e) =>
+                    patch(selected.id, {
+                      points: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean),
+                    })
+                  }
+                />
+              </div>
+            ) : (
+              <div className="field">
+                <label className="field-label">副文字</label>
+                <textarea
+                  className="field-textarea"
+                  value={selected.subtitle ?? ''}
+                  onChange={(e) => patch(selected.id, { subtitle: e.target.value })}
+                />
+              </div>
+            )}
+
+            {selected.layout !== 'end' ? (
+              <div className="field">
+                <label className="field-label">左上角小标签</label>
+                <input
+                  className="field-input"
+                  value={selected.kicker ?? ''}
+                  onChange={(e) => patch(selected.id, { kicker: e.target.value })}
+                  placeholder="分类，留空则不显示"
+                />
+              </div>
+            ) : null}
+
+            <div className="field">
+              <label className="field-label">底部日期</label>
+              <input
+                className="field-input"
+                value={selected.date ?? ''}
+                onChange={(e) => patch(selected.id, { date: e.target.value })}
+                placeholder="2026.11.03"
+              />
+            </div>
+          </>
+        ) : null}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button className="btn btn-accent" onClick={exportOne} disabled={exporting || !selected}>
+            {exporting ? <span className="spinner" /> : null}
+            导出这张
+          </button>
+          <button className="btn" onClick={exportAll} disabled={exporting}>
+            {progress ? `导出中 ${progress}` : `导出全部（zip）`}
+          </button>
+        </div>
+
+        <div className="notice notice-info" style={{ marginTop: 14 }}>
+          <span className="notice-mark">i</span>
+          <span>
+            卡片是纯 CSS 渲染，不引用文章配图 —— 这样导出不会因为外链图跨域而失败。
+            导出用的是系统字体，在 macOS 上最准；换到 Windows 会回退到微软雅黑，长标题的换行位置可能略有偏移。
+          </span>
+        </div>
+      </div>
+
+      {/* ---------- 离屏渲染层：导出用 ---------- */}
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed',
+          left: -20000,
+          top: 0,
+          pointerEvents: 'none',
+        }}
+      >
+        {cards.map((c) => (
+          <div
+            key={c.id}
+            ref={(el) => {
+              nodeRefs.current[c.id] = el
+            }}
+          >
+            <CardRenderer spec={c} theme={getCardTheme(c.themeId)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

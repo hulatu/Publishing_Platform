@@ -1,0 +1,66 @@
+name: 构建并发布到 GitHub Pages
+
+# 推 main 就自动构建 + 跑回归 + 发布到 publish.hulatu.com。
+# 回归（scripts/check-*.ts）先跑再构建：解析层或摘要层退化时直接失败，不会把坏版本推上线。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只允许一个发布，避免两次 push 抢同一个 environment
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 回归检查（解析 / 渲染 / 摘要）
+        run: npm run check
+        env:
+          # CI 里没有本机博客目录，用仓库内自带的样本文章
+          POSTS_DIR: scripts/fixtures
+
+      - name: 构建
+        run: npm run build
+
+      - name: 准备 Pages
+        uses: actions/configure-pages@v5
+        with:
+          # 仓库还没开 Pages 时尝试自动开启；已经开过则这一步是空操作
+          enablement: true
+
+      - name: 上传构建产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 发布
+        id: deployment
+        uses: actions/deploy-pages@v4
