@@ -2967,6 +2967,17 @@ select {
   display: block;
 }
 
+/* 图挂了别只留一个空方块 —— 用户分不清是「加载失败」还是「还在加载」 */
+.img-thumb img.is-broken {
+  display: none;
+}
+
+.img-broken {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  letter-spacing: 0.3px;
+}
+
 .img-index {
   position: absolute;
   left: 6px;

@@ -55,6 +55,8 @@ async function fetchImage(url: string): Promise<Blob> {
 
 export function ImageList({ open, onClose, images, title }: Props) {
   const [status, setStatus] = useState<Record<string, Status>>({})
+  /** <img> 自身加载失败（链接失效、防盗链），和「跨域打不进包」是两回事 */
+  const [broken, setBroken] = useState<Record<string, true>>({})
   const [busy, setBusy] = useState(false)
 
   const failed = useMemo(
@@ -135,7 +137,15 @@ export function ImageList({ open, onClose, images, title }: Props) {
                 return (
                   <div className="img-item" key={img.src}>
                     <div className="img-thumb">
-                      <img src={img.src} alt={img.alt} referrerPolicy="no-referrer" loading="lazy" />
+                      <img
+                        src={img.src}
+                        alt={img.alt}
+                        referrerPolicy="no-referrer"
+                        loading="lazy"
+                        className={broken[img.src] ? 'is-broken' : undefined}
+                        onError={() => setBroken((p) => ({ ...p, [img.src]: true }))}
+                      />
+                      {broken[img.src] ? <span className="img-broken">图片加载失败</span> : null}
                       <span className="img-index">{String(i + 1).padStart(2, '0')}</span>
                       {s === 'ok' ? <span className="img-badge ok">✓</span> : null}
                       {s === 'fail' ? <span className="img-badge fail">跨域</span> : null}
