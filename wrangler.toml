@@ -1,0 +1,7 @@
+# Cloudflare Pages 项目配置
+# 用 wrangler 命令行直接上传时读这个文件；用面板「连接 Git」建的项目
+# 不读这里，构建命令和输出目录在面板里配。
+
+name = "hulatu-publish"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-01-01"

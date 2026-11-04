@@ -67,24 +67,42 @@ npm run preview    # 预览构建产物
 
 ## 部署
 
-推到 `main` 即自动发布：`.github/workflows/deploy.yml` 会安装依赖 → 跑 `npm run check`
-→ 构建 → 上传到 GitHub Pages。
+托管在 **Cloudflare Pages**，域名 `publish.hulatu.com`（和主站 `hulatu.com` 同一个
+Cloudflare 账号，证书和 DNS 都在那里统一管）。
 
-构建用相对路径（`base: './'`），所以同一份产物既能挂在根域名，也能挂在
-`hulatu.github.io/Publishing_Platform/` 子路径下，不用改配置。
+Cloudflare 从 GitHub 仓库 `hulatu/Publishing_Platform` 拉代码构建：
+
+| 配置项 | 值 |
+| --- | --- |
+| 生产分支 | `main` |
+| 构建命令 | `npm run build` |
+| 输出目录 | `dist` |
+| 环境变量 | `NODE_VERSION=22` |
+
+构建用相对路径（`base: './'`），产物既能挂根域名也能挂子路径，换托管不用改配置。
+`public/_headers` 给带哈希的 `/assets/*` 上了永久缓存，入口 HTML 不缓存。
+
+GitHub 上的 `.github/workflows/ci.yml` **只做校验不做发布**：push 时跑类型检查、
+解析/渲染/摘要回归、构建，坏了在 GitHub 上直接看红叉，不用等 Cloudflare 构建失败才发现。
 
 ### 域名
 
-- 仓库里的 `public/CNAME` 写着 `publish.hulatu.com`，会被一起构建进 `dist/`。
-- GitHub 仓库 **Settings → Pages → Custom domain** 也填同一个域名。
-- DNS（Cloudflare 托管）加一条记录：
+Cloudflare Pages 项目 → **Custom domains** → 添加 `publish.hulatu.com`。
 
-  | 类型 | 名称 | 目标 | 代理状态 |
-  | --- | --- | --- | --- |
-  | CNAME | `publish` | `hulatu.github.io` | **DNS only（灰云）** |
+因为域名和 Pages 项目在同一个账号下，Cloudflare 会**自动**在 `hulatu.com` 区域里
+建好 CNAME（指向 `hulatu-publish.pages.dev`），不需要手动去 DNS 页面加记录。
+手动加也行，代理状态开橙云即可——Pages 的证书由 Cloudflare 自己签，不存在
+GitHub Pages 那种「开代理就签不出证书」的问题。
 
-  必须关掉 Cloudflare 代理。开橙云时 GitHub 无法完成证书签发，会一直卡在
-  「certificate not yet provisioned」或直接证书错误。
+### 手动发布（可选）
+
+不想连 Git、想直接推构建产物：
+
+```bash
+npm run build
+npx wrangler pages deploy dist --project-name hulatu-publish
+```
+
 
 ## 目录结构
 

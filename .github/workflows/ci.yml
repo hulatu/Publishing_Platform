@@ -1,0 +1,43 @@
+name: 构建校验
+
+# 只做校验，不做发布 —— 托管在 Cloudflare Pages，由它自己拉代码构建。
+# 这里的作用是：push / PR 时先把类型、解析、渲染、摘要跑一遍，
+# 坏了在 GitHub 上就能看到红叉，不用等 Cloudflare 构建失败才发现。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 回归检查（解析 / 渲染 / 摘要）
+        run: npm run check
+        env:
+          # CI 里没有本机博客目录，用仓库内自带的样本文章
+          POSTS_DIR: scripts/fixtures
+
+      - name: 构建
+        run: npm run build
