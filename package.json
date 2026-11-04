@@ -8,13 +8,14 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "npm run check:parse && npm run check:digest && npm run check:themes && npm run check:cards",
+    "check": "npm run check:parse && npm run check:digest && npm run check:themes && npm run check:cards && npm run check:compliance",
     "check:cards": "esbuild scripts/check-cards.ts --bundle --platform=node --format=esm --outfile=.tmp/check-cards.mjs --log-level=warning && node .tmp/check-cards.mjs",
     "check:themes": "esbuild scripts/check-themes.ts --bundle --platform=node --format=esm --outfile=.tmp/check-themes.mjs --log-level=warning && node .tmp/check-themes.mjs",
     "icons": "bash scripts/build-icons.sh",
     "check:fixtures": "POSTS_DIR=scripts/fixtures npm run check",
     "check:parse": "esbuild scripts/check-parse.ts --bundle --platform=node --format=esm --outfile=.tmp/check-parse.mjs --log-level=warning && node .tmp/check-parse.mjs",
-    "check:digest": "esbuild scripts/check-digest.ts --bundle --platform=node --format=esm --outfile=.tmp/check-digest.mjs --log-level=warning && node .tmp/check-digest.mjs"
+    "check:digest": "esbuild scripts/check-digest.ts --bundle --platform=node --format=esm --outfile=.tmp/check-digest.mjs --log-level=warning && node .tmp/check-digest.mjs",
+    "check:compliance": "esbuild scripts/check-compliance.ts --bundle --platform=node --format=esm --outfile=.tmp/check-compliance.mjs --log-level=warning && node .tmp/check-compliance.mjs"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",

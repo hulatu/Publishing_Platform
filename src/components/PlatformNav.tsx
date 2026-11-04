@@ -7,6 +7,8 @@ interface Props {
   onSelect: (id: string) => void
   /** 每个改写平台各自的状态，切换 tab 不丢 */
   platformStatus: Record<string, JobStatus>
+  /** 发布台账：已发过的平台 id → 记录 */
+  published: Record<string, { at: string }>
 }
 
 /** 单个汉字做「图标」：比一排灰色徽章好扫，也不用引图标库 */
@@ -30,6 +32,7 @@ function NavItem({
   active,
   onSelect,
   dot,
+  published,
 }: {
   id: string
   name: string
@@ -38,9 +41,15 @@ function NavItem({
   active: boolean
   onSelect: (id: string) => void
   dot?: 'ok' | 'warn' | 'error' | 'idle'
+  /** 已发过：名字后面挂个勾，扫一眼就知道还剩几个平台 */
+  published?: boolean
 }) {
   return (
-    <button className={`nav-item ${active ? 'active' : ''}`} onClick={() => onSelect(id)} title={hint}>
+    <button
+      className={`nav-item ${active ? 'active' : ''} ${published ? 'published' : ''}`}
+      onClick={() => onSelect(id)}
+      title={published ? `${hint} · 已发布` : hint}
+    >
       <span className="nav-mark" aria-hidden>
         {MONOGRAM[id] ?? '·'}
       </span>
@@ -48,13 +57,18 @@ function NavItem({
         <span className="nav-item-name">{name}</span>
         <span className="nav-item-meta">{hint}</span>
       </span>
+      {published ? (
+        <span className="nav-check" aria-label="已发布">
+          ✓
+        </span>
+      ) : null}
       {dot && dot !== 'idle' ? <span className={`dot dot-${dot}`} /> : null}
       <span className="nav-badge">{badge}</span>
     </button>
   )
 }
 
-export function PlatformNav({ active, onSelect, platformStatus }: Props) {
+export function PlatformNav({ active, onSelect, platformStatus, published }: Props) {
   const dotOf = (id: string): 'ok' | 'warn' | 'error' | 'idle' => {
     const s = platformStatus[id] ?? 'idle'
     if (s === 'running') return 'warn'
@@ -63,11 +77,16 @@ export function PlatformNav({ active, onSelect, platformStatus }: Props) {
     return 'idle'
   }
 
+  const total = convertPlatforms.length + rewritePlatforms.length
+  const done = Object.keys(published).length
+
   return (
     <div className="side-section nav-section">
       <div className="side-title">
         <span>发布到</span>
-        <span className="count">{convertPlatforms.length + rewritePlatforms.length + 1}</span>
+        <span className={`count ${done === total && total > 0 ? 'all-done' : ''}`}>
+          {done > 0 ? `已发 ${done}/${total}` : total}
+        </span>
       </div>
 
       <div className="nav-group">
@@ -81,6 +100,7 @@ export function PlatformNav({ active, onSelect, platformStatus }: Props) {
             badge="转换"
             active={active === p.id}
             onSelect={onSelect}
+            published={Boolean(published[p.id])}
           />
         ))}
       </div>
@@ -97,6 +117,7 @@ export function PlatformNav({ active, onSelect, platformStatus }: Props) {
             active={active === p.id}
             onSelect={onSelect}
             dot={dotOf(p.id)}
+            published={Boolean(published[p.id])}
           />
         ))}
       </div>

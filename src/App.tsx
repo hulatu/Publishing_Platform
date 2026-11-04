@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Doc, DocMeta } from './core/ir'
-import { blocksToText } from './core/ir'
+import { blocksToText, collectImages } from './core/ir'
 import { parseArticle, renderPreviewHtml } from './core/parse'
 import { charCount } from './core/cjk'
 import { splitSections } from './core/sections'
 import { copyByMode, copyPlain, downloadText, mimeFor } from './core/copy'
 import { splitByH2 } from './core/split'
+import { checkText, scopeOf, stripHtml } from './core/compliance'
+import {
+  articleKeyOf,
+  clearArticle,
+  markPublished as markRecord,
+  readLedger,
+  setUrl as setLedgerUrl,
+  unmark,
+  type ArticleLedger,
+} from './core/ledger'
 import { convertPlatforms, getConvertPlatform, rewritePlatforms, type RenderOutput } from './renderers'
 import { WECHAT_CONTENT_LIMIT } from './renderers/wechat'
 import { ThemePicker } from './components/ThemePicker'
@@ -32,6 +42,9 @@ import { PlatformNav } from './components/PlatformNav'
 import { AIPanel } from './components/AIPanel'
 import { CardStudio } from './components/CardStudio'
 import { SettingsSheet } from './components/SettingsSheet'
+import { ComplianceChip } from './components/ComplianceChip'
+import { PublishLedger } from './components/PublishLedger'
+import { ImageList } from './components/ImageList'
 import { NoticeStack, type NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
@@ -83,6 +96,10 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsVersion, setSettingsVersion] = useState(0)
+  /** 发布台账：这篇文章已经发到哪几个平台 */
+  const [ledger, setLedger] = useState<ArticleLedger>({})
+  const [ledgerOpen, setLedgerOpen] = useState(false)
+  const [imagesOpen, setImagesOpen] = useState(false)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
   const abortRef = useRef<AbortController | null>(null)
@@ -158,6 +175,52 @@ export default function App() {
       level: i === 0 && hasError ? 'error' : 'warn',
     }))
   }, [output])
+
+  /* ---------------- 发布台账 / 合规检查 / 图片清单 ---------------- */
+
+  const articleKey = doc ? articleKeyOf(doc) : ''
+
+  // 换文章才重读台账；改标题时 key 变了也会重读，但那是同一篇的新名字，读不到旧记录也无所谓
+  useEffect(() => {
+    setLedger(doc ? readLedger(doc) : {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [articleKey])
+
+  const images = useMemo(() => (doc ? collectImages(doc.blocks) : []), [doc])
+
+  /** 检查用的纯文本：转换平台看产物，改写平台看当前生成的文案 */
+  const checkContent = useMemo(() => {
+    if (kind === 'convert' && output) {
+      const plain = output.text || output.primary
+      return output.format === 'html' ? stripHtml(plain) : plain
+    }
+    if (kind === 'rewrite' && isRewriteId(platform)) {
+      // 流式输出时每个 chunk 都会变，正文检查要等它写完，否则每次都要扫几万字
+      if (platformStates[platform].status === 'running') return ''
+      const r = platformStates[platform].result
+      if (!r) return ''
+      return [
+        r.xhs?.title,
+        r.xhs?.body,
+        r.xhs?.tags?.join(' '),
+        r.twitter?.thread?.join('\n'),
+        r.jike?.body,
+        r.weibo?.text,
+        r.weibo?.topics?.join(' '),
+      ]
+        .filter(Boolean)
+        .join('\n')
+    }
+    return ''
+  }, [kind, output, platform, platformStates])
+
+  const complianceHits = useMemo(
+    () => checkText(checkContent, scopeOf(platform)),
+    [checkContent, platform],
+  )
+
+  const scopeLabel =
+    platform === 'xiaohongshu' ? '小红书规则' : platform === 'wechat' ? '公众号规则' : '通用规则'
 
   /* ---------------- 章节切分 ---------------- */
 
@@ -319,40 +382,50 @@ export default function App() {
     async (text: string, label: string) => {
       try {
         await copyPlain(text)
-        toast(`已复制${label}`, 'success')
+        // 改写平台复制成功也算发过了；第一次会顺带提示，避免用户以为只是复制
+        let tail = ''
+        if (doc && isRewriteId(platform)) {
+          tail = ledger[platform] ? '' : ' · 已记为已发'
+          setLedger(markRecord(doc, platform))
+        }
+        toast(`已复制${label}${tail}`, 'success')
       } catch {
         toast('复制失败，浏览器拒绝了剪贴板访问', 'error')
       }
     },
-    [toast],
+    [toast, doc, platform, ledger],
   )
 
   const doCopyPrimary = useCallback(async () => {
     if (!output) return
     try {
       const mode = await copyByMode(output.copyMode, { html: output.html, text: output.text })
+      const tail = ledger[platform] ? '' : ' · 已记为已发'
+      if (doc) setLedger(markRecord(doc, platform))
       if (output.copyMode === 'rich') {
         toast(
-          mode === 'rich' ? '已复制富文本，直接粘进编辑器即可' : '浏览器不支持富文本复制，已改为复制纯文本',
+          mode === 'rich' ? `已复制富文本，直接粘进编辑器即可${tail}` : `浏览器不支持富文本复制，已改为复制纯文本${tail}`,
           mode === 'rich' ? 'success' : 'info',
         )
       } else {
-        toast('已复制', 'success')
+        toast(`已复制${tail}`, 'success')
       }
     } catch {
       toast('复制失败', 'error')
     }
-  }, [output, toast])
+  }, [output, toast, doc, platform, ledger])
 
   const doCopySource = useCallback(async () => {
     if (!output) return
     try {
       await copyPlain(output.primary)
-      toast('已复制源码', 'success')
+      const tail = ledger[platform] ? '' : ' · 已记为已发'
+      if (doc) setLedger(markRecord(doc, platform))
+      toast(`已复制源码${tail}`, 'success')
     } catch {
       toast('复制失败', 'error')
     }
-  }, [output, toast])
+  }, [output, toast, doc, platform, ledger])
 
   const doDownload = useCallback(() => {
     if (!output) return
@@ -395,6 +468,10 @@ export default function App() {
     return map
   }, [platformStates])
 
+  /** 台账进度：8 个平台发了几个 */
+  const platformTotal = convertPlatforms.length + rewritePlatforms.length
+  const ledgerDone = Object.keys(ledger).length
+
   return (
     <div className="app">
       {/* ================= 顶栏 ================= */}
@@ -424,6 +501,16 @@ export default function App() {
           <span>{providerReady ? 'AI 已就绪' : '填入 API Key'}</span>
         </button>
 
+        {doc ? (
+          <button
+            className={`btn btn-sm btn-quiet ledger-entry ${ledgerDone === platformTotal ? 'complete' : ''}`}
+            onClick={() => setLedgerOpen(true)}
+            title="发布台账：记录这篇文章发到哪几个平台、什么时候、链接是什么"
+          >
+            台账 {ledgerDone}/{platformTotal}
+          </button>
+        ) : null}
+
         <button className="btn btn-sm btn-quiet" onClick={() => setSettingsOpen(true)}>
           设置
         </button>
@@ -434,7 +521,12 @@ export default function App() {
         <aside className="sidebar">
           <ImportPanel currentName={fileName} onLoad={load} onError={(m) => toast(m, 'error')} />
           {doc ? <MetaEditor meta={doc.meta} onChange={updateMeta} /> : null}
-          <PlatformNav active={platform} onSelect={setPlatform} platformStatus={navStatus} />
+          <PlatformNav
+            active={platform}
+            onSelect={setPlatform}
+            platformStatus={navStatus}
+            published={ledger}
+          />
         </aside>
 
         {/* ================= 主区域 ================= */}
@@ -449,6 +541,18 @@ export default function App() {
               <div className="head-tools">
                 {currentPlatformMeta?.limits ? (
                   <span className="limit-chip">{currentPlatformMeta.limits}</span>
+                ) : null}
+                {doc && kind !== 'card' && checkContent.length > 0 ? (
+                  <ComplianceChip hits={complianceHits} scopeLabel={scopeLabel} />
+                ) : null}
+                {doc && kind !== 'card' && images.length > 0 ? (
+                  <button
+                    className="head-chip"
+                    onClick={() => setImagesOpen(true)}
+                    title="正文图片清单：按序号打包下载，方便传进公众号"
+                  >
+                    图片 {images.length}
+                  </button>
                 ) : null}
                 {canPreview ? (
                   <div className="segmented view-switch">
@@ -677,6 +781,30 @@ export default function App() {
           toast(m, 'success')
         }}
       />
+
+      {doc ? (
+        <PublishLedger
+          open={ledgerOpen}
+          onClose={() => setLedgerOpen(false)}
+          title={doc.meta.title}
+          ledger={ledger}
+          onMark={(id) => setLedger(markRecord(doc, id))}
+          onUnmark={(id) => setLedger(unmark(doc, id))}
+          onSetUrl={(id, url) => setLedger(setLedgerUrl(doc, id, url))}
+          onClear={() => {
+            setLedger(clearArticle(doc))
+            toast('已清空这篇的台账')
+          }}
+        />
+      ) : null}
+
+      <ImageList
+        open={imagesOpen}
+        onClose={() => setImagesOpen(false)}
+        images={images}
+        title={doc?.meta.title ?? '文章'}
+      />
+
       <ToastLayer items={toasts} />
     </div>
   )
