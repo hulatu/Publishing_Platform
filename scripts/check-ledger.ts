@@ -3,7 +3,9 @@ import {
   articleKeyOf,
   clearArticle,
   markPublished,
+  readAllLedgers,
   readLedger,
+  setStats,
   setUrl,
   unmark,
 } from '../src/core/ledger'
@@ -64,6 +66,38 @@ markPublished('a', 'wechat')
 markPublished('b', 'xhs')
 ok(Object.keys(readLedger('a')).join() === 'wechat', 'A 篇只看到自己的记录')
 ok(Object.keys(readLedger('b')).join() === 'xhs', 'B 篇只看到自己的记录')
+
+/* ---------------- 数据字段的共存 ---------------- */
+// 链接和数据是分开填的（往往先发布、后补数据，或者反过来），
+// 任何一个写入路径顺手把另一个抹掉，用户都只会觉得「我填的东西没了」
+
+markPublished('stats', 'wechat')
+setUrl('stats', 'wechat', 'https://mp.weixin.qq.com/s/x')
+setStats('stats', 'wechat', { read: 1200 })
+setStats('stats', 'wechat', { like: 30 })
+
+let rec = readLedger('stats').wechat
+ok(rec?.url === 'https://mp.weixin.qq.com/s/x', '填数据不影响已填的链接')
+ok(rec?.stats?.read === 1200 && rec?.stats?.like === 30, '分两次填的数字都留住了')
+
+setUrl('stats', 'wechat', 'https://mp.weixin.qq.com/s/y')
+ok(readLedger('stats').wechat?.stats?.read === 1200, '改链接不抹掉数据')
+
+markPublished('stats', 'wechat')
+rec = readLedger('stats').wechat
+ok(rec?.url === 'https://mp.weixin.qq.com/s/y' && rec?.stats?.like === 30, '重新标记同时保住链接与数据')
+
+// 清空某一项：传 undefined 应该把它删掉，而不是留个 0
+setStats('stats', 'wechat', { read: undefined })
+rec = readLedger('stats').wechat
+ok(rec?.stats?.read === undefined, '清空阅读这一项')
+ok(rec?.stats?.like === 30, '清空一项不影响其它项')
+
+// 全清空后不留空对象，否则「有没有填过」的判断会变复杂
+setStats('stats', 'wechat', { like: undefined })
+ok(readLedger('stats').wechat?.stats === undefined, '四项全空时整块删掉，不留 {}')
+
+ok(Object.keys(readAllLedgers()).length >= 2, `readAllLedgers 能拿到全部 ${Object.keys(readAllLedgers()).length} 篇`)
 
 console.log(failed === 0 ? '\n✓ 台账层全部通过' : `\n✗ ${failed} 项失败`)
 process.exit(failed === 0 ? 0 : 1)

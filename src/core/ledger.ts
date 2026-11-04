@@ -1,8 +1,9 @@
 /**
  * 发布台账
  *
- * 一篇文章要发 8 个地方，发到第几个、哪天发的、链接是什么，全靠脑子记不住。
- * 这里只存最轻的三件事：哪个平台、什么时候、发布后的链接，全部落在 localStorage。
+ * 一篇文章要发 11 个地方，发到第几个、哪天发的、链接是什么，全靠脑子记不住。
+ * 这里只存最轻的几件事：哪个平台、什么时候、发布后的链接、发布后的数据，
+ * 全部落在 localStorage。
  *
  * 为什么用「文章标题 / slug」而不是文件名做 key：
  * 同一篇文章可能被重新导入（改了几句话再发一次），文件名会变，标题不会。
@@ -10,11 +11,24 @@
 
 import type { Doc } from './ir'
 
+/**
+ * 发布后的数据。全部手填 —— 这 11 个平台没有一家给个人号开数据接口，
+ * 想让工具自动抓就得做爬虫，维护成本远高于收益。所以只做「填得快 + 看得清」。
+ */
+export interface PlatformStats {
+  read?: number
+  like?: number
+  comment?: number
+  fav?: number
+}
+
 export interface PlatformRecord {
   /** ISO 时间串，展示时再格式化 */
   at: string
   /** 发布后的链接，可选 */
   url?: string
+  /** 发布后几天的数据，可选 */
+  stats?: PlatformStats
 }
 
 export type ArticleLedger = Record<string, PlatformRecord>
@@ -74,6 +88,11 @@ export function readLedger(key: string): ArticleLedger {
   return readStore()[key] ?? {}
 }
 
+/** 全部文章的台账，复盘要跨篇看 */
+export function readAllLedgers(): Record<string, ArticleLedger> {
+  return readStore()
+}
+
 /** 写入或删除一条记录；record 为 null 表示取消标记 */
 export function setRecord(key: string, platformId: string, record: PlatformRecord | null): ArticleLedger {
   const store = readStore()
@@ -87,10 +106,10 @@ export function setRecord(key: string, platformId: string, record: PlatformRecor
   return next
 }
 
-/** 复制成功即标记为已发布；保留原来填过的链接 */
+/** 复制成功即标记为已发布；保留原来填过的链接与数据 */
 export function markPublished(key: string, platformId: string): ArticleLedger {
   const prev = readLedger(key)[platformId]
-  return setRecord(key, platformId, { at: new Date().toISOString(), url: prev?.url })
+  return setRecord(key, platformId, { at: new Date().toISOString(), url: prev?.url, stats: prev?.stats })
 }
 
 export function unmark(key: string, platformId: string): ArticleLedger {
@@ -102,6 +121,28 @@ export function setUrl(key: string, platformId: string, url: string): ArticleLed
   return setRecord(key, platformId, {
     at: prev?.at ?? new Date().toISOString(),
     url: url.trim() || undefined,
+    // 改链接不能顺手把数据抹掉 —— 用户往往是先填数据、后来才补链接
+    stats: prev?.stats,
+  })
+}
+
+/**
+ * 填一个数字。传空串（或 NaN）表示清掉这一项。
+ *
+ * 不整体替换 stats 而是按字段 merge：用户一栏一栏地填，
+ * 每敲一次都整体替换会把还没填的字段冲成 undefined。
+ */
+export function setStats(key: string, platformId: string, patch: PlatformStats): ArticleLedger {
+  const prev = readLedger(key)[platformId]
+  const merged: PlatformStats = { ...prev?.stats, ...patch }
+
+  // 全空就整块删掉，别留一个 {} 在存储里让「有没有填过」判断变复杂
+  const hasAny = Object.values(merged).some((v) => typeof v === 'number' && Number.isFinite(v))
+
+  return setRecord(key, platformId, {
+    at: prev?.at ?? new Date().toISOString(),
+    url: prev?.url,
+    stats: hasAny ? merged : undefined,
   })
 }
 

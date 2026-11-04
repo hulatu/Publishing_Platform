@@ -24,11 +24,15 @@ import {
   articleKeyOf,
   clearArticle,
   markPublished as markRecord,
+  readAllLedgers,
   readLedger,
+  setStats as setLedgerStats,
   setUrl as setLedgerUrl,
   unmark,
   type ArticleLedger,
+  type PlatformStats,
 } from './core/ledger'
+import { summarizeAll } from './core/review'
 import { convertPlatforms, getConvertPlatform, rewritePlatforms, type RenderOutput } from './renderers'
 import { WECHAT_CONTENT_LIMIT } from './renderers/wechat'
 import { ThemePicker } from './components/ThemePicker'
@@ -64,6 +68,7 @@ import { ImageList } from './components/ImageList'
 import { MetaLab } from './components/MetaLab'
 import { TailSheet } from './components/TailSheet'
 import { DraftsSheet } from './components/DraftsSheet'
+import { ReviewSheet } from './components/ReviewSheet'
 import { NoticeStack, type NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
@@ -157,6 +162,7 @@ export default function App() {
   const [sourceText, setSourceText] = useState('')
   const [drafts, setDrafts] = useState<DraftSnapshot[]>(listDrafts)
   const [draftsOpen, setDraftsOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const saveTimer = useRef<number | null>(null)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
@@ -271,6 +277,27 @@ export default function App() {
   useEffect(() => {
     setLedger(articleKey ? readLedger(articleKey) : {})
   }, [articleKey])
+
+  /**
+   * 跨篇复盘。
+   *
+   * 标题优先取草稿箱里的（那里存着每篇的完整 meta），草稿被淘汰了就退化成 slug ——
+   * 至少还能认出是哪篇，不至于显示成「未命名」。
+   */
+  const summaries = useMemo(() => {
+    const titles = new Map(drafts.map((d) => [d.key, d.title]))
+    if (doc) titles.set(articleKey, doc.meta.title)
+    return summarizeAll(readAllLedgers(), (k) => titles.get(k))
+    // reviewOpen 进依赖：每次打开都重读，避免在别的标签页改过之后看到旧数字
+  }, [drafts, doc, articleKey, ledger, reviewOpen])
+
+  const changeStats = useCallback(
+    (platformId: string, patch: PlatformStats) => {
+      if (!articleKey) return
+      setLedger(setLedgerStats(articleKey, platformId, patch))
+    },
+    [articleKey],
+  )
 
   const images = useMemo(() => (doc ? collectImages(doc.blocks) : []), [doc])
 
@@ -736,6 +763,16 @@ export default function App() {
           </button>
         ) : null}
 
+        {doc ? (
+          <button
+            className="btn btn-sm btn-quiet review-entry"
+            onClick={() => setReviewOpen(true)}
+            title="复盘：手填各平台的阅读 / 点赞 / 评论 / 收藏，看互动率与跨篇对比"
+          >
+            复盘
+          </button>
+        ) : null}
+
         <button
           className={`btn btn-sm btn-quiet drafts-entry ${drafts.length > 0 ? 'has' : ''}`}
           onClick={() => {
@@ -1094,6 +1131,15 @@ export default function App() {
         onOpen={restoreDraft}
         onDelete={removeDraft}
         onClearAll={wipeDrafts}
+      />
+
+      <ReviewSheet
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        articleTitle={doc?.meta.title ?? ''}
+        ledger={ledger}
+        summaries={summaries}
+        onSetStats={changeStats}
       />
 
       <ToastLayer items={toasts} />

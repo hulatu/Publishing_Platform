@@ -28,7 +28,7 @@ function Harness() {
       .then((src) => {
         if (cancelled) return
 
-        // ?seed=1：先写几条台账，方便看「已发」态
+        // ?seed=1：先写几条台账，方便看「已发」态与复盘
         if (params.get('seed') === '1') {
           const title = /^title:\s*"?(.+?)"?\s*$/m.exec(src)?.[1] ?? '未命名'
           const at = new Date().toISOString()
@@ -36,9 +36,17 @@ function Harness() {
             'ad.publish-ledger.v1',
             JSON.stringify({
               [title]: {
-                wechat: { at, url: 'https://mp.weixin.qq.com/s/demo' },
-                zhihu: { at },
-                xiaohongshu: { at },
+                wechat: { at, url: 'https://mp.weixin.qq.com/s/demo', stats: { read: 3820, like: 96, comment: 21, fav: 148 } },
+                zhihu: { at, stats: { read: 12600, like: 210, comment: 64 } },
+                xiaohongshu: { at, stats: { read: 8700, like: 640, comment: 88, fav: 410 } },
+                douban: { at },
+              },
+              'why-i-write': {
+                wechat: {
+                  at: '2026-10-02T09:00:00.000Z',
+                  stats: { read: 2100, like: 40, comment: 8, fav: 60 },
+                },
+                jike: { at: '2026-10-02T09:10:00.000Z', stats: { read: 640, like: 33 } },
               },
             }),
           )
@@ -83,7 +91,9 @@ function Harness() {
                 ? '.tail-entry'
                 : open === 'drafts'
                   ? '.drafts-entry'
-                  : ''
+                  : open === 'review'
+                    ? '.review-entry'
+                    : ''
     if (!sel) return
     const t = setTimeout(() => {
       document.querySelector<HTMLButtonElement>(sel)?.click()
@@ -97,6 +107,12 @@ function Harness() {
       if (params.get('tab') === 'preview') {
         setTimeout(() => {
           document.querySelectorAll<HTMLButtonElement>('.tail-tabs button')[1]?.click()
+        }, 300)
+      }
+      // ?rtab=all：复盘弹层切到「全部」
+      if (params.get('rtab') === 'all') {
+        setTimeout(() => {
+          document.querySelectorAll<HTMLButtonElement>('.rev-tabs button')[1]?.click()
         }, 300)
       }
       // ?pick=N：点草稿箱第 N 行的「打开」，用来核对恢复流程
