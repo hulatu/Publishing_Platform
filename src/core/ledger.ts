@@ -65,14 +65,18 @@ function prune(store: Store): Store {
   return kept
 }
 
-export function readLedger(doc: Doc): ArticleLedger {
-  return readStore()[articleKeyOf(doc)] ?? {}
+/**
+ * 下面这些函数收的是 key 而不是 doc —— 因为用户可能导入后改标题，
+ * 如果每次都从 doc 重算 key，改完标题台账就「清空」了（记录其实还在旧 key 下）。
+ * key 由 App 在导入时算一次、锁定下来。
+ */
+export function readLedger(key: string): ArticleLedger {
+  return readStore()[key] ?? {}
 }
 
 /** 写入或删除一条记录；record 为 null 表示取消标记 */
-export function setRecord(doc: Doc, platformId: string, record: PlatformRecord | null): ArticleLedger {
+export function setRecord(key: string, platformId: string, record: PlatformRecord | null): ArticleLedger {
   const store = readStore()
-  const key = articleKeyOf(doc)
   const next: ArticleLedger = { ...(store[key] ?? {}) }
 
   if (record) next[platformId] = record
@@ -84,26 +88,26 @@ export function setRecord(doc: Doc, platformId: string, record: PlatformRecord |
 }
 
 /** 复制成功即标记为已发布；保留原来填过的链接 */
-export function markPublished(doc: Doc, platformId: string): ArticleLedger {
-  const prev = readLedger(doc)[platformId]
-  return setRecord(doc, platformId, { at: new Date().toISOString(), url: prev?.url })
+export function markPublished(key: string, platformId: string): ArticleLedger {
+  const prev = readLedger(key)[platformId]
+  return setRecord(key, platformId, { at: new Date().toISOString(), url: prev?.url })
 }
 
-export function unmark(doc: Doc, platformId: string): ArticleLedger {
-  return setRecord(doc, platformId, null)
+export function unmark(key: string, platformId: string): ArticleLedger {
+  return setRecord(key, platformId, null)
 }
 
-export function setUrl(doc: Doc, platformId: string, url: string): ArticleLedger {
-  const prev = readLedger(doc)[platformId]
-  return setRecord(doc, platformId, {
+export function setUrl(key: string, platformId: string, url: string): ArticleLedger {
+  const prev = readLedger(key)[platformId]
+  return setRecord(key, platformId, {
     at: prev?.at ?? new Date().toISOString(),
     url: url.trim() || undefined,
   })
 }
 
-export function clearArticle(doc: Doc): ArticleLedger {
+export function clearArticle(key: string): ArticleLedger {
   const store = readStore()
-  delete store[articleKeyOf(doc)]
+  delete store[key]
   writeStore(store)
   return {}
 }

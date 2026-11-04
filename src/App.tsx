@@ -98,6 +98,8 @@ export default function App() {
   const [settingsVersion, setSettingsVersion] = useState(0)
   /** 发布台账：这篇文章已经发到哪几个平台 */
   const [ledger, setLedger] = useState<ArticleLedger>({})
+  /** 台账的 key 在导入时算一次就锁住 —— 用户改标题不该把记录「弄丢」 */
+  const [articleKey, setArticleKey] = useState('')
   const [ledgerOpen, setLedgerOpen] = useState(false)
   const [imagesOpen, setImagesOpen] = useState(false)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
@@ -117,6 +119,7 @@ export default function App() {
       setFileName(name)
       setDigest(emptyDigestState)
       setPlatformStates(emptyPlatformStates())
+      setArticleKey(articleKeyOf(parsed))
       if (parsed.blocks.length === 0) {
         toast('解析后正文是空的，请检查文件内容', 'error')
       } else {
@@ -178,12 +181,9 @@ export default function App() {
 
   /* ---------------- 发布台账 / 合规检查 / 图片清单 ---------------- */
 
-  const articleKey = doc ? articleKeyOf(doc) : ''
-
-  // 换文章才重读台账；改标题时 key 变了也会重读，但那是同一篇的新名字，读不到旧记录也无所谓
+  // 换文章才重读台账。key 在导入时算一次就锁住，改标题不会把它冲掉
   useEffect(() => {
-    setLedger(doc ? readLedger(doc) : {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLedger(articleKey ? readLedger(articleKey) : {})
   }, [articleKey])
 
   const images = useMemo(() => (doc ? collectImages(doc.blocks) : []), [doc])
@@ -384,16 +384,16 @@ export default function App() {
         await copyPlain(text)
         // 改写平台复制成功也算发过了；第一次会顺带提示，避免用户以为只是复制
         let tail = ''
-        if (doc && isRewriteId(platform)) {
+        if (articleKey && isRewriteId(platform)) {
           tail = ledger[platform] ? '' : ' · 已记为已发'
-          setLedger(markRecord(doc, platform))
+          setLedger(markRecord(articleKey, platform))
         }
         toast(`已复制${label}${tail}`, 'success')
       } catch {
         toast('复制失败，浏览器拒绝了剪贴板访问', 'error')
       }
     },
-    [toast, doc, platform, ledger],
+    [toast, articleKey, platform, ledger],
   )
 
   const doCopyPrimary = useCallback(async () => {
@@ -401,7 +401,7 @@ export default function App() {
     try {
       const mode = await copyByMode(output.copyMode, { html: output.html, text: output.text })
       const tail = ledger[platform] ? '' : ' · 已记为已发'
-      if (doc) setLedger(markRecord(doc, platform))
+      if (articleKey) setLedger(markRecord(articleKey, platform))
       if (output.copyMode === 'rich') {
         toast(
           mode === 'rich' ? `已复制富文本，直接粘进编辑器即可${tail}` : `浏览器不支持富文本复制，已改为复制纯文本${tail}`,
@@ -413,19 +413,19 @@ export default function App() {
     } catch {
       toast('复制失败', 'error')
     }
-  }, [output, toast, doc, platform, ledger])
+  }, [output, toast, articleKey, platform, ledger])
 
   const doCopySource = useCallback(async () => {
     if (!output) return
     try {
       await copyPlain(output.primary)
       const tail = ledger[platform] ? '' : ' · 已记为已发'
-      if (doc) setLedger(markRecord(doc, platform))
+      if (articleKey) setLedger(markRecord(articleKey, platform))
       toast(`已复制源码${tail}`, 'success')
     } catch {
       toast('复制失败', 'error')
     }
-  }, [output, toast, doc, platform, ledger])
+  }, [output, toast, articleKey, platform, ledger])
 
   const doDownload = useCallback(() => {
     if (!output) return
@@ -788,11 +788,11 @@ export default function App() {
           onClose={() => setLedgerOpen(false)}
           title={doc.meta.title}
           ledger={ledger}
-          onMark={(id) => setLedger(markRecord(doc, id))}
-          onUnmark={(id) => setLedger(unmark(doc, id))}
-          onSetUrl={(id, url) => setLedger(setLedgerUrl(doc, id, url))}
+          onMark={(id) => setLedger(markRecord(articleKey, id))}
+          onUnmark={(id) => setLedger(unmark(articleKey, id))}
+          onSetUrl={(id, url) => setLedger(setLedgerUrl(articleKey, id, url))}
           onClear={() => {
-            setLedger(clearArticle(doc))
+            setLedger(clearArticle(articleKey))
             toast('已清空这篇的台账')
           }}
         />
