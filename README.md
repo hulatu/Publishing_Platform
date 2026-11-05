@@ -66,10 +66,19 @@ npm run dev        # http://localhost:5183
 
 ```bash
 npm run typecheck  # 只做类型检查
-npm run check      # 解析/渲染 + 摘要两套回归（会扫 content 目录里的真实文章）
+npm run check      # 全部回归（扫 ~/Blog/content/posts 的 109 篇真实文章）
+npm run check:fixtures  # 同一条回归，但用仓库内 scripts/fixtures 的 4 篇样本
 npm run build      # 类型检查 + 生产构建到 dist/
 npm run preview    # 预览构建产物
 ```
+
+**提交前跑 `npm run check:fixtures`。** GitHub Actions 跑的就是这一条命令。
+
+两套样本不是一回事：本地 `check` 读你机器上 Hugo 博客的 109 篇文章，覆盖面最好；
+CI 里没有那个目录，只能读仓库自带的 4 篇 fixtures。样本不同 → 结果可能不同，
+曾经出现过「本地全绿、CI 每次推送都红」的情况（`fixture-html.md` 在编号主题下
+字符涨 22.3%，撞上 20% 的阈值，而 109 篇真实文章里没有这篇）。
+现在 CI 用 `check:fixtures`，和本地这条命令完全一致，红就是真红。
 
 ## 公众号排版主题
 
@@ -236,7 +245,12 @@ Cloudflare 从 GitHub 仓库 `hulatu/Publishing_Platform` 拉代码构建：
 `public/_headers` 给带哈希的 `/assets/*` 上了永久缓存，入口 HTML 不缓存。
 
 GitHub 上的 `.github/workflows/ci.yml` **只做校验不做发布**：push 时跑类型检查、
-解析/渲染/摘要回归、构建，坏了在 GitHub 上直接看红叉，不用等 Cloudflare 构建失败才发现。
+`npm run check:fixtures`、`npm run build`，坏了在 GitHub 上直接看红叉，
+不用等 Cloudflare 构建失败才发现。
+
+两个 check 是并行的、互不影响：Cloudflare Pages 自己拉代码跑 `npm run build`（部署），
+GitHub Actions 跑回归（校验）。所以**可能出现「Actions 红叉但网站照常更新」**——
+那说明代码能构建、但某条断言没过，别当成噪音直接忽略。
 
 ### 域名
 

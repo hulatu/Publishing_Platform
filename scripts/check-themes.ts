@@ -7,6 +7,9 @@
  *   （只看标签内部：正文代码块里出现 `id="x"` 这种字样是正常的，不能算）
  * - 相比基准主题（paper），任何主题的 HTML 字符数涨幅不超过 20%
  *   —— 涨太多说明样式没上提到外层 <section>，长文会被撑爆 20000 上限
+ *   编号主题（headingIndex）按标题数给固定豁免：它给每个 H2 多一个编号节点，
+ *   这段开销和「样式有没有上提」无关。短文章标题密度高，5 个标题就能把比值
+ *   顶过 20%（fixture-html.md 实测 22.3%），不豁免会误报。
  * - 编号主题真的注入了 01/02，非编号主题没有
  * - 12 套主题在同一篇文章上的输出两两不同（防止复制粘贴时漏改）
  */
@@ -30,6 +33,12 @@ console.log(`扫描 ${docs.length} 篇 × ${wechatThemes.length} 套主题`)
 const problems: string[] = []
 const BASELINE = 'paper'
 const MAX_GROWTH = 1.2
+/**
+ * 编号主题每个 H2 多出来的字符数（实测 116，取 130 留余量）。
+ * 这个数字不随主题样式变化，纯粹是「01 / 02」那个节点本身的成本，
+ * 所以判定「样式开销」时要从增量里扣掉。
+ */
+const PER_HEADING_ALLOWANCE = 130
 let maxLen = 0
 let maxWhere = ''
 
@@ -41,6 +50,7 @@ function htmlOf(themeId: string, blocks: Parameters<typeof renderHtml>[0]): stri
 
 for (const { file, doc } of docs) {
   const base = htmlOf(BASELINE, doc.blocks).length
+  const h2Count = doc.blocks.filter((b) => b.t === 'heading' && b.level === 2).length
 
   for (const theme of wechatThemes) {
     let html: string
@@ -66,9 +76,17 @@ for (const { file, doc } of docs) {
     if (/<pre[\s>]/.test(html)) problems.push(`${theme.id} / ${file}: 输出含 <pre>`)
     if (/<style[\s>]/.test(html)) problems.push(`${theme.id} / ${file}: 输出含 <style>`)
 
-    if (base > 0 && html.length / base > MAX_GROWTH) {
-      const pct = Math.round((html.length / base - 1) * 100)
-      problems.push(`${theme.id} / ${file}: 比基准多 ${pct}% 字符（${base} → ${html.length}）`)
+    // 编号主题的编号节点不算「样式开销」，按标题数扣掉再比
+    if (base > 0) {
+      const allowance = theme.headingIndex ? h2Count * PER_HEADING_ALLOWANCE : 0
+      const growth = html.length - base - allowance
+      if (growth > base * (MAX_GROWTH - 1)) {
+        const pct = Math.round((growth / base) * 100)
+        const note = allowance > 0 ? `，已扣除 ${allowance} 字符编号开销` : ''
+        problems.push(
+          `${theme.id} / ${file}: 比基准多 ${pct}% 字符（${base} → ${html.length}${note}）`,
+        )
+      }
     }
 
     if (html.length > maxLen) {

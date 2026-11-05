@@ -22,10 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装 Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -34,10 +34,11 @@ jobs:
         run: npm ci
 
       - name: 回归检查（解析 / 渲染 / 摘要）
-        run: npm run check
-        env:
-          # CI 里没有本机博客目录，用仓库内自带的样本文章
-          POSTS_DIR: scripts/fixtures
+        # 必须和本地跑同一条命令。之前这里写的是 `npm run check` + POSTS_DIR，
+        # 而本地默认读 ~/Blog 的 109 篇真实文章 —— 两边样本不同，
+        # 就会出现「本地全绿、CI 全红」，红叉很快被当成噪音。
+        # 现在两边都是 scripts/fixtures 那 4 篇，红就是真红。
+        run: npm run check:fixtures
 
       - name: 构建
         run: npm run build
