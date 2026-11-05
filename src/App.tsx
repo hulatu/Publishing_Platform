@@ -69,7 +69,6 @@ import { MetaLab } from './components/MetaLab'
 import { TailSheet } from './components/TailSheet'
 import { DraftsSheet } from './components/DraftsSheet'
 import { ReviewSheet } from './components/ReviewSheet'
-import { WechatPublishSheet } from './components/WechatPublishSheet'
 import { NoticeStack, type NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
@@ -164,8 +163,6 @@ export default function App() {
   const [drafts, setDrafts] = useState<DraftSnapshot[]>(listDrafts)
   const [draftsOpen, setDraftsOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
-  /** 直发公众号草稿箱（需要自建中转服务，没配时弹层里会讲清楚为什么） */
-  const [publishOpen, setPublishOpen] = useState(false)
   const saveTimer = useRef<number | null>(null)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
@@ -1017,15 +1014,6 @@ export default function App() {
                   <button className="btn" onClick={doDownload}>
                     下载 {output.format === 'markdown' ? '.md' : '.html'}
                   </button>
-                  {platform === 'wechat' && output.html ? (
-                    <button
-                      className="btn wpub-entry"
-                      onClick={() => setPublishOpen(true)}
-                      title="通过自建中转服务调微信接口，把这篇直接建成公众号草稿（只建草稿，不群发）"
-                    >
-                      直发草稿箱
-                    </button>
-                  ) : null}
                 </>
               ) : null}
 
@@ -1152,20 +1140,6 @@ export default function App() {
         ledger={ledger}
         summaries={summaries}
         onSetStats={changeStats}
-      />
-
-      <WechatPublishSheet
-        open={publishOpen}
-        onClose={() => setPublishOpen(false)}
-        title={doc?.meta.title ?? ''}
-        digest={doc?.meta.summary || doc?.meta.description || ''}
-        content={output?.html ?? ''}
-        author={account}
-        images={images.map((i) => i.src)}
-        onSent={() => {
-          if (articleKey) setLedger(markRecord(articleKey, 'wechat'))
-        }}
-        onToast={toast}
       />
 
       <ToastLayer items={toasts} />

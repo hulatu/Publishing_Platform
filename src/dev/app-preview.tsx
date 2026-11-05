@@ -93,9 +93,7 @@ function Harness() {
                   ? '.drafts-entry'
                   : open === 'review'
                     ? '.review-entry'
-                    : open === 'publish'
-                      ? '.wpub-entry'
-                      : ''
+                    : ''
     if (!sel) return
     const t = setTimeout(() => {
       document.querySelector<HTMLButtonElement>(sel)?.click()
@@ -250,14 +248,6 @@ if (bootParams.get('drafts') === 'full') {
     },
   }
   localStorage.setItem('ad.drafts.v1', JSON.stringify(seed))
-}
-
-// ?relay=full：塞一份中转服务配置，方便看「已配置」态（真的点发送会去请求一个不存在的服务）
-if (bootParams.get('relay') === 'full') {
-  localStorage.setItem(
-    'ad.wechat-relay.v1',
-    JSON.stringify({ url: 'https://wechat-relay.hulatu.workers.dev', token: 'demo-token-not-real' }),
-  )
 }
 
 createRoot(document.getElementById('root')!).render(<Harness />)
