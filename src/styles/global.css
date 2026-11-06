@@ -2313,6 +2313,21 @@ select {
   color: var(--ok);
 }
 
+/* 已用秒数：等宽数字，跳秒时不会把旁边的字挤来挤去 */
+.ai-elapsed {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--ink-muted);
+  letter-spacing: 0.02em;
+}
+
+/* 和前面的「已生成 N 字符」拉开一点：直接贴着读成「328 字符 6s」很挤 */
+.ai-elapsed::before {
+  content: '·';
+  margin-right: 5px;
+  color: var(--line-strong);
+}
+
 .ai-stage-head .btn {
   margin-left: auto;
 }

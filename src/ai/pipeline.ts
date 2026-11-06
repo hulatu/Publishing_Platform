@@ -18,7 +18,7 @@ import {
   type PromptBuildResult,
 } from './prompts'
 import { parseAIJson, parseDigestJson, repairDigest, repairSet, validateDigest, validatePlatform } from './schemas'
-import { describeAIError, resolveProvider, type AIProvider } from './provider'
+import { completeWithRetry, describeAIError, resolveProvider, type AIProvider } from './provider'
 import { buildAllFromDigest, buildPlatformFromDigest, fillMissingDigest, localDigest } from './fallback'
 import {
   emptyAIState,
@@ -76,15 +76,24 @@ export async function runJson<T>(opts: JsonRunOptions<T>): Promise<JsonRunResult
     let truncated = false
 
     try {
-      const result = await provider.complete({
-        system: base.system,
-        user,
-        signal,
-        onDelta: (delta) => {
-          text += delta
-          cb?.onStream?.(text)
+      const result = await completeWithRetry(
+        provider,
+        {
+          system: base.system,
+          user,
+          signal,
+          onDelta: (delta) => {
+            text += delta
+            cb?.onStream?.(text)
+          },
         },
-      })
+        () => {
+          // 重试是拿原始 prompt 从头来，界面上的半截文案必须清掉，
+          // 否则用户会看到「上次的残文 + 这次的正文」拼在一起
+          text = ''
+          cb?.onStream?.('')
+        },
+      )
       text = result.text || text
       truncated = result.truncated
     } catch (err) {

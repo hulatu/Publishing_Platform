@@ -6,10 +6,10 @@
  *
  * 尺寸策略：模板按 540×720 CSS 像素排版，导出 pixelRatio: 2 → 1080×1440，
  * 正好是小红书 3:4 标准。不用「1080 CSS × 2x」，那样内存翻四倍，Safari 容易崩。
+ *
+ * 依赖全部动态 import：html-to-image 和 jszip 加起来 35KB gzip，
+ * 只有点了「导出」才用得上，没理由让它们拖慢首屏。
  */
-
-import { toPng } from 'html-to-image'
-import JSZip from 'jszip'
 
 export interface ExportOptions {
   backgroundColor: string
@@ -28,6 +28,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
 /** 把卡片节点渲染成 PNG Blob。Safari 偶发整张空白，失败时自动重试一次。 */
 export async function renderCardToBlob(node: HTMLElement, opts: ExportOptions): Promise<Blob> {
   const { backgroundColor, pixelRatio = 2 } = opts
+  const { toPng } = await import('html-to-image')
 
   const run = () =>
     toPng(node, {
@@ -76,6 +77,7 @@ export async function exportCardsAsZip(
   opts: ExportOptions,
   onProgress?: (done: number, total: number) => void,
 ): Promise<void> {
+  const { default: JSZip } = await import('jszip')
   const zip = new JSZip()
 
   for (let i = 0; i < entries.length; i++) {

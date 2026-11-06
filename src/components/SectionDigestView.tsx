@@ -10,6 +10,8 @@ import { useState } from 'react'
 import type { ArticleSection } from '../core/sections'
 import { charCount } from '../core/cjk'
 import { LIMITS, type DigestState } from '../ai/types'
+import { useElapsed } from './useElapsed'
+import { formatElapsed } from '../core/time'
 
 interface Props {
   sections: ArticleSection[]
@@ -45,6 +47,7 @@ export function SectionDigestView({
   const data = digest.digest
   const missing = data ? data.sections.filter((s) => !s.summary).length : sections.length
   const doneCount = data ? data.sections.length - missing : 0
+  const elapsed = useElapsed(running)
 
   return (
     <div className="digest-block">
@@ -54,7 +57,7 @@ export function SectionDigestView({
           <span className="digest-bar-title">逐节摘要</span>
           <span className="digest-bar-count">
             {running
-              ? `生成中 ${doneCount}/${sections.length}`
+              ? `生成中 ${doneCount}/${sections.length} · ${formatElapsed(elapsed)}`
               : data
                 ? `${doneCount}/${sections.length} 节`
                 : `${sections.length} 节`}

@@ -12,6 +12,8 @@ import { charCount, weightedLength } from '../core/cjk'
 import type { ArticleSection } from '../core/sections'
 import { LIMITS, toneLabels, type AIState, type DigestState, type RewriteId, type RewriteTone } from '../ai/types'
 import { SectionDigestView } from './SectionDigestView'
+import { useElapsed } from './useElapsed'
+import { formatElapsed } from '../core/time'
 
 interface Props {
   platform: RewriteId
@@ -66,6 +68,7 @@ export function AIPanel({
   const result = ai.result
   const running = ai.status === 'running'
   const digestReady = Boolean(digest.digest)
+  const elapsed = useElapsed(running)
 
   return (
     <div className="ai-panel">
@@ -122,6 +125,7 @@ export function AIPanel({
             <span className="ai-stage-status">
               <span className="spinner dark" />
               {ai.streaming ? `已生成 ${ai.streaming.length} 字符` : '生成中…'}
+              <span className="ai-elapsed">{formatElapsed(elapsed)}</span>
             </span>
           ) : result ? (
             <span className="ai-stage-status done">{ai.fallback ? '本地组装' : 'AI 生成'}</span>

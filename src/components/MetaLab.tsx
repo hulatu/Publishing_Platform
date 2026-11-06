@@ -13,6 +13,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { charCount } from '../core/cjk'
 import { LIMITS, type MetaLabState, type TitleCandidate } from '../ai/types'
 import { styleLabel } from '../ai/meta-lab'
+import { useElapsed } from './useElapsed'
+import { formatElapsed } from '../core/time'
 
 interface Props {
   open: boolean
@@ -61,6 +63,7 @@ export function MetaLab({
   const pickedList = useMemo(() => tags.filter((t) => picked.has(t.name)).map((t) => t.name), [tags, picked])
   const shortOnes = titles.filter((t) => charCount(t.text) <= LIMITS.titleShort).length
   const running = state.status === 'running'
+  const elapsed = useElapsed(running)
 
   if (!open) return null
 
@@ -143,7 +146,11 @@ export function MetaLab({
           {running ? (
             <div className="meta-running">
               <span className="spinner" />
-              <span>正在想标题…{state.streaming ? `已生成 ${charCount(state.streaming)} 字符` : ''}</span>
+              <span>
+                正在想标题…
+                {state.streaming ? `已生成 ${charCount(state.streaming)} 字符` : ''}
+              </span>
+              <span className="ai-elapsed">{formatElapsed(elapsed)}</span>
               <button className="btn btn-sm" onClick={onCancel}>
                 停止
               </button>

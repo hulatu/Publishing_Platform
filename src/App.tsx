@@ -8,6 +8,7 @@ import { copyByMode, copyPlain, downloadText, mimeFor } from './core/copy'
 import { splitByH2 } from './core/split'
 import { checkText, scopeOf, stripHtml } from './core/compliance'
 import { activeBlocks, readTailConfig, writeTailConfig, type TailConfig } from './core/tail'
+import { whenIdle } from './core/async'
 import {
   clearDrafts,
   deleteDraft,
@@ -372,8 +373,12 @@ export default function App() {
         metaLab,
         sectionCount: sections.length,
       })
-      writeDraft(snap)
-      setDrafts(listDrafts())
+      // 写盘挪到空闲时段：一篇文章带正文 30–60KB，同步写会卡主线程十几毫秒，
+      // 而 800ms 的防抖窗口正好是用户还在打字的时候
+      whenIdle(() => {
+        writeDraft(snap)
+        setDrafts(listDrafts())
+      })
     }, 800)
 
     return () => {
@@ -523,10 +528,34 @@ export default function App() {
       }
     }
 
-    for (const id of rewriteIds) {
-      if (controller.signal.aborted) return
-      await runOnePlatform(id, dg, controller.signal)
+    // 并发 2。四个平台串行是 4 × 30s ≈ 2 分钟，并发能砍掉一半；
+    // 但不敢开满 —— 同一个 Key 同时打四个请求很容易撞限流。
+    // 一旦有人撞上 429，剩下的立刻退回串行，别把「限流」打成「封禁」。
+    const queue = [...rewriteIds]
+    let cursor = 0
+    let throttled = false
+
+    const worker = async () => {
+      for (;;) {
+        if (controller.signal.aborted || throttled) return
+        const i = cursor++
+        if (i >= queue.length) return
+        const st = await runOnePlatform(queue[i], dg, controller.signal)
+        if (st?.error && /429|限流/.test(st.error)) throttled = true
+      }
     }
+
+    await Promise.all([worker(), worker()])
+
+    // 撞了限流：把没跑的串行收尾
+    if (throttled && !controller.signal.aborted) {
+      while (cursor < queue.length) {
+        await runOnePlatform(queue[cursor++], dg, controller.signal)
+        if (controller.signal.aborted) return
+      }
+    }
+
+    if (controller.signal.aborted) return
     toast('四个平台的文案都生成好了', 'success')
   }, [doc, digest.digest, sections, tone, startJob, runOnePlatform, toast])
 

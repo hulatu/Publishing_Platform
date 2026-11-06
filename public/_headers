@@ -10,3 +10,12 @@
 
 /index.html
   Cache-Control: public, max-age=0, must-revalidate
+
+# Service Worker 脚本本身绝不能被缓存：
+# 浏览器判断「有没有新版本」就是去拉这个文件，缓存住等于永远不更新
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

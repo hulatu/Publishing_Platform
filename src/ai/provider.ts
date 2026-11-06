@@ -174,6 +174,7 @@ export function loadByok(): ByokSettings {
 
 export function saveByok(settings: ByokSettings): void {
   localStorage.setItem(BYOK_KEY, JSON.stringify(settings))
+  applyPreconnect(settings.endpoint)
 }
 
 export function clearByok(): void {
@@ -185,11 +186,140 @@ export function byokConfigured(s: ByokSettings = loadByok()): boolean {
   return Boolean(s.endpoint.trim() && s.apiKey.trim() && s.model.trim())
 }
 
+/**
+ * 给 AI 服务商的域名预连接。
+ *
+ * endpoint 是确定的，但浏览器要等第一次 fetch 才去 DNS + TCP + TLS。
+ * 访问国内 API 光握手就 100–300ms，而这段时间完全可以和「用户读界面、
+ * 选平台、检查合规」重叠掉 —— 插一条 preconnect 就行。
+ */
+export function applyPreconnect(endpoint: string): void {
+  if (typeof document === 'undefined') return
+
+  let origin: string
+  try {
+    origin = new URL(endpoint).origin
+  } catch {
+    return
+  }
+  // 同源没有握手成本；本地 Ollama 之类也不需要
+  if (origin === location.origin) return
+
+  // 换服务商时把旧的摘掉，别让 <head> 越堆越多
+  document.querySelectorAll('link[data-preconnect]').forEach((node) => {
+    if (node.getAttribute('href') !== origin) node.remove()
+  })
+  if (document.querySelector(`link[data-preconnect][href="${origin}"]`)) return
+
+  const link = document.createElement('link')
+  link.rel = 'preconnect'
+  link.href = origin
+  link.crossOrigin = 'anonymous'
+  link.setAttribute('data-preconnect', '1')
+  document.head.appendChild(link)
+}
+
+/* ------------------------------------------------------------------ */
+/* 超时                                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 首字节超时：连接建立后多久还没收到第一个字节。
+ *
+ * 网关挂起、代理缓冲、服务端排队，全都表现为「连上了但不吐字」。
+ * 没有这个上限就只能干等，用户唯一的出路是刷新页面 —— 已经流出来的半截文案全丢。
+ */
+const FIRST_BYTE_TIMEOUT = 45_000
+
+/** 空闲超时：已经开始吐字，但两帧之间超过这个间隔。 */
+const IDLE_TIMEOUT = 30_000
+
+/**
+ * 被我们自己的超时掐断。
+ *
+ * 必须和「用户主动取消」分开：前者值得重试一次，后者绝对不能重试
+ * （用户点了取消，你还偷偷再发一遍请求，是很糟糕的行为）。
+ */
+export class AITimeoutError extends Error {
+  constructor(
+    readonly phase: 'first-byte' | 'idle',
+    readonly ms: number,
+  ) {
+    super(
+      phase === 'first-byte'
+        ? `等了 ${Math.round(ms / 1000)} 秒还没收到第一个字`
+        : `数据流中断超过 ${Math.round(ms / 1000)} 秒`,
+    )
+    this.name = 'AITimeoutError'
+  }
+}
+
+interface TimeoutGuard {
+  signal: AbortSignal
+  /** 收到任何字节时调用（含心跳），重置空闲计时 */
+  touch: () => void
+  /** 是不是被我们掐断的（而不是用户取消） */
+  timedOut: () => boolean
+  phase: () => 'first-byte' | 'idle'
+  dispose: () => void
+}
+
+/**
+ * 把「外部 signal」和「两段超时」合成一个 signal。
+ *
+ * 首字节阶段用 FIRST_BYTE_TIMEOUT；第一次 touch 之后切到 IDLE_TIMEOUT，
+ * 之后每来一帧就重置。这样「慢但持续有输出」的长文不会被误杀，
+ * 「连上就装死」的才会被掐。
+ */
+function startTimeoutGuard(external?: AbortSignal): TimeoutGuard {
+  const ctrl = new AbortController()
+  let phase: 'first-byte' | 'idle' = 'first-byte'
+  let timedOut = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const arm = (ms: number) => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timedOut = true
+      ctrl.abort()
+    }, ms)
+  }
+
+  const onAbort = () => ctrl.abort()
+  if (external) {
+    if (external.aborted) ctrl.abort()
+    else external.addEventListener('abort', onAbort, { once: true })
+  }
+
+  arm(FIRST_BYTE_TIMEOUT)
+
+  return {
+    signal: ctrl.signal,
+    touch() {
+      phase = 'idle'
+      arm(IDLE_TIMEOUT)
+    },
+    timedOut: () => timedOut,
+    phase: () => phase,
+    dispose() {
+      if (timer) clearTimeout(timer)
+      external?.removeEventListener('abort', onAbort)
+    },
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* 错误信息中文化                                                       */
 /* ------------------------------------------------------------------ */
 
 export function describeAIError(err: unknown): string {
+  if (err instanceof AITimeoutError) {
+    const s = Math.round(err.ms / 1000)
+    return err.phase === 'first-byte'
+      ? `等了 ${s} 秒没收到任何数据。多半是代理或网关把流缓冲住了，也可能服务商在排队。换个网络、或换一家服务商再试。`
+      : `数据流中断超过 ${s} 秒，已收到的内容还在。可以点「重新生成」接着来。`
+  }
+
   const anyErr = err as {
     error?: { code?: string; message?: string }
     status?: number
@@ -231,8 +361,16 @@ function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
-/** 逐行解析 SSE，产出每个 data: 负载 */
-async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+/**
+ * 逐行解析 SSE，产出每个 data: 负载。
+ *
+ * onActivity 在「收到任何字节」时触发，包括注释行（`: keep-alive`）——
+ * 服务商发心跳就是在说「我还活着」，不该因为心跳不是 data 帧就判定流已死。
+ */
+async function* readSse(
+  body: ReadableStream<Uint8Array>,
+  onActivity?: () => void,
+): AsyncGenerator<string> {
   const reader = body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
@@ -241,6 +379,7 @@ async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<string
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
+      onActivity?.()
       buffer += decoder.decode(value, { stream: true })
 
       let idx: number
@@ -266,6 +405,13 @@ async function readErrorDetail(res: Response): Promise<string> {
   }
 }
 
+/** 把「被中止」翻译成调用方看得懂的错误：用户取消原样抛，超时换成 AITimeoutError */
+function asTimeout(err: unknown, guard: TimeoutGuard): unknown {
+  if (!guard.timedOut()) return err
+  const phase = guard.phase()
+  return new AITimeoutError(phase, phase === 'first-byte' ? FIRST_BYTE_TIMEOUT : IDLE_TIMEOUT)
+}
+
 /* ------------------------------------------------------------------ */
 /* BYOK Provider                                                       */
 /* ------------------------------------------------------------------ */
@@ -287,47 +433,107 @@ export function createByokProvider(settings: ByokSettings): AIProvider {
       }
       if (settings.jsonMode) payload.response_format = { type: 'json_object' }
 
-      const res = await fetch(joinUrl(settings.endpoint, '/chat/completions'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${settings.apiKey}`,
-        },
-        body: JSON.stringify(payload),
-        signal,
-      })
+      const guard = startTimeoutGuard(signal)
+      try {
+        const res = await fetch(joinUrl(settings.endpoint, '/chat/completions'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${settings.apiKey}`,
+          },
+          body: JSON.stringify(payload),
+          signal: guard.signal,
+        })
 
-      if (!res.ok || !res.body) {
-        const detail = await readErrorDetail(res)
-        const err = new Error(detail) as Error & { status?: number }
-        err.status = res.status
-        throw err
-      }
-
-      let text = ''
-      let truncated = false
-
-      for await (const data of readSse(res.body)) {
-        if (!data || data === '[DONE]') continue
-        try {
-          const chunk = JSON.parse(data) as {
-            choices?: { delta?: { content?: string }; finish_reason?: string }[]
-          }
-          const choice = chunk.choices?.[0]
-          const delta = choice?.delta?.content
-          if (delta) {
-            text += delta
-            onDelta?.(delta)
-          }
-          if (choice?.finish_reason === 'length') truncated = true
-        } catch {
-          /* 跳过无法解析的帧 */
+        if (!res.ok || !res.body) {
+          const detail = await readErrorDetail(res)
+          const err = new Error(detail) as Error & { status?: number }
+          err.status = res.status
+          throw err
         }
-      }
 
-      return { text, truncated }
+        let text = ''
+        let truncated = false
+
+        for await (const data of readSse(res.body, guard.touch)) {
+          if (!data || data === '[DONE]') continue
+          try {
+            const chunk = JSON.parse(data) as {
+              choices?: { delta?: { content?: string }; finish_reason?: string }[]
+            }
+            const choice = chunk.choices?.[0]
+            const delta = choice?.delta?.content
+            if (delta) {
+              text += delta
+              onDelta?.(delta)
+            }
+            if (choice?.finish_reason === 'length') truncated = true
+          } catch {
+            /* 跳过无法解析的帧 */
+          }
+        }
+
+        return { text, truncated }
+      } catch (err) {
+        throw asTimeout(err, guard)
+      } finally {
+        guard.dispose()
+      }
     },
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 网络重试                                                             */
+/* ------------------------------------------------------------------ */
+
+/** 网络层重试次数（不含首次） */
+const NET_RETRIES = 2
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+/**
+ * 这次失败值不值得原样重试。
+ *
+ * 判断标准只有一个：重试有没有可能得到不同结果。
+ * - 超时、限流、5xx、fetch 失败：过几秒网络状况就变了，值得
+ * - 401/402/403/404/400：Key 错了、余额没了、模型名拼错了，重试一百次也一样
+ */
+export function isRetryableAIError(err: unknown): boolean {
+  if (err instanceof AITimeoutError) return true
+  const status = (err as { status?: number })?.status
+  if (status === 429) return true
+  if (typeof status === 'number' && status >= 500) return true
+  const msg = String((err as { message?: string })?.message ?? err)
+  return /Failed to fetch|NetworkError|Load failed|fetch failed|network error/i.test(msg)
+}
+
+/**
+ * 包一层「网络失败自动重试」。
+ *
+ * 生成类请求一次要跑几十秒，一次 Failed to fetch（Wi-Fi 切 4G、代理抖一下、
+ * 502 网关重启）就整段作废，代价太高。但重试必须用原始 prompt ——
+ * 上一次可能一个字都没产出，接不上残文。
+ */
+export async function completeWithRetry(
+  provider: AIProvider,
+  opts: CompleteOptions,
+  onRetry?: () => void,
+): Promise<CompleteResult> {
+  let last: unknown
+  for (let i = 0; i <= NET_RETRIES; i++) {
+    try {
+      return await provider.complete(opts)
+    } catch (err) {
+      last = err
+      // 用户主动取消：一次都不重试
+      if (opts.signal?.aborted) throw err
+      if (!isRetryableAIError(err) || i === NET_RETRIES) throw err
+      await sleep(1200 * (i + 1))
+      onRetry?.()
+    }
+  }
+  throw last
 }
 
 /* ------------------------------------------------------------------ */
@@ -428,30 +634,38 @@ export function createCloudProvider(modelId: string): AIProvider {
       let text = ''
       let truncated = false
 
-      const stream = client.llm.chat.completions.create({
-        model: modelId,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        stream: true,
-        temperature: 0.55,
-        response_format: { type: 'json_object' },
-        stream_options: { include_usage: true },
-        signal,
-      })
+      const guard = startTimeoutGuard(signal)
+      try {
+        const stream = client.llm.chat.completions.create({
+          model: modelId,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: user },
+          ],
+          stream: true,
+          temperature: 0.55,
+          response_format: { type: 'json_object' },
+          stream_options: { include_usage: true },
+          signal: guard.signal,
+        })
 
-      for await (const chunk of stream) {
-        const choice = chunk.choices?.[0]
-        const delta = choice?.delta?.content
-        if (delta) {
-          text += delta
-          onDelta?.(delta)
+        for await (const chunk of stream) {
+          guard.touch()
+          const choice = chunk.choices?.[0]
+          const delta = choice?.delta?.content
+          if (delta) {
+            text += delta
+            onDelta?.(delta)
+          }
+          if (choice?.finish_reason === 'length') truncated = true
         }
-        if (choice?.finish_reason === 'length') truncated = true
-      }
 
-      return { text, truncated }
+        return { text, truncated }
+      } catch (err) {
+        throw asTimeout(err, guard)
+      } finally {
+        guard.dispose()
+      }
     },
   }
 }

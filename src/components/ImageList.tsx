@@ -9,8 +9,8 @@
  */
 
 import { useMemo, useState } from 'react'
-import JSZip from 'jszip'
 import type { ImageRef } from '../core/ir'
+import { mapLimit } from '../core/async'
 import { downloadBlob } from '../cards/export'
 import { safeFileName } from '../cards/export'
 
@@ -39,17 +39,39 @@ function extOf(blob: Blob, url: string): string {
   return m ? m[1].toLowerCase() : 'jpg'
 }
 
+/**
+ * 并发度。浏览器同域本来就允许 6 个连接，串行等于只用了 1/6；
+ * 取 3 而不是 6，是不想同时向同一个图床开满连接 —— 容易被当成爬虫。
+ */
+const IMAGE_CONCURRENCY = 3
+
+const IMAGE_TIMEOUT = 15_000
+
+async function fetchImageOnce(url: string): Promise<Blob> {
+  const res = await fetch(url, {
+    mode: 'cors',
+    credentials: 'omit',
+    signal: AbortSignal.timeout(IMAGE_TIMEOUT),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const blob = await res.blob()
+  if (!blob.type.startsWith('image/')) throw new Error('不是图片')
+  return blob
+}
+
+/**
+ * 超时重试一次。
+ *
+ * 只重试超时：CORS 被拦和网络失败在浏览器里都是同一个 TypeError，
+ * 分不出来，重试也是白等 15 秒。而超时是明确信号 —— 图床慢一下很常见。
+ */
 async function fetchImage(url: string): Promise<Blob> {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 15000)
   try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit', signal: ctrl.signal })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const blob = await res.blob()
-    if (!blob.type.startsWith('image/')) throw new Error('不是图片')
-    return blob
-  } finally {
-    clearTimeout(timer)
+    return await fetchImageOnce(url)
+  } catch (err) {
+    const isTimeout = err instanceof DOMException && err.name === 'TimeoutError'
+    if (!isTimeout) throw err
+    return await fetchImageOnce(url)
   }
 }
 
@@ -58,6 +80,8 @@ export function ImageList({ open, onClose, images, title }: Props) {
   /** <img> 自身加载失败（链接失效、防盗链），和「跨域打不进包」是两回事 */
   const [broken, setBroken] = useState<Record<string, true>>({})
   const [busy, setBusy] = useState(false)
+  /** 已处理完的张数，用于「3 / 20」进度 */
+  const [done, setDone] = useState(0)
 
   const failed = useMemo(
     () => images.filter((img) => status[img.src] === 'fail').length,
@@ -72,30 +96,44 @@ export function ImageList({ open, onClose, images, title }: Props) {
     if (images.length === 0 || busy) return
     setBusy(true)
     setStatus({})
+    setDone(0)
 
-    const zip = new JSZip()
-    const folder = zip.folder('images') ?? zip
     let ok = 0
     let fail = 0
 
-    for (let i = 0; i < images.length; i++) {
-      const img = images[i]
-      const name = String(i + 1).padStart(2, '0')
+    // 并发拉图。命名放在最后按原顺序做 —— 并发是乱序完成的，
+    // 边下边编号会把 03 号图存成 01。
+    const blobs = await mapLimit(images, IMAGE_CONCURRENCY, async (img) => {
       setOne(img.src, 'busy')
       try {
         const blob = await fetchImage(img.src)
-        folder.file(`${name}.${extOf(blob, img.src)}`, blob)
         setOne(img.src, 'ok')
         ok++
+        return blob
       } catch {
         setOne(img.src, 'fail')
         fail++
+        return null
+      } finally {
+        setDone((n) => n + 1)
       }
-    }
+    })
 
     setBusy(false)
 
     if (ok === 0) return
+
+    // jszip 只在真的要打包时下载，不进首屏
+    const { default: JSZip } = await import('jszip')
+    const zip = new JSZip()
+    const folder = zip.folder('images') ?? zip
+
+    images.forEach((img, i) => {
+      const blob = blobs[i]
+      if (!blob) return
+      folder.file(`${String(i + 1).padStart(2, '0')}.${extOf(blob, img.src)}`, blob)
+    })
+
     const out = await zip.generateAsync({ type: 'blob' })
     downloadBlob(out, `${safeFileName(title)}-正文图片.zip`)
     if (fail > 0) {
@@ -179,7 +217,7 @@ export function ImageList({ open, onClose, images, title }: Props) {
           </button>
           <button className="btn btn-primary btn-sm" onClick={downloadAll} disabled={busy || images.length === 0}>
             {busy ? <span className="spinner dark" /> : null}
-            {busy ? '正在打包…' : `打包下载（${images.length} 张）`}
+            {busy ? `正在打包 ${done}/${images.length}…` : `打包下载（${images.length} 张）`}
           </button>
         </div>
       </div>
