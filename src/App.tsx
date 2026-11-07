@@ -9,6 +9,7 @@ import { splitByH2 } from './core/split'
 import { checkText, scopeOf, stripHtml } from './core/compliance'
 import { activeBlocks, readTailConfig, writeTailConfig, type TailConfig } from './core/tail'
 import { whenIdle } from './core/async'
+import { loadOpenOnCopy, preopenTab, publishUrlOf, saveOpenOnCopy } from './core/publish'
 import {
   clearDrafts,
   deleteDraft,
@@ -177,7 +178,14 @@ export default function App() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { items: toasts, push: toast } = useToasts()
 
+  /** 复制后是否自动打开发布页。默认开，用户关掉后记住 */
+  const [openOnCopy, setOpenOnCopy] = useState(loadOpenOnCopy)
+  /** 上一次自动打开的时间，用来挡住连点两下复制时开出两个标签 */
+  const lastOpenRef = useRef(0)
+
   const kind = kindOf(platform)
+  /** 当前平台的发布页地址；卡片平台没有 */
+  const publishTarget = publishUrlOf(platform)
 
   /* ---------------- 载入 ---------------- */
 
@@ -826,10 +834,34 @@ export default function App() {
     [toast],
   )
 
+  /**
+   * 复制成功后打开发布页。
+   *
+   * 必须在用户手势里同步开标签（见 core/publish.ts 的 preopenTab）：
+   * 等复制这个 await 回来再 window.open 会被弹窗拦截。
+   *
+   * 连点两下复制时不再开第二个 —— 3 秒内同一个平台只开一次。
+   */
+  const openPublishFor = useCallback(
+    (platformId: string): ReturnType<typeof preopenTab> => {
+      if (!openOnCopy) return null
+      const target = publishUrlOf(platformId)
+      if (!target) return null
+      const now = Date.now()
+      if (now - lastOpenRef.current < 3000) return null
+      lastOpenRef.current = now
+      return preopenTab(target.url)
+    },
+    [openOnCopy],
+  )
+
   const doCopyPrimary = useCallback(async () => {
     if (!output) return
+    // 先占位开标签（同步），复制成功再导航过去
+    const tab = openPublishFor(platform)
     try {
       const mode = await copyByMode(output.copyMode, { html: output.html, text: output.text })
+      tab?.commit()
       const persisted = articleKey ? applyLedger(markRecord(articleKey, platform)) : false
       const tail = persisted && !ledger[platform] ? ' · 已记为已发' : ''
       if (output.copyMode === 'rich') {
@@ -841,9 +873,11 @@ export default function App() {
         toast(`已复制${tail}`, 'success')
       }
     } catch {
+      // 复制失败就把占位的空白页关掉，别留一个白屏标签
+      tab?.discard()
       toast('复制失败', 'error')
     }
-  }, [output, toast, articleKey, platform, ledger, applyLedger])
+  }, [output, toast, articleKey, platform, ledger, applyLedger, openPublishFor])
 
   const doCopySource = useCallback(async () => {
     if (!output) return
@@ -861,6 +895,16 @@ export default function App() {
     if (!output) return
     downloadText(output.primary, output.fileName ?? 'article.md', mimeFor(output.format))
   }, [output])
+
+  /** 手动打开发布页（不复制）。改写平台分段复制完再点这个 */
+  const openPublishNow = useCallback(() => {
+    const target = publishUrlOf(platform)
+    if (!target) {
+      toast('这个平台还没配发布页地址', 'info')
+      return
+    }
+    window.open(target.url, '_blank', 'noopener,noreferrer')
+  }, [platform, toast])
 
   const doSplitExport = useCallback(() => {
     if (!doc) return
@@ -1239,6 +1283,33 @@ export default function App() {
               ) : null}
 
               <div className="actionbar-spacer" />
+
+              {/* 发布页入口：只负责打开页面，登录与发布仍由人完成 */}
+              {kind !== 'card' ? (
+                <div className="publish-open">
+                  <label
+                    className="check-row publish-toggle"
+                    title="复制成功后自动打开该平台的发布页。只打开页面，不自动登录、不自动发布。"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={openOnCopy}
+                      onChange={(e) => {
+                        setOpenOnCopy(e.target.checked)
+                        saveOpenOnCopy(e.target.checked)
+                      }}
+                    />
+                    <span>复制后打开发布页</span>
+                  </label>
+                  <button
+                    className="btn btn-sm btn-quiet publish-now"
+                    onClick={openPublishNow}
+                    title={publishTarget?.note ?? '在浏览器里打开该平台的发布页'}
+                  >
+                    打开发布页
+                  </button>
+                </div>
+              ) : null}
 
               {doc.warnings.length > 0 ? (
                 <details className="details details-inline">

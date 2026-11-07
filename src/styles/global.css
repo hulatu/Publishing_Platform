@@ -1388,6 +1388,33 @@ select {
   border-bottom-color: var(--line);
 }
 
+/* 发布页入口：放在操作条右侧，跟主操作分开，不抢注意力 */
+.publish-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.publish-toggle {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.publish-toggle input {
+  cursor: pointer;
+}
+
+/* 手动打开：跟左边的复选框挨得太近，描一条淡边，免得被读成说明文字。
+   选择器要比 .btn-quiet 更具体，否则 border-color: transparent 会盖掉这一条。 */
+.publish-open .publish-now {
+  border-color: var(--line);
+  font-size: 11.5px;
+  padding: 5px 10px;
+}
+
 /* ---------- 操作条 ---------- */
 
 .actionbar {

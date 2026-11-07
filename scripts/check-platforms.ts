@@ -20,8 +20,9 @@ import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
 import { charCount } from '../src/core/cjk'
 import { collectImages, collectLinks, type Doc } from '../src/core/ir'
-import { convertPlatforms, type RenderOutput } from '../src/renderers'
+import { convertPlatforms, rewritePlatforms, type RenderOutput } from '../src/renderers'
 import { renderCnBlog, renderBilibili, renderToutiao, renderBaijiahao } from '../src/renderers/cn-blogs'
+import { loadOpenOnCopy, publishUrlOf, saveOpenOnCopy } from '../src/core/publish'
 
 let failed = 0
 function ok(cond: boolean, msg: string) {
@@ -249,6 +250,74 @@ for (const p of convertPlatforms) {
   const s = sizes[p.id]
   console.log(`  ${p.name.padEnd(6, '　')} 平均 ${avg(s).toFixed(0)} 字符，最多 ${Math.max(...s)}`)
 }
+
+/* ---------------- 发布页地址 ---------------- */
+
+// 「复制后打开发布页」只是一个 URL 表，但错一处就会把用户送进 404。
+// 这里守住三件：覆盖全、都是 https、没有两个平台共用一个地址。
+console.log('\n发布页地址：')
+
+const allPlatformIds = [...convertPlatforms.map((p) => p.id), ...rewritePlatforms.map((p) => p.id)]
+
+const missingUrl = allPlatformIds.filter((id) => !publishUrlOf(id))
+ok(
+  missingUrl.length === 0,
+  `${allPlatformIds.length} 个平台都配了发布页${missingUrl.length ? `（缺：${missingUrl.join('、')}）` : ''}`,
+)
+
+const notHttps = allPlatformIds.filter((id) => {
+  const t = publishUrlOf(id)
+  return !t || !t.url.startsWith('https://')
+})
+ok(notHttps.length === 0, '全部是 https（http 会被浏览器标「不安全」）')
+
+const allUrls = allPlatformIds.map((id) => publishUrlOf(id)!.url)
+ok(new Set(allUrls).size === allUrls.length, '没有两个平台共用同一个地址')
+
+ok(publishUrlOf('cards') === null, '卡片平台没有发布页（它导出图片，不发布）')
+ok(publishUrlOf('不存在的平台') === null, '未知平台返回 null 而不是抛异常')
+
+/* ---------------- 「复制后打开发布页」开关 ---------------- */
+
+console.log('\n发布页开关：')
+
+const prefMem = new Map<string, string>()
+;(globalThis as unknown as { localStorage: Storage }).localStorage = {
+  getItem: (k: string) => prefMem.get(k) ?? null,
+  setItem: (k: string, v: string) => void prefMem.set(k, v),
+  removeItem: (k: string) => void prefMem.delete(k),
+  clear: () => prefMem.clear(),
+  key: () => null,
+  length: 0,
+} as Storage
+
+ok(loadOpenOnCopy() === true, '没存过时默认打开（这是主要用法）')
+saveOpenOnCopy(false)
+ok(loadOpenOnCopy() === false, '关掉之后能读回来')
+saveOpenOnCopy(true)
+ok(loadOpenOnCopy() === true, '再打开也能读回来')
+
+// 隐私模式下读写都会抛，必须降级成「默认开」而不是崩
+;(globalThis as unknown as { localStorage: Storage }).localStorage = {
+  getItem: () => {
+    throw new Error('SecurityError')
+  },
+  setItem: () => {
+    throw new Error('QuotaExceededError')
+  },
+  removeItem: () => {},
+  clear: () => {},
+  key: () => null,
+  length: 0,
+} as Storage
+ok(loadOpenOnCopy() === true, '本地存储不可读时降级为默认打开')
+let threw = false
+try {
+  saveOpenOnCopy(false)
+} catch {
+  threw = true
+}
+ok(!threw, '本地存储不可写时保存不抛异常')
 
 /* ---------------- 汇总 ---------------- */
 
