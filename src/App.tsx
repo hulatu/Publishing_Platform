@@ -1094,6 +1094,14 @@ export default function App() {
                     <b>3</b>复制粘贴
                   </span>
                 </div>
+                <a
+                  className="empty-help"
+                  href="https://github.com/hulatu/Publishing_Platform/blob/main/USAGE.md"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  第一次用？看使用说明 →
+                </a>
               </div>
             ) : (
               <>
