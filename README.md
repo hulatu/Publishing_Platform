@@ -10,12 +10,12 @@
 
 <br>
 
-[![平台](https://img.shields.io/static/v1?label=%E5%B9%B3%E5%8F%B0&message=11&color=c0392b&style=flat-square)](https://publish.hulatu.com)
-[![纯前端](https://img.shields.io/static/v1?label=%E7%BA%AF%E5%89%8D%E7%AB%AF&message=%E6%97%A0%E6%9C%8D%E5%8A%A1%E7%AB%AF&color=2f7d5d&style=flat-square)](#-它解决什么问题)
-[![Key](https://img.shields.io/static/v1?label=%E5%A4%A7%E6%A8%A1%E5%9E%8B&message=%E8%87%AA%E5%B8%A6%20Key&color=1b1917&style=flat-square)](#-ai-key-怎么来)
-[![React](https://img.shields.io/static/v1?label=React&message=19&color=1b1917&style=flat-square&logo=react&logoColor=white)](#-目录结构)
-[![Vite](https://img.shields.io/static/v1?label=Vite&message=6&color=646cff&style=flat-square&logo=vite&logoColor=white)](#-目录结构)
-[![Deploy](https://img.shields.io/static/v1?label=%E9%83%A8%E7%BD%B2&message=Cloudflare%20Pages&color=f38020&style=flat-square&logo=cloudflare&logoColor=white)](#-部署)
+[![支持的平台 11 个](https://img.shields.io/static/v1?label=%E5%B9%B3%E5%8F%B0&message=11&color=c0392b&style=flat-square)](https://publish.hulatu.com)
+[![纯前端 · 无服务端](https://img.shields.io/static/v1?label=%E7%BA%AF%E5%89%8D%E7%AB%AF&message=%E6%97%A0%E6%9C%8D%E5%8A%A1%E7%AB%AF&color=2f7d5d&style=flat-square)](#-它解决什么问题)
+[![大模型 · 自带 Key](https://img.shields.io/static/v1?label=%E5%A4%A7%E6%A8%A1%E5%9E%8B&message=%E8%87%AA%E5%B8%A6%20Key&color=1b1917&style=flat-square)](#-ai-key-怎么来)
+[![React 19](https://img.shields.io/static/v1?label=React&message=19&color=1b1917&style=flat-square&logo=react&logoColor=white)](#-目录结构)
+[![Vite 6](https://img.shields.io/static/v1?label=Vite&message=6&color=646cff&style=flat-square&logo=vite&logoColor=white)](#-目录结构)
+[![部署 · Cloudflare Pages](https://img.shields.io/static/v1?label=%E9%83%A8%E7%BD%B2&message=Cloudflare%20Pages&color=f38020&style=flat-square&logo=cloudflare&logoColor=white)](#-部署)
 
 <br>
 
