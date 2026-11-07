@@ -33,6 +33,17 @@ export interface PlatformRecord {
 
 export type ArticleLedger = Record<string, PlatformRecord>
 
+/**
+ * 一次写操作的结果。
+ *
+ * `ledger` 是内存里的新值（即使落盘失败也照样返回，界面该更新还是要更新，
+ * 否则用户点了「标记已发」看着毫无反应）；`persisted` 才代表刷新之后还在不在。
+ */
+export interface LedgerWrite {
+  ledger: ArticleLedger
+  persisted: boolean
+}
+
 type Store = Record<string, ArticleLedger>
 
 const KEY = 'ad.publish-ledger.v1'
@@ -56,12 +67,34 @@ function readStore(): Store {
   }
 }
 
-function writeStore(store: Store): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(prune(store)))
-  } catch {
-    // 写不进去不影响本次使用
+/** 这篇文章最近一次发布的时间，用于淘汰排序 */
+function lastAt(store: Store, key: string): string {
+  return Object.values(store[key] ?? {}).reduce((m, r) => (r.at > m ? r.at : m), '')
+}
+
+/**
+ * 写入。配额不足时淘汰最久没动过的一篇再试 ——
+ * 和草稿箱同策略：宁可丢最旧的历史，也不能让「标记已发」静默失效。
+ *
+ * 以前这里是 try/catch 一吞了事，于是存储满之后每一次标记都失败、
+ * 界面上却照样显示「已记为已发」，刷新一次全没了。
+ */
+function writeStore(store: Store): boolean {
+  for (let attempt = 0; attempt <= 8; attempt++) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(prune(store)))
+      return true
+    } catch {
+      const keys = Object.keys(store)
+      if (keys.length <= 1) return false
+      let oldest = keys[0]
+      for (const k of keys) {
+        if (lastAt(store, k) < lastAt(store, oldest)) oldest = k
+      }
+      delete store[oldest]
+    }
   }
+  return false
 }
 
 /** 只留最近活跃的 N 篇，避免 localStorage 无限长 */
@@ -69,11 +102,7 @@ function prune(store: Store): Store {
   const keys = Object.keys(store)
   if (keys.length <= MAX_ARTICLES) return store
 
-  const lastAt = (k: string) => {
-    const recs = Object.values(store[k])
-    return recs.reduce((m, r) => (r.at > m ? r.at : m), '')
-  }
-  const sorted = keys.sort((a, b) => lastAt(b).localeCompare(lastAt(a)))
+  const sorted = keys.sort((a, b) => lastAt(store, b).localeCompare(lastAt(store, a)))
   const kept: Store = {}
   for (const k of sorted.slice(0, MAX_ARTICLES)) kept[k] = store[k]
   return kept
@@ -94,7 +123,7 @@ export function readAllLedgers(): Record<string, ArticleLedger> {
 }
 
 /** 写入或删除一条记录；record 为 null 表示取消标记 */
-export function setRecord(key: string, platformId: string, record: PlatformRecord | null): ArticleLedger {
+export function setRecord(key: string, platformId: string, record: PlatformRecord | null): LedgerWrite {
   const store = readStore()
   const next: ArticleLedger = { ...(store[key] ?? {}) }
 
@@ -102,21 +131,20 @@ export function setRecord(key: string, platformId: string, record: PlatformRecor
   else delete next[platformId]
 
   store[key] = next
-  writeStore(store)
-  return next
+  return { ledger: next, persisted: writeStore(store) }
 }
 
 /** 复制成功即标记为已发布；保留原来填过的链接与数据 */
-export function markPublished(key: string, platformId: string): ArticleLedger {
+export function markPublished(key: string, platformId: string): LedgerWrite {
   const prev = readLedger(key)[platformId]
   return setRecord(key, platformId, { at: new Date().toISOString(), url: prev?.url, stats: prev?.stats })
 }
 
-export function unmark(key: string, platformId: string): ArticleLedger {
+export function unmark(key: string, platformId: string): LedgerWrite {
   return setRecord(key, platformId, null)
 }
 
-export function setUrl(key: string, platformId: string, url: string): ArticleLedger {
+export function setUrl(key: string, platformId: string, url: string): LedgerWrite {
   const prev = readLedger(key)[platformId]
   return setRecord(key, platformId, {
     at: prev?.at ?? new Date().toISOString(),
@@ -132,7 +160,7 @@ export function setUrl(key: string, platformId: string, url: string): ArticleLed
  * 不整体替换 stats 而是按字段 merge：用户一栏一栏地填，
  * 每敲一次都整体替换会把还没填的字段冲成 undefined。
  */
-export function setStats(key: string, platformId: string, patch: PlatformStats): ArticleLedger {
+export function setStats(key: string, platformId: string, patch: PlatformStats): LedgerWrite {
   const prev = readLedger(key)[platformId]
   const merged: PlatformStats = { ...prev?.stats, ...patch }
 
@@ -146,11 +174,10 @@ export function setStats(key: string, platformId: string, patch: PlatformStats):
   })
 }
 
-export function clearArticle(key: string): ArticleLedger {
+export function clearArticle(key: string): LedgerWrite {
   const store = readStore()
   delete store[key]
-  writeStore(store)
-  return {}
+  return { ledger: {}, persisted: writeStore(store) }
 }
 
 /** 10-31 21:03；今年的不显示年份 */

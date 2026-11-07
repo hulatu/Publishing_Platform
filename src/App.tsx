@@ -32,6 +32,7 @@ import {
   setUrl as setLedgerUrl,
   unmark,
   type ArticleLedger,
+  type LedgerWrite,
   type PlatformStats,
 } from './core/ledger'
 import { summarizeAll } from './core/review'
@@ -297,12 +298,39 @@ export default function App() {
     // reviewOpen 进依赖：每次打开都重读，避免在别的标签页改过之后看到旧数字
   }, [drafts, doc, articleKey, ledger, reviewOpen])
 
+  /**
+   * 落地一次台账写操作。
+   *
+   * 内存里的值照常更新（点了「标记已发」必须立刻有反应），
+   * 但落盘失败要说出来 —— 否则刷新之后记录全没，用户还以为自己记过。
+   * 只提醒一次，避免每敲一个数字弹一条。
+   *
+   * 返回是否真的写进了本地存储：调用方要据此决定还能不能说「已记为已发」，
+   * 否则会先弹一条红字「没存上」、紧跟一条绿字「已记为已发」。
+   */
+  const ledgerFailedRef = useRef(false)
+  const applyLedger = useCallback(
+    (w: LedgerWrite): boolean => {
+      setLedger(w.ledger)
+      if (w.persisted) {
+        ledgerFailedRef.current = false
+        return true
+      }
+      if (!ledgerFailedRef.current) {
+        ledgerFailedRef.current = true
+        toast('台账没存上：浏览器本地存储已满或被禁用。这次的记录刷新后会丢', 'error')
+      }
+      return false
+    },
+    [toast],
+  )
+
   const changeStats = useCallback(
     (platformId: string, patch: PlatformStats) => {
       if (!articleKey) return
-      setLedger(setLedgerStats(articleKey, platformId, patch))
+      applyLedger(setLedgerStats(articleKey, platformId, patch))
     },
-    [articleKey],
+    [articleKey, applyLedger],
   )
 
   const images = useMemo(() => (doc ? collectImages(doc.blocks) : []), [doc])
@@ -435,14 +463,22 @@ export default function App() {
 
   const removeDraft = useCallback(
     (key: string) => {
-      setDrafts(deleteDraft(key))
+      const { drafts: next, persisted } = deleteDraft(key)
+      setDrafts(next)
+      if (!persisted) {
+        toast('删除没写进本地存储，刷新后这篇草稿还会回来', 'error')
+        return
+      }
       toast('已删除这篇草稿')
     },
     [toast],
   )
 
   const wipeDrafts = useCallback(() => {
-    clearDrafts()
+    if (!clearDrafts()) {
+      toast('清空失败：浏览器拒绝访问本地存储', 'error')
+      return
+    }
     setDrafts([])
     toast('草稿箱已清空')
   }, [toast])
@@ -761,15 +797,16 @@ export default function App() {
         // 改写平台复制成功也算发过了；第一次会顺带提示，避免用户以为只是复制
         let tail = ''
         if (articleKey && isRewriteId(platform)) {
-          tail = ledger[platform] ? '' : ' · 已记为已发'
-          setLedger(markRecord(articleKey, platform))
+          const persisted = applyLedger(markRecord(articleKey, platform))
+          // 没写进去就别在成功提示里说「已记为已发」——上面已经报过错了
+          if (persisted && !ledger[platform]) tail = ' · 已记为已发'
         }
         toast(`已复制${label}${tail}`, 'success')
       } catch {
         toast('复制失败，浏览器拒绝了剪贴板访问', 'error')
       }
     },
-    [toast, articleKey, platform, ledger],
+    [toast, articleKey, platform, ledger, applyLedger],
   )
 
   /**
@@ -793,8 +830,8 @@ export default function App() {
     if (!output) return
     try {
       const mode = await copyByMode(output.copyMode, { html: output.html, text: output.text })
-      const tail = ledger[platform] ? '' : ' · 已记为已发'
-      if (articleKey) setLedger(markRecord(articleKey, platform))
+      const persisted = articleKey ? applyLedger(markRecord(articleKey, platform)) : false
+      const tail = persisted && !ledger[platform] ? ' · 已记为已发' : ''
       if (output.copyMode === 'rich') {
         toast(
           mode === 'rich' ? `已复制富文本，直接粘进编辑器即可${tail}` : `浏览器不支持富文本复制，已改为复制纯文本${tail}`,
@@ -806,19 +843,19 @@ export default function App() {
     } catch {
       toast('复制失败', 'error')
     }
-  }, [output, toast, articleKey, platform, ledger])
+  }, [output, toast, articleKey, platform, ledger, applyLedger])
 
   const doCopySource = useCallback(async () => {
     if (!output) return
     try {
       await copyPlain(output.primary)
-      const tail = ledger[platform] ? '' : ' · 已记为已发'
-      if (articleKey) setLedger(markRecord(articleKey, platform))
+      const persisted = articleKey ? applyLedger(markRecord(articleKey, platform)) : false
+      const tail = persisted && !ledger[platform] ? ' · 已记为已发' : ''
       toast(`已复制源码${tail}`, 'success')
     } catch {
       toast('复制失败', 'error')
     }
-  }, [output, toast, articleKey, platform, ledger])
+  }, [output, toast, articleKey, platform, ledger, applyLedger])
 
   const doDownload = useCallback(() => {
     if (!output) return
@@ -1225,12 +1262,12 @@ export default function App() {
           onClose={() => setLedgerOpen(false)}
           title={doc.meta.title}
           ledger={ledger}
-          onMark={(id) => setLedger(markRecord(articleKey, id))}
-          onUnmark={(id) => setLedger(unmark(articleKey, id))}
-          onSetUrl={(id, url) => setLedger(setLedgerUrl(articleKey, id, url))}
+          onMark={(id) => applyLedger(markRecord(articleKey, id))}
+          onUnmark={(id) => applyLedger(unmark(articleKey, id))}
+          onSetUrl={(id, url) => applyLedger(setLedgerUrl(articleKey, id, url))}
           onClear={() => {
-            setLedger(clearArticle(articleKey))
-            toast('已清空这篇的台账')
+            // 失败时 applyLedger 已经报过错，别再补一条「已清空」
+            if (applyLedger(clearArticle(articleKey))) toast('已清空这篇的台账')
           }}
         />
       ) : null}

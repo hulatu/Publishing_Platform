@@ -176,8 +176,9 @@ storage.clear()
 writeDraft(makeSnap('x1', { updatedAt: '2026-10-01T00:00:00.000Z' }))
 writeDraft(makeSnap('x2', { updatedAt: '2026-10-02T00:00:00.000Z' }))
 const afterDel = deleteDraft('x1')
-ok(afterDel.length === 1 && afterDel[0].key === 'x2', 'deleteDraft 只删指定那篇')
-clearDrafts()
+ok(afterDel.drafts.length === 1 && afterDel.drafts[0].key === 'x2', 'deleteDraft 只删指定那篇')
+ok(afterDel.persisted === true, 'deleteDraft 报告写盘成功')
+ok(clearDrafts() === true, 'clearDrafts 返回 true')
 ok(listDrafts().length === 0, 'clearDrafts 清空')
 
 /* ---------------- 6. sanitize：流式文本与运行态 ---------------- */

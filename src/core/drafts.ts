@@ -109,8 +109,12 @@ function prune(store: Store): Store {
   return kept
 }
 
+function sortDrafts(store: Store): DraftSnapshot[] {
+  return Object.values(store).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
 export function listDrafts(): DraftSnapshot[] {
-  return Object.values(readStore()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  return sortDrafts(readStore())
 }
 
 export function readDraft(key: string): DraftSnapshot | null {
@@ -136,18 +140,22 @@ export function sameDraft(a: DraftSnapshot | null, b: DraftSnapshot): boolean {
   return strip(a) === strip(b)
 }
 
-export function deleteDraft(key: string): DraftSnapshot[] {
+/** 删除一篇草稿。`persisted` 为 false 时它刷新后会回来 */
+export function deleteDraft(key: string): { drafts: DraftSnapshot[]; persisted: boolean } {
   const store = readStore()
   delete store[key]
-  writeStore(store)
-  return listDrafts()
+  const persisted = writeStore(store)
+  return { drafts: sortDrafts(store), persisted }
 }
 
-export function clearDrafts(): void {
+/** 清空草稿箱。返回是否真的清掉了 */
+export function clearDrafts(): boolean {
   try {
     localStorage.removeItem(KEY)
+    return true
   } catch {
     // 清不掉也不影响本次使用
+    return false
   }
 }
 

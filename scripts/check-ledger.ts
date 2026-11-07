@@ -11,9 +11,14 @@ import {
 } from '../src/core/ledger'
 
 const mem = new Map<string, string>()
+/** 设成有限值就模拟「配额用满」，setItem 会抛 —— 真实 localStorage 的行为 */
+let quota = Infinity
 ;(globalThis as unknown as { localStorage: Storage }).localStorage = {
   getItem: (k: string) => mem.get(k) ?? null,
-  setItem: (k: string, v: string) => void mem.set(k, v),
+  setItem: (k: string, v: string) => {
+    if (v.length > quota) throw new Error('QuotaExceededError')
+    mem.set(k, v)
+  },
   removeItem: (k: string) => void mem.delete(k),
   clear: () => mem.clear(),
   key: () => null,
@@ -98,6 +103,34 @@ setStats('stats', 'wechat', { like: undefined })
 ok(readLedger('stats').wechat?.stats === undefined, '四项全空时整块删掉，不留 {}')
 
 ok(Object.keys(readAllLedgers()).length >= 2, `readAllLedgers 能拿到全部 ${Object.keys(readAllLedgers()).length} 篇`)
+
+/* ---------------- 落盘失败必须说出来 ---------------- */
+// 以前 writeStore 是 try/catch 一吞了事：存储满之后每次标记都失败，
+// 界面照样显示「已记为已发」，刷新一次全没了。现在每次写都返回 persisted。
+
+console.log('\n落盘结果：')
+
+quota = Infinity
+ok(markPublished('disk', 'wechat').persisted === true, '正常情况 persisted 为 true')
+
+quota = 0
+const blocked = markPublished('disk2', 'xhs')
+ok(blocked.persisted === false, '配额为 0 时 persisted 为 false')
+ok(!!blocked.ledger.xhs?.at, '即使没写进去，内存值也照常返回（界面要立刻有反应）')
+
+// 淘汰重试：写不下就丢掉最久没动过的一篇，而不是永远写不进去
+mem.clear()
+quota = Infinity
+markPublished('old', 'wechat')
+mem.set('ad.publish-ledger.v1', JSON.stringify({ old: JSON.parse(mem.get('ad.publish-ledger.v1')!).old }))
+const before = mem.get('ad.publish-ledger.v1')!.length
+quota = before + 40
+const evicted = markPublished('fresh', 'jike')
+ok(evicted.persisted === true, '配额只够一篇时，淘汰旧的再写就成功了')
+ok(evicted.ledger.jike !== undefined, '新记录确实写进去了')
+ok(!readAllLedgers().old, '被淘汰的正是最久没动过的那篇')
+
+quota = Infinity
 
 console.log(failed === 0 ? '\n✓ 台账层全部通过' : `\n✗ ${failed} 项失败`)
 process.exit(failed === 0 ? 0 : 1)
