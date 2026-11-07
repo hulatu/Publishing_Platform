@@ -5,8 +5,8 @@ import { parseArticle } from '../src/core/parse'
 import { splitSections } from '../src/core/sections'
 import { buildAllFromDigest, localDigest } from '../src/ai/fallback'
 import { charCount, weightedLength } from '../src/core/cjk'
+import { POSTS } from './posts-dir'
 
-const POSTS = '/Users/hulatu/Blog/content/posts'
 const file = process.argv[2] ?? '三类财富杠杆.md'
 
 const src = readFileSync(join(POSTS, file), 'utf8')
