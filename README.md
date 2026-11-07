@@ -330,6 +330,7 @@ src/
     cjk.ts       中日韩字宽、加权长度、句子切分、营销词黑名单
     markdown-out.ts  Markdown 输出与 front matter 重建
     publish.ts   各平台发布页地址、开关偏好、预开标签页绕过弹窗拦截
+    platform-visibility.ts 侧栏显示偏好、按视觉宽度排序（汉字算 2 列）
   renderers/   各平台的确定性转换
   ai/          大模型层
     prompts.ts   两段式提示词 + 各平台写法对照

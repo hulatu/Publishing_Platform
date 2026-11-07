@@ -37,7 +37,8 @@ import {
   type PlatformStats,
 } from './core/ledger'
 import { summarizeAll } from './core/review'
-import { convertPlatforms, getConvertPlatform, rewritePlatforms, type RenderOutput } from './renderers'
+import { allPlatforms, cardPlatform, convertPlatforms, getConvertPlatform, rewritePlatforms, type RenderOutput } from './renderers'
+import { loadHidden, saveHidden, sortByWidth } from './core/platform-visibility'
 import { WECHAT_CONTENT_LIMIT } from './renderers/wechat'
 import { ThemePicker } from './components/ThemePicker'
 import { wechatThemes } from './themes/wechat'
@@ -73,6 +74,7 @@ import { MetaLab } from './components/MetaLab'
 import { TailSheet } from './components/TailSheet'
 import { DraftsSheet } from './components/DraftsSheet'
 import { ReviewSheet } from './components/ReviewSheet'
+import { PlatformFilterSheet } from './components/PlatformFilterSheet'
 import { NoticeStack, type NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
@@ -115,6 +117,9 @@ export default function App() {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [fileName, setFileName] = useState('')
   const [platform, setPlatform] = useState('wechat')
+  /** 侧栏隐藏了哪些平台。只是显示偏好，不影响渲染、台账和生成 */
+  const [hidden, setHidden] = useState(() => loadHidden(allPlatforms.map((p) => p.id)))
+  const [filterOpen, setFilterOpen] = useState(false)
   const [themeId, setThemeIdRaw] = useState(readStoredTheme)
 
   const setThemeId = useCallback((id: string) => {
@@ -182,6 +187,44 @@ export default function App() {
   const [openOnCopy, setOpenOnCopy] = useState(loadOpenOnCopy)
   /** 上一次自动打开的时间，用来挡住连点两下复制时开出两个标签 */
   const lastOpenRef = useRef(0)
+
+  /**
+   * 勾选 / 取消一个平台的显示。
+   *
+   * 必须挡住「全藏」：列表空了虽然还能从筛选面板找回来，但主区域会停在一个
+   * 列表里根本不存在的平台上，看起来像坏了。
+   */
+  const togglePlatform = useCallback(
+    (id: string) => {
+      const next = new Set(hidden)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+
+      if (allPlatforms.every((p) => next.has(p.id))) {
+        toast('至少要留一个平台，全藏了就没得看了', 'info')
+        return
+      }
+
+      setHidden(next)
+      if (!saveHidden(next)) toast('浏览器拒绝写入本地存储，这次的选择只在本次会话有效', 'error')
+    },
+    [hidden, toast],
+  )
+
+  const resetHidden = useCallback(() => {
+    setHidden(new Set())
+    if (!saveHidden([])) toast('浏览器拒绝写入本地存储，这次的选择只在本次会话有效', 'error')
+  }, [toast])
+
+  /** 当前平台被藏起来时（含从草稿恢复的情况）切到侧栏最上面那个，跟眼睛看到的一致 */
+  useEffect(() => {
+    if (!hidden.has(platform)) return
+    const pick =
+      sortByWidth(convertPlatforms.filter((p) => !hidden.has(p.id)))[0] ??
+      sortByWidth(rewritePlatforms.filter((p) => !hidden.has(p.id)))[0] ??
+      (hidden.has(cardPlatform.id) ? undefined : cardPlatform)
+    if (pick) setPlatform(pick.id)
+  }, [hidden, platform])
 
   const kind = kindOf(platform)
   /** 当前平台的发布页地址；卡片平台没有 */
@@ -1026,6 +1069,8 @@ export default function App() {
             onSelect={setPlatform}
             platformStatus={navStatus}
             published={ledger}
+            hidden={hidden}
+            onOpenFilter={() => setFilterOpen(true)}
           />
         </aside>
 
@@ -1402,6 +1447,14 @@ export default function App() {
         ledger={ledger}
         summaries={summaries}
         onSetStats={changeStats}
+      />
+
+      <PlatformFilterSheet
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        hidden={hidden}
+        onToggle={togglePlatform}
+        onReset={resetHidden}
       />
 
       <ToastLayer items={toasts} />

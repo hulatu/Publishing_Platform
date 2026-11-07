@@ -164,6 +164,25 @@ export const cardPlatform = {
 
 export const allPlatforms = [...convertPlatforms, ...rewritePlatforms, cardPlatform]
 
+/**
+ * 侧栏与筛选面板共用的分组。
+ *
+ * 放在这里而不是组件里，是为了让 check-platforms 能直接断言
+ * 「筛选面板覆盖了全部平台」—— 以后新增平台忘了加进面板，
+ * 用户在侧栏被隐藏后就再也找不回来了。
+ */
+export interface PlatformGroup {
+  id: 'convert' | 'rewrite' | 'card'
+  label: string
+  list: { id: string; name: string; hint: string }[]
+}
+
+export const platformGroups: PlatformGroup[] = [
+  { id: 'convert', label: '格式转换 · 无需 AI', list: convertPlatforms },
+  { id: 'rewrite', label: '内容改写 · 需要大模型', list: rewritePlatforms },
+  { id: 'card', label: '配图', list: [cardPlatform] },
+]
+
 export function getConvertPlatform(id: string): ConvertPlatform | undefined {
   return convertPlatforms.find((p) => p.id === id)
 }

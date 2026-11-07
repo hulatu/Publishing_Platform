@@ -301,6 +301,65 @@ select {
   text-transform: none;
 }
 
+/* 标题右侧：计数 + 筛选入口。挤在一起时先保证「筛选」不被挤没 */
+.side-title-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.nav-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-muted);
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.nav-filter-btn:hover {
+  color: var(--ink);
+  background: var(--panel-soft);
+  border-color: var(--line);
+}
+
+/* 有平台被藏起来时点亮 —— 否则用户会以为平台自己丢了 */
+.nav-filter-btn.has-hidden {
+  color: var(--ink-soft);
+  background: var(--panel-soft);
+  border-color: var(--line);
+}
+
+.nav-filter-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+}
+
+.nav-empty {
+  padding: 12px 2px;
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--ink-muted);
+}
+
+.nav-empty-btn {
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ---------- 已导入：收成一行 ---------- */
 
 .file-row {
@@ -842,6 +901,70 @@ select {
 }
 
 /* ---------- 提示条 ---------- */
+
+/* 行内提示块（弹层与面板里用）：一个圆形标记 + 一段话。
+   这套 class 之前一直没写样式，7 个组件在用，渲染出来是「i」紧贴正文的一坨文字，
+   在这里补齐。 */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+.notice b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.notice-mark {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  color: #fff;
+  background: var(--ink-muted);
+}
+
+.notice-info {
+  border-color: var(--line);
+  background: var(--panel-soft);
+}
+
+.notice-info .notice-mark {
+  background: var(--ink-muted);
+}
+
+.notice-warn {
+  border-color: #f0e2c4;
+  background: var(--warn-soft);
+}
+
+.notice-warn .notice-mark {
+  background: var(--warn);
+}
+
+.notice-error {
+  border-color: var(--accent-line);
+  background: var(--error-soft);
+}
+
+.notice-error .notice-mark {
+  background: var(--error);
+}
 
 .notice-holder {
   max-width: 780px;
@@ -1650,6 +1773,83 @@ select {
   position: sticky;
   bottom: 0;
   background: var(--panel);
+}
+
+/* ---------- 平台筛选面板 ---------- */
+
+.filter-group + .filter-group {
+  margin-top: 18px;
+}
+
+.filter-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+}
+
+.filter-group-label .count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+
+.filter-row:hover {
+  background: var(--panel-soft);
+}
+
+.filter-row input {
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.filter-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.filter-row-name {
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* 勾掉的整行压暗 + 划线，一眼看出「这个不显示」 */
+.filter-row.is-hidden .filter-row-name {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.filter-row-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.filter-count {
+  margin-right: auto;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
 }
 
 .icon-btn {

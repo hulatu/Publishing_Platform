@@ -20,9 +20,11 @@ import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
 import { charCount } from '../src/core/cjk'
 import { collectImages, collectLinks, type Doc } from '../src/core/ir'
-import { convertPlatforms, rewritePlatforms, type RenderOutput } from '../src/renderers'
+import { convertPlatforms, rewritePlatforms, allPlatforms, platformGroups, type RenderOutput } from '../src/renderers'
 import { renderCnBlog, renderBilibili, renderToutiao, renderBaijiahao } from '../src/renderers/cn-blogs'
 import { loadOpenOnCopy, publishUrlOf, saveOpenOnCopy } from '../src/core/publish'
+import { loadHidden, saveHidden, sortByWidth } from '../src/core/platform-visibility'
+import { weightedLength } from '../src/core/cjk'
 
 let failed = 0
 function ok(cond: boolean, msg: string) {
@@ -318,6 +320,103 @@ try {
   threw = true
 }
 ok(!threw, '本地存储不可写时保存不抛异常')
+
+/* ---------------- 侧栏排序与显示筛选 ---------------- */
+
+console.log('\n侧栏排序：')
+
+// 侧栏按名字长短排。用视觉宽度而不是字数：「B 站专栏」5 个字，
+// 但 B 和空格都是半角，按字数排会跑到「配图卡片」前面，看着歪。
+const convertSorted = sortByWidth(convertPlatforms).map((p) => p.name)
+const rewriteSorted = sortByWidth(rewritePlatforms).map((p) => p.name)
+
+console.log(`  格式转换：${convertSorted.join(' / ')}`)
+console.log(`  内容改写：${rewriteSorted.join(' / ')}`)
+
+ok(
+  convertSorted.join(',') === '知乎,豆瓣,少数派,公众号,头条号,百家号,B 站专栏',
+  `格式转换组顺序正确（实际：${convertSorted.join(',')}）`,
+)
+ok(
+  rewriteSorted.join(',') === '即刻,微博,小红书,推特 / X',
+  `内容改写组顺序正确（实际：${rewriteSorted.join(',')}）`,
+)
+
+const widths = (list: { name: string }[]) => list.map((p) => weightedLength(p.name))
+const isMonotonic = (ws: number[]) => ws.every((w, i) => i === 0 || ws[i - 1] <= w)
+
+ok(isMonotonic(widths(sortByWidth(convertPlatforms))), '格式转换组：宽度单调不减（短的在上面）')
+ok(isMonotonic(widths(sortByWidth(rewritePlatforms))), '内容改写组：宽度单调不减')
+
+// 只排不改：排序必须返回新数组，否则会把 renderers 里的注册表原地打乱
+const before = convertPlatforms.map((p) => p.id).join(',')
+sortByWidth(convertPlatforms)
+ok(convertPlatforms.map((p) => p.id).join(',') === before, '排序不会改动原数组（注册表顺序不变）')
+
+// 同宽度保持注册表顺序，避免每次渲染顺序漂移
+const tied = sortByWidth([
+  { name: '微博', id: 'a' },
+  { name: '即刻', id: 'b' },
+  { name: '豆瓣', id: 'c' },
+])
+ok(tied.map((x) => x.id).join(',') === 'a,b,c', '宽度相同的保持原有先后（稳定排序）')
+
+console.log('\n显示筛选：')
+
+// 筛选面板必须覆盖全部平台：漏一个，用户隐藏之后就再也找不回来了
+const groupIds = new Set(platformGroups.flatMap((g) => g.list.map((p) => p.id)))
+const missed = allPlatforms.filter((p) => !groupIds.has(p.id))
+ok(missed.length === 0, `筛选面板覆盖全部 ${allPlatforms.length} 个平台${missed.length ? `（漏：${missed.join('、')}）` : ''}`)
+ok(groupIds.size === allPlatforms.length, '筛选面板没有重复列出同一个平台')
+
+const known = allPlatforms.map((p) => p.id)
+const mem2 = new Map<string, string>()
+;(globalThis as unknown as { localStorage: Storage }).localStorage = {
+  getItem: (k: string) => mem2.get(k) ?? null,
+  setItem: (k: string, v: string) => void mem2.set(k, v),
+  removeItem: (k: string) => void mem2.delete(k),
+  clear: () => mem2.clear(),
+  key: () => null,
+  length: 0,
+} as Storage
+
+ok(loadHidden(known).size === 0, '没存过时全部显示')
+saveHidden(['weibo', 'cards'])
+const back = loadHidden(known)
+ok(back.size === 2 && back.has('weibo') && back.has('cards'), '隐藏集合能存能读')
+saveHidden([])
+ok(loadHidden(known).size === 0, '全部显示能存能读')
+
+// 平台改名/下线后本地还留着旧 id：必须丢掉，否则「已隐藏 N」永远对不上列表
+saveHidden(['weibo', '已经下线的平台'])
+const pruned = loadHidden(known)
+ok(pruned.size === 1 && pruned.has('weibo'), '不认识的 id 会被丢掉，不会污染计数')
+
+mem2.set('ad.hiddenPlatforms.v1', '{不是数组}')
+ok(loadHidden(known).size === 0, '本地存的是坏 JSON 时降级为全部显示')
+
+// 隐私模式：读不到就当全部显示，写不进去要如实返回 false
+;(globalThis as unknown as { localStorage: Storage }).localStorage = {
+  getItem: () => {
+    throw new Error('SecurityError')
+  },
+  setItem: () => {
+    throw new Error('QuotaExceededError')
+  },
+  removeItem: () => {},
+  clear: () => {},
+  key: () => null,
+  length: 0,
+} as Storage
+ok(loadHidden(known).size === 0, '本地存储不可读时降级为全部显示')
+let threw2 = false
+let saved2 = true
+try {
+  saved2 = saveHidden(['weibo'])
+} catch {
+  threw2 = true
+}
+ok(!threw2 && saved2 === false, '本地存储不可写时返回 false 而不是抛异常')
 
 /* ---------------- 汇总 ---------------- */
 
