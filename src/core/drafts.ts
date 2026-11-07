@@ -123,6 +123,19 @@ export function writeDraft(snap: DraftSnapshot): boolean {
   return writeStore(store)
 }
 
+/**
+ * 两份草稿的内容是否一致（忽略保存时间）。
+ *
+ * 自动保存是「状态一变就存」，但打开草稿、切平台标签这些动作也会触发重存 ——
+ * 结果只是看了一眼的草稿被改成「刚刚」，草稿列表的顺序全乱。
+ * 内容没变就别写，时间戳才有意义。
+ */
+export function sameDraft(a: DraftSnapshot | null, b: DraftSnapshot): boolean {
+  if (!a) return false
+  const strip = (s: DraftSnapshot) => JSON.stringify({ ...s, updatedAt: '' })
+  return strip(a) === strip(b)
+}
+
 export function deleteDraft(key: string): DraftSnapshot[] {
   const store = readStore()
   delete store[key]

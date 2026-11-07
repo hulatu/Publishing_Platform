@@ -17,6 +17,7 @@ import {
   formatAgo,
   listDrafts,
   readDraft,
+  sameDraft,
   sanitizeForStore,
   writeDraft,
   type DraftSnapshot,
@@ -165,6 +166,10 @@ export default function App() {
   const [draftsOpen, setDraftsOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const saveTimer = useRef<number | null>(null)
+  /** 草稿存盘失败只提醒一次，别每 800ms 弹一条 */
+  const saveFailedRef = useRef(false)
+  /** 上次真正落盘的那份快照，用来跳过「内容没变」的重复写入 */
+  const lastSnapRef = useRef<DraftSnapshot | null>(null)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
   const abortRef = useRef<AbortController | null>(null)
@@ -376,15 +381,29 @@ export default function App() {
       // 写盘挪到空闲时段：一篇文章带正文 30–60KB，同步写会卡主线程十几毫秒，
       // 而 800ms 的防抖窗口正好是用户还在打字的时候
       whenIdle(() => {
-        writeDraft(snap)
+        // 内容一个字没变（只是打开草稿 / 切了标签）就别写，
+        // 否则「最后修改时间」会变成「最后看了一眼的时间」
+        if (sameDraft(lastSnapRef.current, snap)) return
+        const ok = writeDraft(snap)
         setDrafts(listDrafts())
+        // 草稿箱的全部价值就是「关掉页面也不会丢」。存不下却不说，
+        // 等于骗用户 —— localStorage 满或隐私模式时必须让他知道
+        if (!ok) {
+          if (!saveFailedRef.current) {
+            saveFailedRef.current = true
+            toast('草稿没存上：浏览器本地存储已满或被禁用。先删几篇旧草稿再试', 'error')
+          }
+        } else {
+          saveFailedRef.current = false
+          lastSnapRef.current = snap
+        }
       })
     }, 800)
 
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current)
     }
-  }, [doc, articleKey, sourceText, fileName, tone, themeId, platform, digest, platformStates, metaLab, sections.length])
+  }, [doc, articleKey, sourceText, fileName, tone, themeId, platform, digest, platformStates, metaLab, sections.length, toast])
 
   /** 从草稿箱显式打开：这次连 meta 一起还原，用户要的就是「回到当时那一刻」 */
   const restoreDraft = useCallback(
@@ -406,6 +425,8 @@ export default function App() {
       setTone(d.tone)
       setThemeId(d.themeId)
       if (d.platform) setPlatform(d.platform)
+      // 打开草稿不该算「修改」：记下它，紧接着那次自动保存会判定内容没变而跳过
+      lastSnapRef.current = d
       setDraftsOpen(false)
       toast(`已打开草稿「${d.meta.title}」`, 'success')
     },
@@ -434,6 +455,15 @@ export default function App() {
     [settingsVersion, settingsOpen],
   )
 
+  /**
+   * 本帧的 AI 状态快照。
+   *
+   * 中断时流水线返回的是「空状态」，直接 setState 会让用户按一下「停止」
+   * 就把已经花钱生成好的摘要 / 文案一起抹掉 —— 所以取消时要用它还原上一版。
+   */
+  const aiSnapshot = useRef({ digest, platformStates, metaLab })
+  aiSnapshot.current = { digest, platformStates, metaLab }
+
   const startJob = useCallback(() => {
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -441,123 +471,193 @@ export default function App() {
     return controller
   }, [])
 
-  /** Stage 1：逐节摘要 */
+  /**
+   * 这次中断是不是「用户按了停止」。
+   *
+   * 被新任务顶掉时 abortRef 已经指向新任务，那种情况不能还原 ——
+   * 否则旧任务收尾时会把新任务刚写进去的「生成中」状态盖回去。
+   */
+  const isUserAbort = useCallback((controller: AbortController) => {
+    return controller.signal.aborted && abortRef.current === controller
+  }, [])
+
+  /**
+   * 意料之外的异常兜底。
+   *
+   * 流水线内部已经把能处理的错误都转成状态了，走到这里说明是真没料到的
+   * （prompt 拼装抛错、浏览器扩展拦截之类）。必须把 running 收掉，
+   * 否则按钮永远停在「生成中」，用户只能刷新页面。
+   */
+  const failJob = useCallback(
+    (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      setDigest((p) => (p.status === 'running' ? { ...p, status: 'error', error: msg } : p))
+      setPlatformStates((prev) => {
+        let touched = false
+        const next = { ...prev }
+        for (const id of rewriteIds) {
+          if (next[id].status === 'running') {
+            next[id] = { ...next[id], status: 'error', error: msg }
+            touched = true
+          }
+        }
+        return touched ? next : prev
+      })
+      setMetaLab((p) => (p.status === 'running' ? { ...p, status: 'error', error: msg } : p))
+      toast(`生成失败：${msg}`, 'error')
+    },
+    [toast],
+  )
+
+  /**
+   * Stage 1 本身。取消时返回 null 并且不写状态 ——
+   * 「被取消」和「失败」是两件完全不同的事，不能都弹一条红字。
+   */
+  const runDigestStage = useCallback(
+    async (controller: AbortController): Promise<DigestState | null> => {
+      if (!doc) return null
+      const prev = aiSnapshot.current.digest
+      setDigest({ ...emptyDigestState, status: 'running' })
+
+      const out = await runDigest(doc, sections, tone, controller.signal, {
+        onStream: (text) => setDigest((p) => ({ ...p, status: 'running', streaming: text })),
+      })
+
+      if (controller.signal.aborted) {
+        if (isUserAbort(controller)) setDigest(prev)
+        return null
+      }
+
+      setDigest(out.state)
+      return out.state
+    },
+    [doc, sections, tone, isUserAbort],
+  )
+
+  /** Stage 1：逐节摘要（用户显式点「生成摘要 / 重新摘要」） */
   const generateDigest = useCallback(async () => {
     if (!doc || sections.length === 0) {
       toast('没有可切分的正文', 'error')
       return
     }
     const controller = startJob()
-    setDigest({ ...emptyDigestState, status: 'running' })
-
-    const out = await runDigest(doc, sections, tone, controller.signal, {
-      onStream: (text) => setDigest((prev) => ({ ...prev, status: 'running', streaming: text })),
-    })
-
-    setDigest(out.state)
-    if (out.state.error) {
-      toast(out.state.error, out.state.fallback ? 'info' : 'error')
-    } else {
-      toast(`已生成 ${out.state.digest?.sections.length ?? 0} 节摘要`, 'success')
+    try {
+      const state = await runDigestStage(controller)
+      if (!state) return
+      if (state.error) {
+        toast(state.error, state.fallback ? 'info' : 'error')
+      } else {
+        toast(`已生成 ${state.digest?.sections.length ?? 0} 节摘要`, 'success')
+      }
+    } catch (err) {
+      failJob(err)
     }
-  }, [doc, sections, tone, startJob, toast])
+  }, [doc, sections, tone, startJob, runDigestStage, failJob, toast])
+
+  /** 有摘要就直接用，没有才跑 Stage 1。返回 null 表示被取消或失败（已提示过） */
+  const ensureDigest = useCallback(
+    async (controller: AbortController): Promise<DigestSet | null> => {
+      if (digest.digest) return digest.digest
+      const state = await runDigestStage(controller)
+      // 取消不是失败，别在这里再补一条「摘要生成失败」
+      if (controller.signal.aborted) return null
+      if (!state?.digest) {
+        toast(state?.error ?? '摘要生成失败', 'error')
+        return null
+      }
+      return state.digest
+    },
+    [digest.digest, runDigestStage, toast],
+  )
 
   const setOnePlatform = useCallback((id: RewriteId, state: AIState) => {
     setPlatformStates((prev) => ({ ...prev, [id]: state }))
   }, [])
 
-  /** Stage 2：单个平台 */
+  /** Stage 2：单个平台。取消时把上一版文案放回去，并返回 null */
   const runOnePlatform = useCallback(
-    async (id: RewriteId, dg: DigestSet, signal: AbortSignal): Promise<AIState | null> => {
+    async (id: RewriteId, dg: DigestSet, controller: AbortController): Promise<AIState | null> => {
       if (!doc) return null
+      const prev = aiSnapshot.current.platformStates[id]
       setOnePlatform(id, { ...emptyAIState, status: 'running' })
 
-      const out = await runPlatform(id, doc, dg, tone, signal, {
+      const out = await runPlatform(id, doc, dg, tone, controller.signal, {
         onStream: (text) =>
-          setPlatformStates((prev) => ({ ...prev, [id]: { ...prev[id], status: 'running', streaming: text } })),
+          setPlatformStates((p) => ({ ...p, [id]: { ...p[id], status: 'running', streaming: text } })),
       })
+
+      if (controller.signal.aborted) {
+        // 「重新生成」跑到一半点停止，原来的那版不该跟着消失
+        if (isUserAbort(controller)) setOnePlatform(id, prev)
+        return null
+      }
 
       setOnePlatform(id, out.state)
       return out.state
     },
-    [doc, tone, setOnePlatform],
+    [doc, tone, setOnePlatform, isUserAbort],
   )
 
   /** 生成当前平台：缺摘要就先跑 Stage 1 */
   const generateCurrent = useCallback(async () => {
     if (!doc || !isRewriteId(platform)) return
     const controller = startJob()
+    try {
+      const dg = await ensureDigest(controller)
+      if (!dg) return
 
-    let dg = digest.digest
-    if (!dg) {
-      setDigest({ ...emptyDigestState, status: 'running' })
-      const dOut = await runDigest(doc, sections, tone, controller.signal, {
-        onStream: (text) => setDigest((prev) => ({ ...prev, status: 'running', streaming: text })),
-      })
-      setDigest(dOut.state)
-      dg = dOut.state.digest
-      if (!dg) {
-        toast(dOut.state.error ?? '摘要生成失败', 'error')
-        return
-      }
+      const state = await runOnePlatform(platform, dg, controller)
+      if (!state) return
+      if (state.error) toast(state.error, state.fallback ? 'info' : 'error')
+      else if (state.fallback) toast('已用本地组装生成（未调用大模型）')
+      else toast('生成好了', 'success')
+    } catch (err) {
+      failJob(err)
     }
-
-    const state = await runOnePlatform(platform, dg, controller.signal)
-    if (!state) return
-    if (state.error) toast(state.error, state.fallback ? 'info' : 'error')
-    else if (state.fallback) toast('已用本地组装生成（未调用大模型）')
-    else toast('生成好了', 'success')
-  }, [doc, platform, digest.digest, sections, tone, startJob, runOnePlatform, toast])
+  }, [doc, platform, startJob, ensureDigest, runOnePlatform, failJob, toast])
 
   /** 生成四个平台 */
   const generateAll = useCallback(async () => {
     if (!doc) return
     const controller = startJob()
 
-    let dg = digest.digest
-    if (!dg) {
-      setDigest({ ...emptyDigestState, status: 'running' })
-      const dOut = await runDigest(doc, sections, tone, controller.signal, {
-        onStream: (text) => setDigest((prev) => ({ ...prev, status: 'running', streaming: text })),
-      })
-      setDigest(dOut.state)
-      dg = dOut.state.digest
-      if (!dg) {
-        toast(dOut.state.error ?? '摘要生成失败', 'error')
-        return
+    try {
+      const dg = await ensureDigest(controller)
+      if (!dg) return
+
+      // 并发 2。四个平台串行是 4 × 30s ≈ 2 分钟，并发能砍掉一半；
+      // 但不敢开满 —— 同一个 Key 同时打四个请求很容易撞限流。
+      // 一旦有人撞上 429，剩下的立刻退回串行，别把「限流」打成「封禁」。
+      const queue = [...rewriteIds]
+      let cursor = 0
+      let throttled = false
+
+      const worker = async () => {
+        for (;;) {
+          if (controller.signal.aborted || throttled) return
+          const i = cursor++
+          if (i >= queue.length) return
+          const st = await runOnePlatform(queue[i], dg, controller)
+          if (st?.error && /429|限流/.test(st.error)) throttled = true
+        }
       }
-    }
 
-    // 并发 2。四个平台串行是 4 × 30s ≈ 2 分钟，并发能砍掉一半；
-    // 但不敢开满 —— 同一个 Key 同时打四个请求很容易撞限流。
-    // 一旦有人撞上 429，剩下的立刻退回串行，别把「限流」打成「封禁」。
-    const queue = [...rewriteIds]
-    let cursor = 0
-    let throttled = false
+      await Promise.all([worker(), worker()])
 
-    const worker = async () => {
-      for (;;) {
-        if (controller.signal.aborted || throttled) return
-        const i = cursor++
-        if (i >= queue.length) return
-        const st = await runOnePlatform(queue[i], dg, controller.signal)
-        if (st?.error && /429|限流/.test(st.error)) throttled = true
+      // 撞了限流：把没跑的串行收尾
+      if (throttled && !controller.signal.aborted) {
+        while (cursor < queue.length) {
+          await runOnePlatform(queue[cursor++], dg, controller)
+          if (controller.signal.aborted) return
+        }
       }
+
+      if (controller.signal.aborted) return
+      toast('四个平台的文案都生成好了', 'success')
+    } catch (err) {
+      failJob(err)
     }
-
-    await Promise.all([worker(), worker()])
-
-    // 撞了限流：把没跑的串行收尾
-    if (throttled && !controller.signal.aborted) {
-      while (cursor < queue.length) {
-        await runOnePlatform(queue[cursor++], dg, controller.signal)
-        if (controller.signal.aborted) return
-      }
-    }
-
-    if (controller.signal.aborted) return
-    toast('四个平台的文案都生成好了', 'success')
-  }, [doc, digest.digest, sections, tone, startJob, runOnePlatform, toast])
+  }, [doc, startJob, ensureDigest, runOnePlatform, failJob, toast])
 
   const cancelGenerate = useCallback(() => {
     abortRef.current?.abort()
@@ -577,14 +677,26 @@ export default function App() {
   const generateMetaLab = useCallback(async () => {
     if (!doc) return
     const controller = startJob()
+    const prev = aiSnapshot.current.metaLab
     setMetaLab({ ...emptyMetaLabState, status: 'running' })
-    const out = await runMetaLab(doc, digest.digest, sections, controller.signal, {
-      onStream: (text) => setMetaLab((prev) => ({ ...prev, status: 'running', streaming: text })),
-    })
-    setMetaLab(out.state)
-    if (out.state.error) toast(out.state.error, out.state.fallback ? 'info' : 'error')
-    else toast(`已生成 ${out.state.result?.titles.length ?? 0} 个标题候选`, 'success')
-  }, [doc, digest.digest, sections, startJob, toast])
+
+    try {
+      const out = await runMetaLab(doc, digest.digest, sections, controller.signal, {
+        onStream: (text) => setMetaLab((p) => ({ ...p, status: 'running', streaming: text })),
+      })
+
+      if (controller.signal.aborted) {
+        if (isUserAbort(controller)) setMetaLab(prev)
+        return
+      }
+
+      setMetaLab(out.state)
+      if (out.state.error) toast(out.state.error, out.state.fallback ? 'info' : 'error')
+      else toast(`已生成 ${out.state.result?.titles.length ?? 0} 个标题候选`, 'success')
+    } catch (err) {
+      failJob(err)
+    }
+  }, [doc, digest.digest, sections, startJob, isUserAbort, failJob, toast])
 
   const cancelMetaLab = useCallback(() => {
     abortRef.current?.abort()
@@ -821,7 +933,12 @@ export default function App() {
       <div className="app-body">
         {/* ================= 侧栏 ================= */}
         <aside className="sidebar">
-          <ImportPanel currentName={fileName} onLoad={load} onError={(m) => toast(m, 'error')} />
+          <ImportPanel
+            currentName={fileName}
+            onLoad={load}
+            onError={(m) => toast(m, 'error')}
+            onNotice={(m) => toast(m, 'info')}
+          />
           {doc ? <MetaEditor meta={doc.meta} onChange={updateMeta} /> : null}
           <PlatformNav
             active={platform}
@@ -1096,9 +1213,9 @@ export default function App() {
       <SettingsSheet
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onSaved={(m) => {
+        onSaved={(m, kind = 'success') => {
           setSettingsVersion((v) => v + 1)
-          toast(m, 'success')
+          toast(m, kind)
         }}
       />
 

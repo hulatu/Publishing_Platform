@@ -26,7 +26,7 @@ import {
 interface Props {
   open: boolean
   onClose: () => void
-  onSaved: (message: string) => void
+  onSaved: (message: string, kind?: 'success' | 'error') => void
 }
 
 export function SettingsSheet({ open, onClose, onSaved }: Props) {
@@ -92,9 +92,17 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
   }
 
   const save = () => {
-    saveByok(byok)
+    // 写盘可能失败（隐私模式 / 配额满）。失败要说出来，不能假装存好了
+    const stored = saveByok(byok)
     saveCloudModel(cloudModel)
-    onSaved(ready ? `已保存，使用 ${byok.model}` : '已保存')
+    onSaved(
+      stored
+        ? ready
+          ? `已保存，使用 ${byok.model}`
+          : '已保存'
+        : '浏览器拒绝写入本地存储（隐私模式？），Key 只在本次会话有效',
+      stored ? 'success' : 'error',
+    )
     onClose()
   }
 
@@ -260,10 +268,13 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
             <button
               className="btn btn-sm"
               onClick={() => {
-                clearByok()
+                const ok = clearByok()
                 setByok({ ...emptyByok })
                 setPing(null)
-                onSaved('已清空自带 Key')
+                onSaved(
+                  ok ? '已清空自带 Key' : '没能清掉：浏览器拒绝访问本地存储',
+                  ok ? 'success' : 'error',
+                )
               }}
             >
               清空 Key

@@ -172,13 +172,32 @@ export function loadByok(): ByokSettings {
   }
 }
 
-export function saveByok(settings: ByokSettings): void {
-  localStorage.setItem(BYOK_KEY, JSON.stringify(settings))
+/**
+ * 保存自带 Key。返回是否真的落盘了。
+ *
+ * 隐私模式、禁用第三方 Cookie、存储配额耗尽时 `localStorage.setItem` 会抛异常。
+ * 静默吞掉会让用户以为存住了，刷新一次才发现要重填 —— 所以要把结果交回给 UI。
+ */
+export function saveByok(settings: ByokSettings): boolean {
+  let ok = false
+  try {
+    localStorage.setItem(BYOK_KEY, JSON.stringify(settings))
+    ok = true
+  } catch {
+    // 写不进去不影响本次会话：设置还在内存里，能正常用
+  }
+  // 预连接是纯优化，跟写盘成功与否无关
   applyPreconnect(settings.endpoint)
+  return ok
 }
 
-export function clearByok(): void {
-  localStorage.removeItem(BYOK_KEY)
+export function clearByok(): boolean {
+  try {
+    localStorage.removeItem(BYOK_KEY)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** 三项都填了才算配好 */
@@ -604,12 +623,26 @@ export async function pingByok(settings: ByokSettings): Promise<PingResult> {
 
 const CLOUD_MODEL_KEY = 'dispatch.cloudModel.v1'
 
+/**
+ * 这里必须 try/catch：`loadCloudModel` 会在 render 期间被 `resolveProvider` 调到，
+ * 而「禁用所有 Cookie」的浏览器里连读 localStorage 都会抛 SecurityError ——
+ * 不兜住就是整页白屏，而不是「没有云服务可用」。
+ */
 export function loadCloudModel(): string {
-  return localStorage.getItem(CLOUD_MODEL_KEY) ?? ''
+  try {
+    return localStorage.getItem(CLOUD_MODEL_KEY) ?? ''
+  } catch {
+    return ''
+  }
 }
 
-export function saveCloudModel(id: string): void {
-  localStorage.setItem(CLOUD_MODEL_KEY, id)
+export function saveCloudModel(id: string): boolean {
+  try {
+    localStorage.setItem(CLOUD_MODEL_KEY, id)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** 拉取云服务模型列表，供设置页选择 */

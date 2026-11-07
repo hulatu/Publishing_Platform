@@ -48,15 +48,19 @@ const IMAGE_CONCURRENCY = 3
 const IMAGE_TIMEOUT = 15_000
 
 async function fetchImageOnce(url: string): Promise<Blob> {
-  const res = await fetch(url, {
-    mode: 'cors',
-    credentials: 'omit',
-    signal: AbortSignal.timeout(IMAGE_TIMEOUT),
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const blob = await res.blob()
-  if (!blob.type.startsWith('image/')) throw new Error('不是图片')
-  return blob
+  // AbortSignal.timeout 在 Safari 16 以下没有，直接用会抛 TypeError，
+  // 结果被当成「跨域失败」—— 提示全错。手动兜一层。
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(new DOMException('timeout', 'TimeoutError')), IMAGE_TIMEOUT)
+  try {
+    const res = await fetch(url, { mode: 'cors', credentials: 'omit', signal: ctrl.signal })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    if (!blob.type.startsWith('image/')) throw new Error('不是图片')
+    return blob
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /**
@@ -82,6 +86,8 @@ export function ImageList({ open, onClose, images, title }: Props) {
   const [busy, setBusy] = useState(false)
   /** 已处理完的张数，用于「3 / 20」进度 */
   const [done, setDone] = useState(0)
+  /** 打包阶段（不是下载阶段）的失败原因 */
+  const [error, setError] = useState('')
 
   const failed = useMemo(
     () => images.filter((img) => status[img.src] === 'fail').length,
@@ -97,48 +103,49 @@ export function ImageList({ open, onClose, images, title }: Props) {
     setBusy(true)
     setStatus({})
     setDone(0)
+    setError('')
 
     let ok = 0
-    let fail = 0
 
-    // 并发拉图。命名放在最后按原顺序做 —— 并发是乱序完成的，
-    // 边下边编号会把 03 号图存成 01。
-    const blobs = await mapLimit(images, IMAGE_CONCURRENCY, async (img) => {
-      setOne(img.src, 'busy')
-      try {
-        const blob = await fetchImage(img.src)
-        setOne(img.src, 'ok')
-        ok++
-        return blob
-      } catch {
-        setOne(img.src, 'fail')
-        fail++
-        return null
-      } finally {
-        setDone((n) => n + 1)
-      }
-    })
+    try {
+      // 并发拉图。命名放在最后按原顺序做 —— 并发是乱序完成的，
+      // 边下边编号会把 03 号图存成 01。
+      const blobs = await mapLimit(images, IMAGE_CONCURRENCY, async (img) => {
+        setOne(img.src, 'busy')
+        try {
+          const blob = await fetchImage(img.src)
+          setOne(img.src, 'ok')
+          ok++
+          return blob
+        } catch {
+          setOne(img.src, 'fail')
+          return null
+        } finally {
+          setDone((n) => n + 1)
+        }
+      })
 
-    setBusy(false)
+      if (ok === 0) return
 
-    if (ok === 0) return
+      // jszip 只在真的要打包时下载，不进首屏
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
+      const folder = zip.folder('images') ?? zip
 
-    // jszip 只在真的要打包时下载，不进首屏
-    const { default: JSZip } = await import('jszip')
-    const zip = new JSZip()
-    const folder = zip.folder('images') ?? zip
+      images.forEach((img, i) => {
+        const blob = blobs[i]
+        if (!blob) return
+        folder.file(`${String(i + 1).padStart(2, '0')}.${extOf(blob, img.src)}`, blob)
+      })
 
-    images.forEach((img, i) => {
-      const blob = blobs[i]
-      if (!blob) return
-      folder.file(`${String(i + 1).padStart(2, '0')}.${extOf(blob, img.src)}`, blob)
-    })
-
-    const out = await zip.generateAsync({ type: 'blob' })
-    downloadBlob(out, `${safeFileName(title)}-正文图片.zip`)
-    if (fail > 0) {
-      // 失败的那几张给用户手动存的入口，不静默吞掉
-      console.warn(`[image-list] ${fail} 张因跨域无法打包`)
+      const out = await zip.generateAsync({ type: 'blob' })
+      downloadBlob(out, `${safeFileName(title)}-正文图片.zip`)
+    } catch (e) {
+      // 图下好了却打包失败（图太大、内存不够）以前是静默什么都不发生，
+      // 用户会以为是没点到按钮
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -202,6 +209,13 @@ export function ImageList({ open, onClose, images, title }: Props) {
               })}
             </div>
           )}
+
+          {error ? (
+            <div className="notice notice-warn" style={{ marginTop: 12 }}>
+              <span className="notice-mark">!</span>
+              <span>打包失败：{error}。图片已下载完成但压缩出错，可以逐张「打开原图」另存。</span>
+            </div>
+          ) : null}
 
           {failed > 0 ? (
             <div className="notice notice-warn" style={{ marginTop: 12 }}>

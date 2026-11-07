@@ -25,6 +25,7 @@ import {
   formatAgo,
   listDrafts,
   readDraft,
+  sameDraft,
   sanitizeForStore,
   writeDraft,
   type DraftSnapshot,
@@ -256,7 +257,24 @@ const states = emptyPlatformStates()
 states.jike = { ...emptyAIState, result: { jike: { body: 'x' } } }
 ok(draftValue(makeSnap('p', { platformStates: states })).marks.some((m) => m.includes('1 个平台')), '标出平台文案数')
 
-/* ---------------- 9. 相对时间 ---------------- */
+/* ---------------- 9. 内容相同判定 ---------------- */
+
+console.log('\n内容相同判定：')
+
+const base = makeSnap('same', { updatedAt: '2026-10-01T10:00:00.000Z' })
+ok(sameDraft(null, base) === false, '没有上一版时不算相同')
+ok(
+  sameDraft(base, makeSnap('same', { updatedAt: '2026-10-09T23:59:00.000Z' })) === true,
+  '只有 updatedAt 不同 → 视为相同（打开草稿不该刷新修改时间）',
+)
+ok(sameDraft(base, makeSnap('same', { tone: 'lively' })) === false, '语气变了 → 要写盘')
+ok(sameDraft(base, makeSnap('other')) === false, '换了文章 → 要写盘')
+ok(
+  sameDraft(base, makeSnap('same', { digest: { ...emptyDigestState, status: 'done' } })) === false,
+  '摘要状态变了 → 要写盘',
+)
+
+/* ---------------- 10. 相对时间 ---------------- */
 
 console.log('\n时间显示：')
 

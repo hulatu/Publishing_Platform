@@ -70,29 +70,59 @@ export interface ZipEntry {
   folder?: string
 }
 
-/** 批量导出为 zip —— 逐张触发下载会被浏览器拦截 */
+export interface ZipResult {
+  /** 成功写进 zip 的张数 */
+  ok: number
+  /** 渲染失败、被跳过的张数 */
+  failed: number
+  /** 第一张失败的错误信息，用于提示 */
+  firstError?: string
+}
+
+/**
+ * 批量导出为 zip —— 逐张触发下载会被浏览器拦截。
+ *
+ * 单张渲染失败不能让整批作废：20 张导到第 15 张崩掉时，
+ * 用户已经等了快一分钟，至少要把前 14 张给他。
+ */
 export async function exportCardsAsZip(
   entries: ZipEntry[],
   zipName: string,
   opts: ExportOptions,
   onProgress?: (done: number, total: number) => void,
-): Promise<void> {
+): Promise<ZipResult> {
   const { default: JSZip } = await import('jszip')
   const zip = new JSZip()
+  let ok = 0
+  let failed = 0
+  let firstError: string | undefined
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]
-    const blob = await renderCardToBlob(entry.node, opts)
-    const target = entry.folder ? (zip.folder(entry.folder) ?? zip) : zip
-    target.file(entry.name, blob)
+    try {
+      const blob = await renderCardToBlob(entry.node, opts)
+      const target = entry.folder ? (zip.folder(entry.folder) ?? zip) : zip
+      target.file(entry.name, blob)
+      ok++
+    } catch (e) {
+      failed++
+      firstError ??= e instanceof Error ? e.message : String(e)
+    }
     onProgress?.(i + 1, entries.length)
+  }
+
+  if (ok === 0) {
+    throw new Error(firstError ?? '所有卡片都渲染失败')
   }
 
   const out = await zip.generateAsync({ type: 'blob' })
   downloadBlob(out, zipName)
+  return { ok, failed, firstError }
 }
 
 /** 生成安全的文件名 */
 export function safeFileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, '-').slice(0, 60)
+  const cleaned = name.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 60)
+  // 标题全被过滤掉时别产出「-配图.zip」这种以连字符开头的名字
+  return cleaned || '未命名'
 }

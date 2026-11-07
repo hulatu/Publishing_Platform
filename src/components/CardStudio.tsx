@@ -199,13 +199,18 @@ export function CardStudio({
     setExporting(true)
     setProgress('')
     try {
-      await exportCardsAsZip(
+      const res = await exportCardsAsZip(
         entries,
         `${safeFileName(doc.meta.title)}-配图.zip`,
         { backgroundColor: theme.bg },
         (done, total) => setProgress(`${done}/${total}`),
       )
-      onToast(`已导出 ${entries.length} 张图`, 'success')
+      if (res.failed > 0) {
+        // 有失败也要把成功的那批交出去，同时说清少了几张
+        onToast(`已导出 ${res.ok} 张，${res.failed} 张渲染失败被跳过`, 'info')
+      } else {
+        onToast(`已导出 ${res.ok} 张图`, 'success')
+      }
     } catch (e) {
       onToast(`导出失败：${e instanceof Error ? e.message : String(e)}`, 'error')
     } finally {

@@ -1,12 +1,15 @@
 import { useRef, useState, type DragEvent } from 'react'
+import { decodeText, looksMojibake } from '../core/text'
 
 interface Props {
   currentName: string
   onLoad: (source: string, fileName: string) => void
   onError: (message: string) => void
+  /** 非错误的提示，比如「这份文件是 GBK 编码，已自动转换」 */
+  onNotice?: (message: string) => void
 }
 
-export function ImportPanel({ currentName, onLoad, onError }: Props) {
+export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
   const [over, setOver] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
@@ -25,7 +28,16 @@ export function ImportPanel({ currentName, onLoad, onError }: Props) {
       onError('文件超过 4MB，请检查是否选错')
       return
     }
-    const text = await file.text()
+    // 不能直接 file.text()：它按 UTF-8 硬解且不报错，
+    // 一份 GBK 的 .md 会变成满屏乱码还照常「解析成功」
+    const { text, encoding } = decodeText(new Uint8Array(await file.arrayBuffer()))
+    if (encoding !== 'utf-8') {
+      onNotice?.(`「${file.name}」是 ${encoding === 'gb18030' ? 'GBK' : encoding} 编码，已自动转换`)
+    } else if (looksMojibake(text)) {
+      // 文件本身是合法 UTF-8，但内容就是乱码（比如把 GBK 文本粘进了 UTF-8 文件）。
+      // 这种情况自动转码救不回来，只能提醒用户回头查源头
+      onNotice?.('正文看起来是乱码，可能是复制粘贴时用了错误的编码，建议检查原文')
+    }
     onLoad(text, file.name)
     setReopen(false)
   }

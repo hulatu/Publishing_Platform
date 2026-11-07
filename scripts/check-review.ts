@@ -20,6 +20,7 @@ import {
   summarizeAll,
   summarizeArticle,
 } from '../src/core/review'
+import { parseNum } from '../src/core/num'
 import type { ArticleLedger } from '../src/core/ledger'
 
 let failed = 0
@@ -104,7 +105,27 @@ ok(tie[0].key === 'y', '阅读相同时互动多的排前面')
 
 ok(summarizeAll({}).length === 0, '空台账返回空数组')
 
-/* ---------------- 4. 格式化 ---------------- */
+/* ---------------- 4. 数字输入 ---------------- */
+
+console.log('\n数字输入：')
+
+ok(parseNum('1234') === 1234, '纯数字原样')
+ok(parseNum('1,234') === 1234, '千分位逗号吃掉')
+ok(parseNum('1 234') === 1234, '空格吃掉')
+ok(parseNum('1.2万') === 12000, '「1.2万」= 12000（以前会被剔成 12）')
+ok(parseNum('1.2 万') === 12000, '带空格的「1.2 万」也对')
+ok(parseNum('3.5k') === 3500, '「3.5k」= 3500')
+ok(parseNum('1.2亿') === 120000000, '「1.2亿」= 1.2 亿')
+ok(parseNum('1234.5') === 1235, '小数四舍五入（以前会变成 12345）')
+ok(parseNum('1,234.5') === 1235, '千分位 + 小数')
+ok(parseNum('1.') === 1, '「1.」是输入中间态，按 1 算')
+ok(parseNum('') === undefined, '空串 → undefined（清空这一项）')
+ok(parseNum('   ') === undefined, '只有空格也是空')
+ok(parseNum('—') === undefined, '破折号不当成 0')
+ok(parseNum('abc') === undefined, '纯字母不猜')
+ok(parseNum('-5') === undefined, '负数不认（这些量没有负数）')
+
+/* ---------------- 5. 格式化 ---------------- */
 
 console.log('\n格式化：')
 

@@ -1,11 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import { applyPreconnect, loadByok } from './ai/provider'
+import { applyPreconnect, byokConfigured, loadByok } from './ai/provider'
 import './styles/global.css'
 
-// 上次填过的服务商先预连接：等用户点「生成」时，握手已经做完了
-applyPreconnect(loadByok().endpoint)
+// 上次填过的服务商先预连接：等用户点「生成」时，握手已经做完了。
+// 只在真的配了 Key 时才连 —— 没配的人不该因为打开页面就跟第三方 API 建连接。
+const savedByok = loadByok()
+if (byokConfigured(savedByok)) applyPreconnect(savedByok.endpoint)
 
 const root = document.getElementById('root')
 if (!root) throw new Error('找不到 #root 挂载点')

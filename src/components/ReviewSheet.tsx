@@ -12,6 +12,7 @@
  */
 
 import { useState } from 'react'
+import { parseNum } from '../core/num'
 import { convertPlatforms, rewritePlatforms } from '../renderers'
 import { formatAt, type ArticleLedger, type PlatformStats } from '../core/ledger'
 import {
@@ -36,14 +37,13 @@ interface Props {
 const ALL = [...convertPlatforms, ...rewritePlatforms]
 const NAME: Record<string, string> = Object.fromEntries(ALL.map((p) => [p.id, p.name]))
 
-/** 只认数字：粘贴「1,234」或「1.2万」时把非数字剔掉，避免用户被格式卡住 */
-function parseNum(raw: string): number | undefined {
-  const digits = raw.replace(/[^\d]/g, '')
-  if (!digits) return undefined
-  const n = Number(digits)
-  return Number.isFinite(n) ? n : undefined
-}
-
+/**
+ * 数字输入框。
+ *
+ * 输入框里显示「用户打的字」，不是「解析后的数」——
+ * 完全受控于数字时，打「1.2万」会在打到「1.2」的那一帧被四舍五入成 1、
+ * 内容直接被改写，等于根本没法输入带单位的数。失焦时清掉草稿，回到真实值。
+ */
 function NumField({
   label,
   value,
@@ -53,15 +53,29 @@ function NumField({
   value: number | undefined
   onChange: (v: number | undefined) => void
 }) {
+  /**
+   * 输入框里显示「用户打的字」，不是「解析后的数」。
+   *
+   * 完全受控于数字时，打「1.2万」会在打到「1.2」的那一帧被四舍五入成 1、
+   * 光标内容直接被改写，等于根本没法输入带单位的数。失焦时清掉草稿，
+   * 回到「显示真实值」。
+   */
+  const [draft, setDraft] = useState<string | null>(null)
+  const text = draft ?? (typeof value === 'number' ? String(value) : '')
+
   return (
     <label className="rev-field">
       <span className="rev-field-label">{label}</span>
       <input
         className="field-input rev-input"
         inputMode="numeric"
-        value={typeof value === 'number' ? String(value) : ''}
+        value={text}
         placeholder="—"
-        onChange={(e) => onChange(parseNum(e.target.value))}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          onChange(parseNum(e.target.value))
+        }}
+        onBlur={() => setDraft(null)}
         spellCheck={false}
       />
     </label>

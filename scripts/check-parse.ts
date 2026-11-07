@@ -17,6 +17,7 @@ import { renderDouban } from '../src/renderers/douban'
 import { collectImages, collectLinks, inlineText } from '../src/core/ir'
 import type { Block, Inline } from '../src/core/ir'
 import { splitThread, weightedLength, countEmoji } from '../src/core/cjk'
+import { decodeText, looksMojibake } from '../src/core/text'
 
 interface Case {
   file: string
@@ -64,6 +65,12 @@ function fail(msg: string) {
 
 function ok(msg: string) {
   console.log(`  ✓ ${msg}`)
+}
+
+/** 带条件的断言：不成立就记一次失败 */
+function check(cond: boolean, msg: string) {
+  if (cond) ok(msg)
+  else fail(msg)
 }
 
 console.log(`\n共 ${all.length} 篇；抽样 ${cases.length} 篇\n${'='.repeat(70)}`)
@@ -240,5 +247,32 @@ for (const c of all) {
   }
 }
 console.log(`\n带 Hugo 锚点的文章 ${anchorPosts} 篇，泄漏 ${anchorLeaks} 篇`)
+
+/* ---------------- 编码嗅探 ---------------- */
+
+console.log('\n编码嗅探：')
+
+// 「中文」的 GBK 字节：中 = D6D0，文 = CEC4
+const gbk = new Uint8Array([0xd6, 0xd0, 0xce, 0xc4])
+const g = decodeText(gbk)
+check(g.text === '中文', `GBK 字节能正确还原（实际得到「${g.text}」）`)
+check(g.encoding === 'gb18030', 'GBK 文件被识别为 gb18030')
+
+const utf8 = new TextEncoder().encode('中文')
+const u = decodeText(utf8)
+check(u.text === '中文', 'UTF-8 正常解码')
+check(u.encoding === 'utf-8', 'UTF-8 不被误判成 GBK')
+check(u.hadBom === false, '无 BOM 时 hadBom 为 false')
+
+// BOM 必须去掉：留着它 front matter 的第一行会变成「\uFEFF---」，检测不到
+const withBom = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('---\ntitle: x\n---')])
+const b = decodeText(withBom)
+check(b.hadBom === true, '识别 UTF-8 BOM')
+check(b.text.startsWith('---'), 'BOM 已剥掉，front matter 首行干净')
+check(b.encoding === 'utf-8', '带 BOM 的文件按 UTF-8 解')
+
+check(looksMojibake('æ–‡ç« å†…å®¹') === true, '乱码样本能被识别')
+check(looksMojibake('正常的中文正文，没有乱码') === false, '正常中文不误报')
+check(looksMojibake('') === false, '空串不误报')
 
 process.exit(failures === 0 ? 0 : 1)

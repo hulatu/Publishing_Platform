@@ -36,18 +36,29 @@ export async function copyRich(payload: CopyPayload): Promise<'rich' | 'plain'> 
 
 export async function copyPlain(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // 文档失焦、iframe 未授权、权限被拒时 writeText 会抛 NotAllowedError。
+      // 此时 execCommand 在用户手势里通常还能成 —— 继续往下走，别直接判失败。
+    }
   }
-  // 极老浏览器兜底
+  // 兜底：老浏览器，或上面被拒绝的情况
   const ta = document.createElement('textarea')
   ta.value = text
   ta.style.position = 'fixed'
+  ta.style.top = '0'
+  ta.style.left = '0'
   ta.style.opacity = '0'
+  // iOS 上 readonly + contentEditable 才不会弹键盘
+  ta.setAttribute('readonly', '')
   document.body.appendChild(ta)
   ta.select()
-  document.execCommand('copy')
+  ta.setSelectionRange(0, text.length)
+  const ok = document.execCommand('copy')
   document.body.removeChild(ta)
+  if (!ok) throw new Error('剪贴板不可用')
 }
 
 /** 按指定模式复制 */
