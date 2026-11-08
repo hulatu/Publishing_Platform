@@ -16,10 +16,14 @@
   --panel-soft: #f7f4ef;
   --panel-inset: #efeae1;
 
-  /* 文字 */
+  /* 文字
+     --ink-muted 原来是 #8f887f，在暖纸底上只有 3.05:1、在 --panel-soft 上 3.19:1 ——
+     而它扛着 hint、统计条标签、平台说明这些 10~11.5px 的小字，实测偏糊。
+     改到 #6f6759 后全站最差也有 4.66:1（--panel-inset 上），
+     与 --ink-soft（8.15:1）仍拉得开，三档层次没塌。 */
   --ink: #1b1917;
   --ink-soft: #4a4642;
-  --ink-muted: #8f887f;
+  --ink-muted: #6f6759;
 
   /* 线与边界 */
   --line: #e7e1d8;
@@ -32,10 +36,16 @@
   --accent-soft: #fdf2f0;
   --accent-line: #eecdc7;
 
-  /* 状态 */
-  --ok: #2f7d5d;
+  /* 状态
+     --warn 原来是 #a9761b（暖纸底上 3.46:1）。它常用作 11.5px 的提示文字，
+     而「限制」二字就靠它——旁边正文提到 4.87:1 之后，这行字反而成了全行最淡的，
+     主次就反了。压深到 #8a5e15（最差 4.75:1，在 --panel-inset 上），仍是琥珀色。
+     --ok 同理从 #2f7d5d（4.34:1）压到 #2c7558（最差 4.62:1）。
+     这两处改完，7 个文字色对 6 个底色、两套主题共 84 组全部 ≥ 4.5:1，
+     scripts/check-contrast.ts 会守住这条线。 */
+  --ok: #2c7558;
   --ok-soft: #eef7f2;
-  --warn: #a9761b;
+  --warn: #8a5e15;
   --warn-soft: #fdf7e9;
   --error: #b3261e;
   --error-soft: #fdeeec;
@@ -52,6 +62,11 @@
   --radius-lg: 13px;
   --radius-xl: 18px;
   --sidebar-w: 300px;
+
+  /* 预览区的阅读列宽。提示条、折叠清单、源码卡片、富文本预览、Markdown 预览
+     全用这一个值 —— 原先分别是 780 / 780 / 780 / 720 / 760，
+     同一列里出现三个宽度，往下滚的时候左右边缘一跳一跳的。 */
+  --read-w: 780px;
 
   /* 投影：三档，只给真正浮起来的元素 */
   --sh-1: 0 1px 2px rgba(32, 27, 22, 0.05);
@@ -120,7 +135,9 @@
 
     --ink: #ece6dc;
     --ink-soft: #b7afa3;
-    --ink-muted: #91897d;
+    /* 深色下 #91897d 在 --panel 上只有 4.80:1，10px 说明文字在深底上格外糊。
+       提到 #a29a8d 后最差 5.95:1，与 --ink-soft（7.64:1）仍差一档。 */
+    --ink-muted: #a29a8d;
     --ink-strong: #f8f3eb;
 
     --line: #322c24;
@@ -899,7 +916,9 @@ select {
 }
 
 .nav-item-meta {
-  font-size: 10px;
+  /* 10px 的汉字在 PingFang 下已经挤成一团，10.5 是还能读的下限；
+     配上提到 4.87:1 的 --ink-muted，侧栏这行说明才真的能读。 */
+  font-size: 10.5px;
   color: var(--ink-muted);
   line-height: 1.4;
   white-space: nowrap;
@@ -1147,7 +1166,7 @@ select {
 }
 
 .notice-holder {
-  max-width: 780px;
+  max-width: var(--read-w);
   margin: 0 auto 14px;
 }
 
@@ -1258,7 +1277,7 @@ select {
 /* ---------- 折叠清单 ---------- */
 
 .details {
-  max-width: 780px;
+  max-width: var(--read-w);
   margin: 0 auto 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1322,7 +1341,7 @@ select {
 /* ---------- 源码视图 ---------- */
 
 .source-card {
-  max-width: 780px;
+  max-width: var(--read-w);
   margin: 0 auto;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1370,7 +1389,9 @@ select {
 /* ---------- 公众号富文本预览 ---------- */
 
 .rich-preview {
-  max-width: 720px;
+  /* 720 → 780：原来比上方提示条窄 60px，卡片左边缘往里缩进去一截。
+     780 下正文行宽 716px，16px 中文约 44 字/行，仍在舒适区间。 */
+  max-width: var(--read-w);
   margin: 0 auto;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1388,7 +1409,7 @@ select {
 /* ---------- Markdown 阅读预览 ---------- */
 
 .md-preview-wrap {
-  max-width: 760px;
+  max-width: var(--read-w);
   margin: 0 auto;
 }
 
@@ -4158,6 +4179,48 @@ select {
    响应式与偏好
    ========================================================================== */
 
+/* 头部在窄屏下让按钮独占一行。
+   .head-tools 是 flex-shrink:0，实测恒为 446px：1440 宽时标题列还有 622px，
+   900 宽时只剩 130px —— 一句 hint 被挤成 3 行，头部从 103px 长到 137px，
+   而预览区正是被它顶掉的那几十像素。1120 是「标题列还够放下两行 hint」的临界
+   （1024 时只剩 254px，已经很勉强）。 */
+@media (max-width: 1120px) {
+  .head-row {
+    flex-wrap: wrap;
+    row-gap: 9px;
+  }
+  /* 必须给 100% 的 flex-basis：只写 flex-wrap 的话标题列 flex-basis 是 0，
+     能一直缩到 0 也不换行，按钮永远留在第一行。 */
+  .head-title {
+    flex: 1 1 100%;
+  }
+  .head-tools {
+    margin-left: auto;
+  }
+  /* 多了一行按钮，把上下内边距各收 3px / 2px 抵回来：
+     1024 宽时头部 141 → 137，跟改动前 900 宽那一档持平。 */
+  .main-head {
+    padding-top: 13px;
+    padding-bottom: 11px;
+  }
+}
+
+@media (min-width: 1600px) {
+  /* 宽屏下卡片跟着长，但**正文行宽一点不涨** —— 多出来的 120px 全进内边距，
+     像一页纸的页边距。780px 时正文已经是 44 字/行（16px 中文的舒适上限），
+     再宽下去就得转头，读起来更累。改前 1920 下卡片只占画布的 48%，
+     像一条飘在空白里的窄条；改后 57%，行宽仍是 720。 */
+  :root {
+    --read-w: 900px;
+  }
+  .rich-preview {
+    padding: 40px 90px;
+  }
+  .md-preview {
+    padding: 48px 112px 56px;
+  }
+}
+
 @media (max-width: 1180px) {
   :root {
     --sidebar-w: 268px;
@@ -4499,9 +4562,7 @@ select {
     height: auto;
     aspect-ratio: 3 / 4;
   }
-  .head-row {
-    flex-wrap: wrap;
-  }
+  /* 头部的换行挪到 1120 断点里去了（那里给了 .head-title 100% 的 flex-basis） */
 }
 
 @media (prefers-reduced-motion: reduce) {

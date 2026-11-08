@@ -609,12 +609,40 @@ functions/     Cloudflare Pages Functions（部署后才生效，本地 dev 没�
 
 根目录两份文档分工：**`README.md`**（本文）讲设计与取舍，**`USAGE.md`** 讲怎么用。
 
+## 🎛 视觉口径
+
+三条硬规矩，都有脚本或实测守着，改样式时别绕过：
+
+**1. 文字色对底色一律 ≥ 4.5:1**
+
+全站文字色（`--ink` / `--ink-soft` / `--ink-muted` / `--accent` / `--ok` / `--warn` / `--error`）
+对 6 个底色（`--bg` / `--sidebar-bg` / `--main-bg` / `--panel` / `--panel-soft` / `--panel-inset`）
+共 84 组，两套主题全部达标。`npm run check:contrast` 直接读 `global.css` 的 token 现算，改坏了会红。
+
+> `--ink-muted` 曾经是 `#8f887f`，在暖纸底上只有 3.05:1 —— 而它扛着 hint、统计条标签、
+> 侧栏平台说明这些 10~11.5px 的小字。肉眼只觉得「有点糊」，说不出差多少，于是就这么糊着。
+> 现在浅色是 `#6f6759`（最差 4.66:1）、深色是 `#a29a8d`（最差 5.95:1）。
+> 同理 `--warn` 从 `#a9761b` 压到 `#8a5e15`、`--ok` 从 `#2f7d5d` 压到 `#2c7558`。
+
+**2. 预览区只有一个列宽**
+
+提示条、折叠清单、源码卡片、富文本预览、Markdown 预览全吃 `--read-w`。
+原先分别是 780 / 780 / 780 / 720 / 760 —— 同一列里三个宽度，往下滚的时候左右边缘一跳一跳的。
+`check:contrast` 会顺带断言这五条规则里没有硬编码宽度。
+
+**3. 正文行宽不随屏幕涨**
+
+`--read-w` 在 1440 是 780px（16px 中文约 44 字/行，已经是舒适上限），
+到 1600px 以上放宽到 900px —— 但多出来的宽度全进卡片内边距，**正文仍是 720px**。
+宽屏下让卡片跟着长是像「一页纸」，让行宽跟着长就是逼人转头读。
+
 ## 💻 本地开发
 
 ```bash
 npm run dev             # 开发服务器
 npm run typecheck       # 只做类型检查
 npm run check           # 全部回归（扫 ~/Blog/content/posts 的 109 篇真实文章）
+npm run check:contrast  # 只跑对比度 + 预览列宽（读 global.css 的 token 现算）
 npm run check:fixtures  # 同一条回归，但用仓库内 scripts/fixtures 的 4 篇样本
 npm run build           # 类型检查 + 生产构建到 dist/
 npm run preview         # 预览构建产物
