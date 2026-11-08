@@ -15,12 +15,21 @@ import type { ImageRef } from '../core/ir'
 import { mapLimit } from '../core/async'
 import { downloadBlob } from '../cards/export'
 import { safeFileName } from '../cards/export'
+import type { AssetFile } from '../core/local-assets'
+import { HostUploader } from './HostUploader'
 
 interface Props {
   open: boolean
   onClose: () => void
   images: ImageRef[]
   title: string
+  /** 同一个文件夹里拖进来的本地图片，传图床要用 */
+  assets: AssetFile[]
+  /** 上传完成：把正文里的本地路径换成图床地址 */
+  onUploaded: (mapping: Map<string, string>) => void
+  onAddAssets: (assets: AssetFile[]) => void
+  onOpenSettings: () => void
+  onToast: (message: string, kind?: 'success' | 'error' | 'info') => void
 }
 
 type Status = 'idle' | 'busy' | 'ok' | 'fail'
@@ -95,7 +104,19 @@ async function fetchImage(url: string): Promise<Blob> {
   }
 }
 
-export function ImageList({ open, onClose, images, title }: Props) {
+export function ImageList({
+  open,
+  onClose,
+  images,
+  title,
+  assets,
+  onUploaded,
+  onAddAssets,
+  onOpenSettings,
+  onToast,
+}: Props) {
+  /** 打包下载 / 传图床 —— 同一批图片的两件事，放一个面板里省一个顶栏入口 */
+  const [tab, setTab] = useState<'download' | 'host'>('download')
   const [status, setStatus] = useState<Record<string, Status>>({})
   /** <img> 自身加载失败（链接失效、防盗链），和「跨域打不进包」是两回事 */
   const [broken, setBroken] = useState<Record<string, true>>({})
@@ -179,6 +200,26 @@ export function ImageList({ open, onClose, images, title }: Props) {
         </div>
 
         <div className="modal-body">
+          <div className="segmented img-tabs">
+            <button className={tab === 'download' ? 'active' : ''} onClick={() => setTab('download')}>
+              打包下载
+            </button>
+            <button className={tab === 'host' ? 'active' : ''} onClick={() => setTab('host')}>
+              传图床
+            </button>
+          </div>
+
+          {tab === 'host' ? (
+            <HostUploader
+              images={images}
+              assets={assets}
+              onUploaded={onUploaded}
+              onAddAssets={onAddAssets}
+              onOpenSettings={onOpenSettings}
+              onToast={onToast}
+            />
+          ) : (
+            <>
           <div className="notice notice-info" style={{ marginBottom: 14 }}>
             <span className="notice-mark">i</span>
             <span>
@@ -242,16 +283,20 @@ export function ImageList({ open, onClose, images, title }: Props) {
               </span>
             </div>
           ) : null}
+            </>
+          )}
         </div>
 
         <div className="modal-foot">
           <button className="btn btn-sm" onClick={onClose}>
             关闭
           </button>
-          <button className="btn btn-primary btn-sm" onClick={downloadAll} disabled={busy || images.length === 0}>
-            {busy ? <span className="spinner dark" /> : null}
-            {busy ? `正在打包 ${done}/${images.length}…` : `打包下载（${images.length} 张）`}
-          </button>
+          {tab === 'download' ? (
+            <button className="btn btn-primary btn-sm" onClick={downloadAll} disabled={busy || images.length === 0}>
+              {busy ? <span className="spinner dark" /> : null}
+              {busy ? `正在打包 ${done}/${images.length}…` : `打包下载（${images.length} 张）`}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

@@ -1,9 +1,11 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { decodeText, looksMojibake } from '../core/text'
+import { collectAssets, isImageFile, isMarkdownFile, readDataTransfer, type AssetFile } from '../core/local-assets'
 
 interface Props {
   currentName: string
-  onLoad: (source: string, fileName: string) => void
+  /** assets 是同一个文件夹里的图片，上传图床时要用；单独选 .md 时为空 */
+  onLoad: (source: string, fileName: string, assets?: AssetFile[]) => void
   onError: (message: string) => void
   /** 非错误的提示，比如「这份文件是 GBK 编码，已自动转换」 */
   onNotice?: (message: string) => void
@@ -16,10 +18,11 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
   /** 已经导入过就收起成一行 —— 侧栏的空间要留给平台导航 */
   const [reopen, setReopen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const dirRef = useRef<HTMLInputElement>(null)
 
   const compact = Boolean(currentName) && !reopen
 
-  const readFile = async (file: File) => {
+  const readFile = async (file: File, assets: AssetFile[] = []) => {
     if (!/\.(md|markdown|txt)$/i.test(file.name)) {
       onError('只支持 .md / .markdown / .txt 文件')
       return
@@ -38,15 +41,38 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
       // 这种情况自动转码救不回来，只能提醒用户回头查源头
       onNotice?.('正文看起来是乱码，可能是复制粘贴时用了错误的编码，建议检查原文')
     }
-    onLoad(text, file.name)
+    if (assets.length > 0) {
+      onNotice?.(`同时收到 ${assets.length} 张本地图片，可以在「图片」面板里传图床`)
+    }
+    onLoad(text, file.name, assets)
     setReopen(false)
   }
 
-  const handleDrop = (e: DragEvent) => {
+  /** 一批文件里挑出 .md，其余当本地图片。拖文件夹和选文件夹都走这里 */
+  const applyFiles = async (files: File[]) => {
+    const md = files.find(isMarkdownFile)
+    if (!md) {
+      onError(
+        files.some(isImageFile)
+          ? '这一批里只有图片，还差一个 .md 文件'
+          : '没找到 .md 文件',
+      )
+      return
+    }
+    await readFile(md, collectAssets(files))
+  }
+
+  const handleDrop = async (e: DragEvent) => {
     e.preventDefault()
     setOver(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) void readFile(file)
+    // 拖文件夹时 dataTransfer.files 可能只有一层甚至是空的，
+    // 必须走 webkitGetAsEntry 递归读，所以这里不能同步取 files[0]
+    const files = await readDataTransfer(e.dataTransfer)
+    if (files.length === 0) {
+      onError('没读到文件。如果是文件夹，试试点下面的「选文件夹」')
+      return
+    }
+    await applyFiles(files)
   }
 
   const handlePaste = () => {
@@ -92,8 +118,12 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
               </svg>
             </span>
             <span className="dropzone-main">把 .md 拖到这里</span>
-            <span className="dropzone-hint">或点击选择文件</span>
+            <span className="dropzone-hint">拖整个文件夹也行，图片会一起收下</span>
           </div>
+
+          <button className="paste-toggle" onClick={() => dirRef.current?.click()}>
+            选文件夹（md + 图片一起）
+          </button>
 
           <button className="paste-toggle" onClick={() => setPasteOpen((v) => !v)}>
             {pasteOpen ? '收起粘贴区' : '直接粘贴 Markdown'}
@@ -128,6 +158,20 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
         onChange={(e) => {
           const file = e.target.files?.[0]
           if (file) void readFile(file)
+          e.target.value = ''
+        }}
+      />
+
+      {/* 选文件夹：md 和图片一次给齐。webkitdirectory 是 Chromium / Safari 的私有属性，
+          React 的类型里没有，只能绕过类型检查挂上去 */}
+      <input
+        ref={dirRef}
+        type="file"
+        className="hidden"
+        {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])]
+          if (files.length > 0) void applyFiles(files)
           e.target.value = ''
         }}
       />
