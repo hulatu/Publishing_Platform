@@ -4145,6 +4145,174 @@ select {
   }
 }
 
+/* ---------- 封面图（Unsplash） ---------- */
+
+.modal-cover {
+  /* 三张并排，比默认的 480 宽一截；网格用 minmax(0,1fr) 保证不撑破容器 */
+  max-width: 760px;
+}
+
+.cover-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cover-search .field-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.cover-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cover-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cover-chip {
+  font-size: 11px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  white-space: nowrap;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.cover-chip:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.cover-chip.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.cover-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.cover-card {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel-soft);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.cover-card:hover {
+  border-color: var(--line-strong);
+}
+
+.cover-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.cover-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+}
+
+.cover-card figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.cover-credit {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.cover-credit:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.cover-src {
+  flex-shrink: 0;
+  /* 用 soft 而不是 muted：署名是 Unsplash 条款要求的内容，不是装饰，
+     浅色下 muted 只有 3.19:1，读不清 */
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.cover-src:hover {
+  color: var(--accent-deep);
+}
+
+.cover-preview {
+  margin-top: 14px;
+}
+
+.cover-preview img {
+  display: block;
+  width: 100%;
+  /* 压矮是硬要求：预览图一高，下面的「下载这张」就被挤出滚动区，
+     用户点完图还得再滚一下才能下载。200px 刚好一屏放得下。
+     contain 而不是 cover —— 选封面要看完整构图，裁掉边缘等于骗人。 */
+  max-height: 200px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-inset);
+}
+
+.cover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cover-dim {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+.cover-note {
+  margin-top: 6px;
+  /* 同上：这行就是署名本身，得读得清 */
+  font-size: 10.5px;
+  color: var(--ink-soft);
+}
+
+.cover-quota {
+  margin-right: auto;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
 @media (max-width: 980px) {
   .studio {
     flex-direction: column;

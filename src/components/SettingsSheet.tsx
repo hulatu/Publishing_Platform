@@ -22,6 +22,7 @@ import {
   type ByokSettings,
   type PingResult,
 } from '../ai/provider'
+import { loadUnsplashKey, saveUnsplashKey } from '../core/unsplash'
 
 interface Props {
   open: boolean
@@ -38,13 +39,18 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
   const [pinging, setPinging] = useState(false)
   const [ping, setPing] = useState<PingResult | null>(null)
   const [showKey, setShowKey] = useState(false)
+  /** Unsplash 的 Access Key：和 AI Key 一样只存本机，但两者用途不同，各存各的 */
+  const [unsplashKey, setUnsplashKey] = useState('')
+  const [showUnsplash, setShowUnsplash] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setByok(loadByok())
     setCloudModel(loadCloudModel())
+    setUnsplashKey(loadUnsplashKey())
     setPing(null)
     setShowKey(false)
+    setShowUnsplash(false)
   }, [open])
 
   useEffect(() => {
@@ -95,13 +101,15 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
     // 写盘可能失败（隐私模式 / 配额满）。失败要说出来，不能假装存好了
     const stored = saveByok(byok)
     saveCloudModel(cloudModel)
+    // Unsplash Key 单独存：没填就是清空，不该影响 AI Key 的保存结果
+    const unsplashStored = saveUnsplashKey(unsplashKey)
     onSaved(
-      stored
+      stored && unsplashStored
         ? ready
           ? `已保存，使用 ${byok.model}`
           : '已保存'
         : '浏览器拒绝写入本地存储（隐私模式？），Key 只在本次会话有效',
-      stored ? 'success' : 'error',
+      stored && unsplashStored ? 'success' : 'error',
     )
     onClose()
   }
@@ -263,6 +271,40 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
               ) : null}
             </>
           ) : null}
+
+          {/* ---------- Unsplash（可选） ---------- */}
+          <div className="side-title" style={{ marginTop: 24, marginBottom: 10 }}>
+            <span>Unsplash 封面图（可选）</span>
+            <span className="count">{unsplashKey.trim() ? '已配置' : '未配置'}</span>
+          </div>
+
+          <div className="field-hint" style={{ marginBottom: 8 }}>
+            只给「封面」面板用：按文章搜 3 张照片挑一张。免费申请 ——{' '}
+            <a
+              className="link-btn"
+              href="https://unsplash.com/oauth/applications"
+              target="_blank"
+              rel="noreferrer"
+            >
+              新建应用
+            </a>{' '}
+            后复制 <b>Access Key</b>（不是 Secret Key）。demo 应用每小时 50 次。
+          </div>
+
+          <div className="key-row">
+            <input
+              className="field-input"
+              type={showUnsplash ? 'text' : 'password'}
+              value={unsplashKey}
+              onChange={(e) => setUnsplashKey(e.target.value)}
+              placeholder="Access Key"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <button className="btn btn-sm" onClick={() => setShowUnsplash((v) => !v)}>
+              {showUnsplash ? '隐藏' : '显示'}
+            </button>
+          </div>
 
           <div style={{ marginTop: 18 }}>
             <button

@@ -71,6 +71,7 @@ import { SettingsSheet } from './components/SettingsSheet'
 import { ComplianceChip } from './components/ComplianceChip'
 import { PublishLedger } from './components/PublishLedger'
 import { ImageList } from './components/ImageList'
+import { CoverSheet } from './components/CoverSheet'
 import { MetaLab } from './components/MetaLab'
 import { TailSheet } from './components/TailSheet'
 import { DraftsSheet } from './components/DraftsSheet'
@@ -169,6 +170,8 @@ export default function App() {
   const [articleKey, setArticleKey] = useState('')
   const [ledgerOpen, setLedgerOpen] = useState(false)
   const [imagesOpen, setImagesOpen] = useState(false)
+  /** 封面图：从 Unsplash 按文章搜 3 张候选 */
+  const [coverOpen, setCoverOpen] = useState(false)
   /** 标题候选 + 标签推荐 */
   const [metaLab, setMetaLab] = useState<MetaLabState>(emptyMetaLabState)
   const [metaOpen, setMetaOpen] = useState(false)
@@ -1202,6 +1205,15 @@ export default function App() {
                     {metaLab.result ? `标题 ${metaLab.result.titles.length}` : '标题 / 标签'}
                   </button>
                 ) : null}
+                {doc ? (
+                  <button
+                    className="head-chip cover-entry"
+                    onClick={() => setCoverOpen(true)}
+                    title="按文章内容从 Unsplash 搜 3 张封面图，挑一张下载"
+                  >
+                    封面
+                  </button>
+                ) : null}
                 {platform === 'wechat' && doc ? (
                   <button
                     className="head-chip tail-entry"
@@ -1516,6 +1528,17 @@ export default function App() {
         onClose={() => setImagesOpen(false)}
         images={images}
         title={doc?.meta.title ?? '文章'}
+      />
+
+      <CoverSheet
+        open={coverOpen}
+        onClose={() => setCoverOpen(false)}
+        doc={doc}
+        onToast={toast}
+        onOpenSettings={() => {
+          setCoverOpen(false)
+          setSettingsOpen(true)
+        }}
       />
 
       {doc ? (
