@@ -4,16 +4,34 @@
  * 封装成 renderCardToBlob(node) —— 将来若要换成 satori + resvg（确定性更好、
  * 可内嵌字体、能服务端批量），只需要改这个文件，UI 与模板都不用动。
  *
- * 尺寸策略：模板按 540×720 CSS 像素排版，导出 pixelRatio: 2 → 1080×1440，
- * 正好是小红书 3:4 标准。不用「1080 CSS × 2x」，那样内存翻四倍，Safari 容易崩。
+ * 尺寸策略：模板按各比例的 CSS 尺寸排版（3:4 是 540×720），导出 pixelRatio: 2，
+ * 正好是 1080×1440 小红书标准。不用「1080 CSS × 2x」，那样内存翻四倍，Safari 容易崩。
+ *
+ * ⚠️ 尺寸必须由 format 显式算出来传给 html-to-image，绝不能让它自己去量节点。
+ * html-to-image 默认用 `node.clientWidth/clientHeight` 当导出尺寸，而离屏渲染层是
+ * `position: fixed; left: -20000px` 的收缩宽度容器 —— 它的宽度等于最宽的那张卡
+ * （16:9 的 960），于是每一张卡的父 div 都是 960 宽：选 3:4 导出得到 1920×1440（4:3），
+ * 选 1:1 得到 1920×1280，只有 16:9 恰好正确。这个错误不报错、不空白，
+ * 界面上还写着「已导出 1080×1440」，只有拿到图才发现比例不对。
+ * 现在 width/height 由 getCardFormat() 给出，并在导出后回读 PNG 头核对。
  *
  * 依赖全部动态 import：html-to-image 和 jszip 加起来 35KB gzip，
  * 只有点了「导出」才用得上，没理由让它们拖慢首屏。
  */
 
+import { getCardFormat, type CardFormatId } from './types'
+
+/** 成品像素 = CSS 尺寸 × 2 */
+export const EXPORT_RATIO = 2
+
 export interface ExportOptions {
   backgroundColor: string
   pixelRatio?: number
+}
+
+export interface CardExportOptions extends ExportOptions {
+  /** 卡片比例。导出像素由它算出来，不读节点实际布局尺寸 */
+  format: CardFormatId
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -25,15 +43,34 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mime })
 }
 
+/** 导出后回读 PNG 头里的真实像素，用来核对尺寸（也用来让提示文案不撒谎） */
+export interface PixelSize {
+  w: number
+  h: number
+}
+
+export async function readPngSize(blob: Blob): Promise<PixelSize | null> {
+  // PNG 头固定：8 字节签名 + 4 字节块长 + 'IHDR' + 宽(4) + 高(4)
+  if (blob.size < 24) return null
+  const head = new Uint8Array(await blob.slice(0, 24).arrayBuffer())
+  if (head[0] !== 0x89 || head[1] !== 0x50 || head[2] !== 0x4e || head[3] !== 0x47) return null
+  const dv = new DataView(head.buffer, head.byteOffset, head.byteLength)
+  return { w: dv.getUint32(16), h: dv.getUint32(20) }
+}
+
 /** 把卡片节点渲染成 PNG Blob。Safari 偶发整张空白，失败时自动重试一次。 */
-export async function renderCardToBlob(node: HTMLElement, opts: ExportOptions): Promise<Blob> {
-  const { backgroundColor, pixelRatio = 2 } = opts
+export async function renderCardToBlob(node: HTMLElement, opts: CardExportOptions): Promise<Blob> {
+  const { backgroundColor, format, pixelRatio = EXPORT_RATIO } = opts
+  const f = getCardFormat(format)
   const { toPng } = await import('html-to-image')
 
   const run = () =>
     toPng(node, {
       pixelRatio,
       backgroundColor,
+      // 显式给尺寸：不传就会去量父容器的宽度，3:4 和 1:1 都会被拉成 16:9 的 960 宽
+      width: f.w,
+      height: f.h,
       // 系统字体无需内嵌；开启字体内嵌会尝试抓取 @font-face，
       // 跨域字体一旦失败整张图就是空白
       skipFonts: true,
@@ -49,7 +86,16 @@ export async function renderCardToBlob(node: HTMLElement, opts: ExportOptions): 
     dataUrl = await run()
   }
 
-  return dataUrlToBlob(dataUrl)
+  const blob = dataUrlToBlob(dataUrl)
+
+  // 尺寸是这一层的硬约定，错了就是错的图 —— 宁可报错，也别把 4:3 当 3:4 交出去
+  const want = { w: f.w * pixelRatio, h: f.h * pixelRatio }
+  const got = await readPngSize(blob)
+  if (got && (got.w !== want.w || got.h !== want.h)) {
+    throw new Error(`导出尺寸异常：期望 ${want.w}×${want.h}，实际 ${got.w}×${got.h}`)
+  }
+
+  return blob
 }
 
 export function downloadBlob(blob: Blob, fileName: string): void {
@@ -66,6 +112,8 @@ export function downloadBlob(blob: Blob, fileName: string): void {
 export interface ZipEntry {
   node: HTMLElement
   name: string
+  /** 这一张按哪个比例导，决定成品像素 */
+  format: CardFormatId
   /** 子目录名（多尺寸导出时按 3x4 / 1x1 / 16x9 分开放） */
   folder?: string
 }
@@ -100,7 +148,7 @@ export async function exportCardsAsZip(
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]
     try {
-      const blob = await renderCardToBlob(entry.node, opts)
+      const blob = await renderCardToBlob(entry.node, { ...opts, format: entry.format })
       const target = entry.folder ? (zip.folder(entry.folder) ?? zip) : zip
       target.file(entry.name, blob)
       ok++

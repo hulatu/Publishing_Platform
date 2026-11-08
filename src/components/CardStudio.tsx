@@ -4,7 +4,7 @@ import type { ArticleSection } from '../core/sections'
 import { buildCards, DEFAULT_SITE_NAME, makeCard, type SectionSummary } from '../cards/build'
 import { CardRenderer } from '../cards/templates'
 import { cardThemes, getCardTheme } from '../cards/themes'
-import { exportCardsAsZip, renderCardToBlob, downloadBlob, safeFileName, type ZipEntry } from '../cards/export'
+import { exportCardsAsZip, readPngSize, renderCardToBlob, downloadBlob, safeFileName, type ZipEntry } from '../cards/export'
 import {
   CARD_FORMATS,
   getCardFormat,
@@ -164,9 +164,11 @@ export function CardStudio({
     }
     setExporting(true)
     try {
-      const blob = await renderCardToBlob(node, { backgroundColor: theme.bg })
+      const blob = await renderCardToBlob(node, { backgroundColor: theme.bg, format })
+      // 提示里的数字读真实像素，而不是按配置推算 —— 这样尺寸不对时不会骗人
+      const px = await readPngSize(blob)
       downloadBlob(blob, `${fileNameOf(selected)}-${format.replace(':', 'x')}.png`)
-      onToast(`已导出 ${fmt.w * 2}×${fmt.h * 2} PNG`, 'success')
+      onToast(`已导出 ${px ? `${px.w}×${px.h}` : `${fmt.w * 2}×${fmt.h * 2}`} PNG`, 'success')
     } catch (e) {
       onToast(`导出失败：${e instanceof Error ? e.message : String(e)}`, 'error')
     } finally {
@@ -187,7 +189,7 @@ export function CardStudio({
       const name = n === 1 ? `${base}.png` : `${base}-${n}.png`
       for (const f of formats) {
         const node = nodeRefs.current[`${c.id}@${f.id}`]
-        if (node) entries.push({ node, name, folder: multiSize ? f.id.replace(':', 'x') : undefined })
+        if (node) entries.push({ node, name, format: f.id, folder: multiSize ? f.id.replace(':', 'x') : undefined })
       }
     }
 
@@ -512,6 +514,9 @@ export function CardStudio({
               ref={(el) => {
                 nodeRefs.current[`${c.id}@${f.id}`] = el
               }}
+              // 尺寸必须写死。这个容器是 shrink-to-fit 的，宽度由最宽的卡（16:9 的 960）
+              // 决定，不写 width 的话每张卡的父节点都是 960 宽，导出就按 960 算。
+              style={{ width: f.w, height: f.h }}
             >
               <CardRenderer spec={c} theme={getCardTheme(c.themeId)} format={f.id} />
             </div>

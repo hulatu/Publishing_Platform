@@ -15,6 +15,7 @@ import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
 import { splitSections } from '../src/core/sections'
 import { buildCards } from '../src/cards/build'
+import { CARD_FORMATS } from '../src/cards/types'
 import { charCount } from '../src/core/cjk'
 
 /** 与 build.ts 里的 SECTION_SUMMARY_MAX 保持一致 */
@@ -104,6 +105,37 @@ for (const file of files) {
 
 console.log(`扫描 ${files.length} 篇`)
 console.log(`  共 ${totalCards} 张卡；单篇最多 ${maxCards} 张；最长小节摘要 ${maxSummary} 字（上限 ${SUMMARY_CAP}）`)
+
+/* ------------------------------------------------------------------ */
+/* 导出尺寸：CARD_FORMATS 自己必须自洽                                   */
+/* ------------------------------------------------------------------ */
+/*
+ * 导出成品像素 = w×2 / h×2，全靠这张表。表里写错一个数，导出的比例就是错的，
+ * 而且界面上照样显示「已导出 1080×1440」—— 之前 3:4 被导成 4:3 就是这一类：
+ * 尺寸没从这张表算，而是让 html-to-image 去量了被撑宽的父节点。
+ * 这里把「id 写 3:4 → w/h 必须真是 0.75」「hint 里的像素必须等于 w×2/h×2」钉住。
+ */
+const FORMAT_RATIO: Record<string, number> = { '3:4': 3 / 4, '1:1': 1, '16:9': 16 / 9 }
+
+for (const f of CARD_FORMATS) {
+  const want = FORMAT_RATIO[f.id]
+  if (want === undefined) {
+    problems.push(`尺寸 ${f.id}: 没有登记期望比例`)
+    fail++
+    continue
+  }
+  if (Math.abs(f.w / f.h - want) > 0.002) {
+    problems.push(`尺寸 ${f.id}: ${f.w}×${f.h} 的比例是 ${(f.w / f.h).toFixed(3)}，应为 ${want.toFixed(3)}`)
+    fail++
+  }
+  // hint 里写的成品像素必须和 w×2 / h×2 一致，否则用户看到的说明是假的
+  const nums = (f.hint.match(/\d+/g) ?? []).map(Number)
+  if (nums.length >= 2 && (nums[0] !== f.w * 2 || nums[1] !== f.h * 2)) {
+    problems.push(`尺寸 ${f.id}: 说明写 ${nums[0]}×${nums[1]}，实际导出 ${f.w * 2}×${f.h * 2}`)
+    fail++
+  }
+}
+if (fail === 0) console.log(`  ${CARD_FORMATS.length} 个导出尺寸：比例与说明文字都对得上`)
 
 if (fail === 0) {
   console.log('✓ 配图层全部通过')
