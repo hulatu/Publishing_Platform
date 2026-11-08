@@ -234,7 +234,11 @@ export function judge(facts: ImageFacts, rule: ImageRule, src: string): ImageIss
     issues.push({
       level: 'warn',
       tag: '格式不符',
-      detail: `地址写的是 .${ext}，内容其实是 ${realExt.toUpperCase()}。浏览器不看扩展名，但打包下载和部分平台会看。`,
+      detail:
+        `地址写的是 .${ext}，内容其实是 ${realExt.toUpperCase()}。` +
+        '浏览器按内容解码、不看扩展名，所以正文里显示不受影响；' +
+        `但「打包下载」会把它存成 .${ext}，里面装的却是 ${realExt.toUpperCase()} —— ` +
+        '上传到按扩展名校验的地方会被拒。',
     })
   }
 
