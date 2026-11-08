@@ -19,7 +19,7 @@
  * 只有点了「导出」才用得上，没理由让它们拖慢首屏。
  */
 
-import { getCardFormat, type CardFormatId } from './types'
+import { getCardFormat, layoutNames, type CardFormatId, type CardSpec } from './types'
 
 /** 成品像素 = CSS 尺寸 × 2 */
 export const EXPORT_RATIO = 2
@@ -173,4 +173,61 @@ export function safeFileName(name: string): string {
   const cleaned = name.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 60)
   // 标题全被过滤掉时别产出「-配图.zip」这种以连字符开头的名字
   return cleaned || '未命名'
+}
+
+/* ------------------------------------------------------------------ */
+/* 卡片文件名                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 文件名里标题部分的上限。标题是同一篇共有的前缀，留着便于辨认，
+ * 但编号必须排在最前面 —— 文件选择器会把超长文件名截断，
+ * 编号一旦落在中后段就可能被截掉，那这个编号就白加了。
+ */
+const NAME_TITLE_MAX = 16
+/** 小节标题同理，而且它本身就是文件名里最容易失控的部分 */
+const NAME_SECTION_MAX = 18
+
+/** 编号：补零到两位，否则按名称排序时 10 会排到 2 前面 */
+export function cardNo(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+/** 断句用的标点：截断时优先在这里断开，别把词切成两半 */
+const CLIP_AT = ['，', '：', '、', '。', '；', '｜', ' ']
+
+/**
+ * 截到 n 字。能断在标点上就断在标点（并丢掉那个标点），
+ * 否则硬截 —— `一、文章分发台：一篇稿子，十一种形态` 截到 18 字刚好整句，
+ * 截到 14 字则退到「一、文章分发台：一篇稿子」，比「…一篇稿」好看得多。
+ */
+function clip(text: string, n: number): string {
+  if (text.length <= n) return text
+  const head = text.slice(0, n)
+  const at = Math.max(...CLIP_AT.map((p) => head.lastIndexOf(p)))
+  // 断点太靠前（不到 60%）就没有意义，宁可硬截也别把整句砍成一个词
+  return (at >= Math.floor(n * 0.6) ? head.slice(0, at) : head).trim()
+}
+
+/**
+ * 单张卡片导出的文件名（不含扩展名），形如「01-标题-封面」「04-标题-小节标题」。
+ *
+ * 一套图是「封面 → 各小节 → 结尾」，上传时要按顺序挑，可卡片上的页码
+ * （01 / 08）只印在图里 —— 挑文件的时候看不见。所以编号必须进文件名，
+ * 而且要补零：文件管理器和小红书的多选都按名称排序，`10` 排在 `2` 前面
+ * 就全乱了。编号放最前面而不是紧跟标题，是因为文件名一旦被文件选择器
+ * 截断，末尾的编号会先没；放最前面无论怎么截都还在。
+ */
+export function cardFileName(
+  spec: Pick<CardSpec, 'layout' | 'title'>,
+  /** 从 0 开始的卡片序号 */
+  index: number,
+  articleTitle: string,
+): string {
+  const head = clip(safeFileName(articleTitle), NAME_TITLE_MAX).trim() || '未命名'
+  const tail =
+    spec.layout === 'section'
+      ? clip(safeFileName(spec.title), NAME_SECTION_MAX).trim() || layoutNames.section
+      : layoutNames[spec.layout]
+  return `${cardNo(index + 1)}-${head}-${tail}`
 }

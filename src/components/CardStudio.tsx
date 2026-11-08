@@ -4,7 +4,16 @@ import type { ArticleSection } from '../core/sections'
 import { buildCards, DEFAULT_SITE_NAME, makeCard, type SectionSummary } from '../cards/build'
 import { CardRenderer } from '../cards/templates'
 import { cardThemes, getCardTheme } from '../cards/themes'
-import { exportCardsAsZip, readPngSize, renderCardToBlob, downloadBlob, safeFileName, type ZipEntry } from '../cards/export'
+import {
+  cardFileName,
+  cardNo,
+  exportCardsAsZip,
+  readPngSize,
+  renderCardToBlob,
+  downloadBlob,
+  safeFileName,
+  type ZipEntry,
+} from '../cards/export'
 import {
   CARD_FORMATS,
   getCardFormat,
@@ -32,15 +41,14 @@ const PREVIEW_BOX = { w: 360, h: 400 }
 
 const ADDABLE: CardLayout[] = ['quote', 'points', 'section', 'cover', 'end']
 
-const pad2 = (n: number) => String(n).padStart(2, '0')
-
 /**
  * 重排/增删之后页码会错位（把第 4 张拖到第 1 位，它头上还挂着 04 / 08），
  * 所以每次结构变化都按新顺序重算一遍。
+ * 页码和导出文件名里的编号共用 cardNo()，两处永远是同一个数。
  */
 function renumber(list: CardSpec[]): CardSpec[] {
   const total = list.length
-  return list.map((c, i) => ({ ...c, mark: `${pad2(i + 1)} / ${pad2(total)}` }))
+  return list.map((c, i) => ({ ...c, mark: `${cardNo(i + 1)} / ${cardNo(total)}` }))
 }
 
 export function CardStudio({
@@ -148,12 +156,7 @@ export function CardStudio({
     dirty.current = true
   }
 
-  const fileNameOf = (c: CardSpec) => {
-    const head = safeFileName(doc.meta.title)
-    // 小节卡用小节标题命名，导出后一眼能对上是哪一节
-    const tail = c.layout === 'section' ? safeFileName(c.title) : layoutNames[c.layout]
-    return `${head}-${tail}`
-  }
+  const fileNameOf = (c: CardSpec, index: number) => cardFileName(c, index, doc.meta.title)
 
   const exportOne = async () => {
     if (!selected) return
@@ -167,7 +170,9 @@ export function CardStudio({
       const blob = await renderCardToBlob(node, { backgroundColor: theme.bg, format })
       // 提示里的数字读真实像素，而不是按配置推算 —— 这样尺寸不对时不会骗人
       const px = await readPngSize(blob)
-      downloadBlob(blob, `${fileNameOf(selected)}-${format.replace(':', 'x')}.png`)
+      // 单张导出会落到「下载」里和别的图混在一起，所以带上比例
+      const base = fileNameOf(selected, Math.max(0, cards.findIndex((c) => c.id === selected.id)))
+      downloadBlob(blob, `${base}-${format.replace(':', 'x')}.png`)
       onToast(`已导出 ${px ? `${px.w}×${px.h}` : `${fmt.w * 2}×${fmt.h * 2}`} PNG`, 'success')
     } catch (e) {
       onToast(`导出失败：${e instanceof Error ? e.message : String(e)}`, 'error')
@@ -179,19 +184,16 @@ export function CardStudio({
   const exportAll = async () => {
     const formats = multiSize ? CARD_FORMATS : [fmt]
 
-    // 同版式的自定义卡会重名，zip 里后一张会覆盖前一张，所以按出现次数加后缀
-    const used = new Map<string, number>()
+    // 编号本身就是唯一键（01..NN），不会重名，不需要再按出现次数加后缀 ——
+    // 那个 `-2` 后缀反而会把 10 排到 2 后面去
     const entries: ZipEntry[] = []
-    for (const c of cards) {
-      const base = fileNameOf(c)
-      const n = (used.get(base) ?? 0) + 1
-      used.set(base, n)
-      const name = n === 1 ? `${base}.png` : `${base}-${n}.png`
+    cards.forEach((c, i) => {
+      const name = `${fileNameOf(c, i)}.png`
       for (const f of formats) {
         const node = nodeRefs.current[`${c.id}@${f.id}`]
         if (node) entries.push({ node, name, format: f.id, folder: multiSize ? f.id.replace(':', 'x') : undefined })
       }
-    }
+    })
 
     if (entries.length === 0) {
       onToast('没有可导出的卡片', 'error')
@@ -491,7 +493,8 @@ export function CardStudio({
         <div className="notice notice-info" style={{ marginTop: 14 }}>
           <span className="notice-mark">i</span>
           <span>
-            卡片是纯 CSS 渲染，不引用文章配图 —— 这样导出不会因为外链图跨域而失败。
+            导出的文件名带两位编号（<b>01-标题-封面.png</b>），按名称排序就是卡片顺序，
+            多选上传不用自己排。卡片是纯 CSS 渲染，不引用文章配图 —— 这样导出不会因为外链图跨域而失败。
             导出用的是系统字体，在 macOS 上最准；换到 Windows 会回退到微软雅黑，长标题的换行位置可能略有偏移。
           </span>
         </div>

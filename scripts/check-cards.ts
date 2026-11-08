@@ -15,6 +15,7 @@ import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
 import { splitSections } from '../src/core/sections'
 import { buildCards } from '../src/cards/build'
+import { cardFileName, cardNo } from '../src/cards/export'
 import { CARD_FORMATS } from '../src/cards/types'
 import { charCount } from '../src/core/cjk'
 
@@ -103,6 +104,64 @@ for (const file of files) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* 导出文件名：编号必须在、必须补零、必须唯一                              */
+/* ------------------------------------------------------------------ */
+/*
+ * 文件名是用户挑图的唯一线索：卡片上的页码（01 / 08）只印在图里，
+ * 在下载文件夹里看不见。编号一旦缺了或者没补零，多选上传就会乱序
+ * （`10` 排到 `2` 前面），而这种错只有到平台上才发现。
+ */
+const NAME_MAX = 48
+let nameSamples: string[] = []
+
+for (const file of files) {
+  const src = readFileSync(join(POSTS, file), 'utf8')
+  const doc = parseArticle({ source: src, fileName: file })
+  const cards = buildCards({ doc, themeId: 'paper', siteName: '胡拉图说', sections: splitSections(doc) })
+  const names = cards.map((c, i) => cardFileName(c, i, doc.meta.title))
+
+  names.forEach((n, i) => {
+    const want = cardNo(i + 1)
+    // 编号必须在最前面：文件名被截断时末尾会先没，编号不能跟着丢
+    if (!n.startsWith(`${want}-`)) {
+      problems.push(`${file}: 第 ${i + 1} 张的文件名「${n}」不是以编号 ${want}- 开头`)
+      fail++
+    }
+    if (n.length > NAME_MAX) {
+      problems.push(`${file}: 文件名 ${n.length} 字超过 ${NAME_MAX}「${n}」`)
+      fail++
+    }
+    if (/[\\/:*?"<>|]/.test(n)) {
+      problems.push(`${file}: 文件名含非法字符「${n}」`)
+      fail++
+    }
+  })
+
+  // 按名称排序后必须还是卡片顺序 —— 补零的全部意义就在这一条
+  const sorted = [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  if (sorted.join('\n') !== names.join('\n')) {
+    const at = names.findIndex((n, i) => n !== sorted[i])
+    problems.push(`${file}: 按名称排序后顺序变了，第 ${at + 1} 张成了「${sorted[at]}」`)
+    fail++
+  }
+
+  // 重名会让 zip 里后一张覆盖前一张
+  if (new Set(names).size !== names.length) {
+    problems.push(`${file}: 文件名有重复`)
+    fail++
+  }
+
+  // 编号只补到两位，100 张以上会退化成 100 < 11 的字典序错误。
+  // 一套图最多十几张（小红书上限 18 张），这里只是把边界钉住
+  if (names.length > 99) {
+    problems.push(`${file}: ${names.length} 张卡，超过两位编号的容量（99）`)
+    fail++
+  }
+
+  if (!nameSamples.length) nameSamples = names.slice(0, 4)
+}
+
 console.log(`扫描 ${files.length} 篇`)
 console.log(`  共 ${totalCards} 张卡；单篇最多 ${maxCards} 张；最长小节摘要 ${maxSummary} 字（上限 ${SUMMARY_CAP}）`)
 
@@ -136,6 +195,11 @@ for (const f of CARD_FORMATS) {
   }
 }
 if (fail === 0) console.log(`  ${CARD_FORMATS.length} 个导出尺寸：比例与说明文字都对得上`)
+
+if (nameSamples.length) {
+  console.log('  文件名示例：')
+  for (const n of nameSamples) console.log(`    ${n}.png`)
+}
 
 if (fail === 0) {
   console.log('✓ 配图层全部通过')
