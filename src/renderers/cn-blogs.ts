@@ -12,8 +12,9 @@
  * 2. **代码块**：三家都不保证保留等宽格式。B 站专栏会把代码压成普通段落，
  *    头条和百家号连 <pre> 都会剥。遇到代码块统一提示「粘贴后需检查格式」。
  *
- * 图片一律要手动上传 —— 这三家都有图床防盗链，外链图粘过去大概率裂。
- * 这一条没有技术手段能绕开，只能提示。
+ * 图片走外链就行 —— 这三家过去被认为有图床防盗链、外链图粘过去会裂，
+ * 但实测自建图床（Cloudflare R2 + 自有域名）在这几家都能正常显示，
+ * 所以不再提示「逐张手动上传」。
  */
 
 import type { Doc } from '../core/ir'
@@ -36,10 +37,7 @@ const SPECS = {
   bilibili: {
     inlineLinks: true,
     codeHint: '代码块粘进专栏后会变成普通段落，等宽对齐会丢，建议先截图再贴',
-    notes: [
-      'B 站专栏编辑器支持富文本粘贴，标题层级与表格保真',
-      '图片必须上传到 B 站图床，外链图会被防盗链拦掉',
-    ],
+    notes: ['B 站专栏编辑器支持富文本粘贴，标题层级与表格保真'],
   },
   toutiao: {
     inlineLinks: false,
@@ -77,9 +75,6 @@ export function renderCnBlog(id: CnBlogId, doc: Doc, _opts: ConvertOptions): Ren
   const hasCode = doc.blocks.some((b) => b.t === 'code')
 
   const warnings: string[] = []
-  if (images.length > 0) {
-    warnings.push(`正文有 ${images.length} 张外链图片，需要逐张手动上传到平台图床，否则会裂图`)
-  }
   if (hasCode) warnings.push(spec.codeHint)
   if (!spec.inlineLinks && links.length > 0) {
     warnings.push(`${links.length} 个外链已抽成文末参考链接（正文外链会被清除）`)
@@ -95,7 +90,7 @@ export function renderCnBlog(id: CnBlogId, doc: Doc, _opts: ConvertOptions): Ren
     stats: [
       { label: '正文', value: `${charCount(result.text)} 字` },
       { label: 'HTML', value: `${result.charCount} 字符` },
-      { label: '图片', value: `${images.length} 张待上传`, level: images.length > 0 ? 'warn' : 'ok' },
+      { label: '图片', value: `${images.length} 张` },
       { label: '外链', value: spec.inlineLinks ? `${links.length} 个保留` : `${links.length} 个转文末` },
     ],
     fileName: `${doc.meta.slug || 'article'}.html`,

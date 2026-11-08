@@ -146,9 +146,11 @@ for (const [name, out] of [
   ['头条号', tt],
   ['百家号', bj],
 ] as const) {
+  // 外链图在这几家能正常显示，不再提示「逐张上传到平台图床」。
+  // 这条断言防的是那句提示被谁又加回来。
   ok(
-    out.warnings.some((w) => w.includes('图床')),
-    `${name}提示 ${imgCount} 张图要手动上传`,
+    !out.warnings.some((w) => w.includes('图床') || w.includes('外链图片')),
+    `${name}不再为 ${imgCount} 张外链图报「要手动上传」`,
   )
   ok(out.format === 'html' && out.copyMode === 'rich', `${name}走富文本复制`)
   ok(out.stats.some((s) => s.label === '图片'), `${name}有图片统计`)

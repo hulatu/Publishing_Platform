@@ -71,7 +71,6 @@ export const convertPlatforms: ConvertPlatform[] = [
     name: '少数派',
     kind: 'convert',
     hint: '原生支持 Markdown，导入即用',
-    limits: '图片需在少数派后台上传，外链图会被拒',
     render: renderSspai,
   },
   {
@@ -87,7 +86,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     name: '公众号',
     kind: 'convert',
     hint: '全 inline style，复制后直接粘进编辑器',
-    limits: '正文上限 20000 字（按字数算）；图片需微信域名',
+    limits: '正文上限 20000 字（按字数算）',
     render: renderWechat,
   },
   {
@@ -103,7 +102,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     name: 'B 站专栏',
     kind: 'convert',
     hint: '富文本粘贴，标题层级与表格保真',
-    limits: '代码块退化成普通段落；图片需上传 B 站图床',
+    limits: '代码块退化成普通段落',
     render: renderBilibili,
   },
   {

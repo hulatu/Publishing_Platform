@@ -4,8 +4,7 @@
  * 少数派编辑器原生支持 Markdown 导入，所以这里只做「规范化」：
  * 把 IR 重新序列化成一份干净、无歧义的 Markdown，任何解析器都能正确渲染。
  *
- * 唯一的硬约束：少数派后台上传图片，不接受外链。
- * 所以除了输出 Markdown，还要单独列出「待上传图片」清单，方便逐张处理。
+ * 图片走正文里的外链即可（实测自建图床的图能正常显示），不再单独列「待上传清单」。
  */
 
 import type { Doc } from '../core/ir'
@@ -20,11 +19,6 @@ export function renderSspai(doc: Doc, _opts: ConvertOptions): RenderOutput {
   const links = collectLinks(doc.blocks)
   const warnings: string[] = []
 
-  if (images.length > 0) {
-    warnings.push(
-      `正文有 ${images.length} 张外链图片，少数派后台只接受本地上传 —— 请先下载再逐张上传。`,
-    )
-  }
   if (links.length > 0) {
     warnings.push(`正文含 ${links.length} 个外链，导入后抽查几个是否被正确解析`)
   }
@@ -39,13 +33,9 @@ export function renderSspai(doc: Doc, _opts: ConvertOptions): RenderOutput {
     warnings,
     stats: [
       { label: '正文', value: `${charCount(md.body)} 字符` },
-      { label: '图片', value: `${images.length} 张`, level: images.length > 0 ? 'warn' : 'ok' },
+      { label: '图片', value: `${images.length} 张` },
       { label: '外链', value: `${links.length} 个` },
     ],
-    extras:
-      images.length > 0
-        ? [{ title: '待上传图片清单（少数派后台需逐张上传）', items: images.map((img, i) => `${i + 1}. ${img.src}`) }]
-        : undefined,
     fileName: `${slug || 'article'}.md`,
   }
 }

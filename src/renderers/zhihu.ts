@@ -31,11 +31,6 @@ export function renderZhihu(doc: Doc, _opts: ConvertOptions): RenderOutput {
     target: 'web',
   })
 
-  if (images.length > 0) {
-    warnings.push(
-      `正文有 ${images.length} 张外链图片，知乎会尝试转存；带防盗链的图床可能失败。`,
-    )
-  }
   warnings.push('推荐「下载 .md」再走知乎专栏导入；富文本粘贴会丢代码块结构')
 
   const hasCode = doc.blocks.some((b) => b.t === 'code')
@@ -53,7 +48,7 @@ export function renderZhihu(doc: Doc, _opts: ConvertOptions): RenderOutput {
     stats: [
       { label: '正文', value: `${charCount(md.body)} 字符` },
       { label: '富文本', value: `${rich.charCount} 字符` },
-      { label: '图片', value: `${images.length} 张`, level: images.length > 0 ? 'warn' : 'ok' },
+      { label: '图片', value: `${images.length} 张` },
       { label: '外链', value: `${links.length} 个` },
     ],
     fileName: `${doc.meta.slug || 'article'}.md`,
