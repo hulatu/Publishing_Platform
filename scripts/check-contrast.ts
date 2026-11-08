@@ -8,7 +8,7 @@
  * 这种「没人会主动去量」的退化，只能靠脚本守。
  *
  * 检查项：
- * - 两套主题里，7 个文字色 × 6 个底色共 84 组，全部 ≥ 4.5:1（AA 正文标准）
+ * - 两套主题里，7 个文字色 × 9 个底色共 126 组，全部 ≥ 4.5:1（AA 正文标准）
  * - 实心底上的字（--on-ink / --on-accent / --on-status）≥ 4.5:1
  * - toast 是半透明底，先合成到 --panel 上再算
  * - 预览区的六个块必须共用 --read-w，不许再出现三个宽度
@@ -110,7 +110,23 @@ function contrast(a: RGBA, b: RGBA): number {
 /* ---------------- 断言 ---------------- */
 
 const MIN = 4.5
-const SURFACES = ['bg', 'sidebar-bg', 'main-bg', 'panel', 'panel-soft', 'panel-inset']
+/**
+ * 底色清单。除了六个页面/面板底，还有三档「状态柔和底」——
+ * 提示条（notice）就是拿它们当背景、把正文色压在上面写的，
+ * 而这三档以前没人量过：`--ok-soft` 是这一轮新加的「查完没事」结论条，
+ * 加进去之前它只是「看着浅」，加进去之后才有数。
+ */
+const SURFACES = [
+  'bg',
+  'sidebar-bg',
+  'main-bg',
+  'panel',
+  'panel-soft',
+  'panel-inset',
+  'ok-soft',
+  'warn-soft',
+  'error-soft',
+]
 const TEXTS = ['ink', 'ink-soft', 'ink-muted', 'accent', 'ok', 'warn', 'error']
 
 let failed = 0

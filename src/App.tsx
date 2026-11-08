@@ -1602,6 +1602,7 @@ export default function App() {
         onClose={() => setImagesOpen(false)}
         images={images}
         title={doc?.meta.title ?? '文章'}
+        platform={platform}
         assets={assets}
         onUploaded={applyHostUrls}
         onAddAssets={addAssets}

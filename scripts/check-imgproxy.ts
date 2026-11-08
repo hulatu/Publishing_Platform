@@ -53,5 +53,63 @@ check(own !== 403, '白名单内的图床被放行（取不取得到另说）')
 const root = await call('https://hulatu.com/')
 check(root !== 403, '主域被放行（但非图片内容会被 415 挡掉）')
 
+/* ------------------------------------------------------------------ */
+/* 体检探测（?probe=1）                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 探测路径返回的是 JSON 而不是图片，客户端靠 content-type 判断
+ * 「这是探测结果」还是「Functions 没部署、返回了 SPA 的 index.html」。
+ * 这一条如果不成立，本地开发时会把每张图都误报成「查不出格式」。
+ */
+const callProbe = async (u: string | null) => {
+  const url =
+    'https://publish.hulatu.com/api/img' +
+    (u === null ? '' : `?u=${encodeURIComponent(u)}`) +
+    (u === null ? '?probe=1' : '&probe=1')
+  return onRequestGet({ request: new Request(url) })
+}
+
+const probeMissing = await callProbe(null)
+check(probeMissing.status === 400, '探测没带 ?u= → 400')
+
+const probeBad = await callProbe('not a url')
+check(probeBad.status === 400, '探测非法 URL → 400')
+
+const probeHttp = await callProbe('http://img.hulatu.com/a.png')
+check(probeHttp.status === 403, '探测 http 协议 → 403')
+
+const probeOther = await callProbe('https://example.com/a.png')
+check(probeOther.status === 403, '探测白名单外的域名 → 403（探测不能绕过白名单）')
+
+const probeOwn = await callProbe('https://img.hulatu.com/post/H2UQZm.webp')
+check(probeOwn.status === 200, '探测白名单内的图床 → 200（结论在 body 的 status 里）')
+check(
+  (probeOwn.headers.get('content-type') ?? '').includes('application/json'),
+  '探测返回 JSON —— 客户端靠这个区分「探测结果」和「代理没部署」',
+)
+check(
+  (probeOwn.headers.get('access-control-allow-origin') ?? '') === '*',
+  '探测也带 CORS 头，否则浏览器读不到结论',
+)
+
+/**
+ * 探测的 body 形状是固定的四个字段，不论联网与否：
+ * 连不上时 status 是 0（表示「没问到」，不是「对方返回 0」），
+ * 所以这里不按「有值/没值」断言，而是断言形状本身。
+ *
+ * `hotlink` 必须是布尔且**默认 false** —— 探测失败时如果它变成 true，
+ * 界面会把「网络不通」显示成「你被防盗链了」。
+ */
+const probeBody = (await probeOwn.json()) as {
+  status?: unknown
+  bytes?: unknown
+  hotlink?: unknown
+  foreignStatus?: unknown
+}
+check(typeof probeBody.status === 'number', '探测 body 带 upstream 状态码（连不上时是 0）')
+check(typeof probeBody.hotlink === 'boolean', '探测 body 带 hotlink 布尔值')
+check(typeof probeBody.foreignStatus === 'number', '探测 body 带「带 Referer 那次」的状态码，便于排查')
+
 console.log(fail === 0 ? '\n图片代理准入规则全部通过' : `\n${fail} 项失败`)
 if (fail > 0) process.exitCode = 1

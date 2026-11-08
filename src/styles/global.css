@@ -1205,6 +1205,18 @@ select {
   background: var(--error);
 }
 
+/* 「查完没事」也是结论，得和「查过了但没查到」长得不一样。
+   原先只有 info / warn / error 三档，干净的结论只能借用 info，
+   于是「全部正常」和「什么都没查」是同一种灰。 */
+.notice-ok {
+  border-color: var(--ok-soft);
+  background: var(--ok-soft);
+}
+
+.notice-ok .notice-mark {
+  background: var(--ok);
+}
+
 .notice-holder {
   max-width: var(--read-w);
   margin: 0 auto 14px;
@@ -3816,7 +3828,11 @@ select {
 
 .img-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  /* 184 而不是 148：事实行最长要 157px（`1920×1054 · 3.1 MB · GIF`），
+     148 的四列只给 153px —— 正好把最后那个格式截成「G…」。
+     格式恰恰是这一行最要紧的信息（.webp 其实是 JPEG 就是这么看出来的），
+     所以宁可少一列、缩略图大一圈，也不让它截断。 */
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
   gap: 12px;
 }
 
@@ -3893,7 +3909,9 @@ select {
   color: var(--on-status);
 }
 
-.img-badge.fail {
+/* 红色角标：打包失败的「跨域」和体检的 error 是同一档，合成一条 */
+.img-badge.fail,
+.img-badge.error {
   background: var(--error);
   color: var(--on-status);
 }
@@ -3901,6 +3919,37 @@ select {
 .img-badge.busy {
   background: var(--badge-bg);
   color: #fff;
+}
+
+/* 黄色角标只有体检用（warn 档：偏大、格式不符、比例） */
+.img-badge.warn {
+  background: var(--warn);
+  color: var(--on-status);
+}
+
+/* 事实行：1920×1080 · 563 KB · JPEG。等宽数字，纵向能对齐 */
+.img-facts {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 结论下面那句「为什么」，单独一行 —— 和总结句挤在一起会读成一长句 */
+.audit-why {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-muted);
+}
+
+/* 平台规则说明，贴在网格下面 */
+.audit-note {
+  margin-top: 12px;
+  font-size: var(--fs-2xs);
+  line-height: 1.7;
+  color: var(--ink-muted);
 }
 
 .img-meta {
