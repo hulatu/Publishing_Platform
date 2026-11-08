@@ -17,6 +17,27 @@ function escCell(s: string): string {
   return esc(s).replace(/\|/g, '\\|')
 }
 
+/**
+ * 行首的块级标记要转义，否则这段文字会被下一次解析当成标题 / 列表 / 引用。
+ *
+ * 真实踩坑：一篇讲 Markdown 语法的文章，列表项内容就是「# + 空格 + 内容」，
+ * 导出成 Markdown 后那一项变成了一个二级标题，「可以表示几级标题」这句话
+ * 直接换了语义。`esc()` 只处理行内字符（`* _ [ ]` 反引号），管不到行首。
+ *
+ * 有序列表的转义点要落在 `.` / `)` 上（`1\.`）—— 反斜杠加数字在 CommonMark 里
+ * 不算转义，`\1` 会原样输出成 `\1`。
+ */
+function guardLineStart(md: string): string {
+  return md
+    .split('\n')
+    .map((line) =>
+      line
+        .replace(/^(\s*)([#>+-])(?=\s|$)/, '$1\\$2')
+        .replace(/^(\s*)(\d+)([.)])(?=\s)/, '$1$2\\$3'),
+    )
+    .join('\n')
+}
+
 export function inlineToMd(nodes: Inline[]): string {
   let out = ''
   for (const n of nodes) {
@@ -47,7 +68,8 @@ export function inlineToMd(nodes: Inline[]): string {
         out += '  \n'
         break
       case 'fnref':
-        out += `[^${n.id}]`
+        // 用 label 而不是 id：定义那边写的是 `[^1]:`，这里必须是 `[^1]` 才对得上
+        out += `[^${n.label ?? n.id}]`
         break
       case 'html':
         out += n.raw
@@ -74,7 +96,7 @@ export function blocksToMd(blocks: Block[], depth = 0): string {
         break
       }
       case 'p': {
-        parts.push(inlineToMd(b.inline))
+        parts.push(guardLineStart(inlineToMd(b.inline)))
         break
       }
       case 'quote': {

@@ -19,7 +19,14 @@ export type Inline =
   | { t: 'link'; href: string; c: Inline[] }
   | { t: 'img'; src: string; alt: string; title?: string }
   | { t: 'br' }
-  | { t: 'fnref'; id: string }
+  /**
+   * 脚注引用。
+   *
+   * `id` 是 markdown-it 的内部序号（0 起），`label` 才是作者写的那个标记（`[^1]` 里的 `1`）。
+   * **导出 Markdown 时必须用 label**：定义那边写的是 `[^1]:`，引用这边若用 id 就变成 `[^0]`，
+   * 两边对不上，脚注在少数派/知乎上直接失效。
+   */
+  | { t: 'fnref'; id: string; label?: string }
   | { t: 'html'; raw: string }
 
 export type Align = 'l' | 'c' | 'r' | null

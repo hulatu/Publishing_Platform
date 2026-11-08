@@ -49,6 +49,48 @@ const md = new MarkdownIt({
 md.use(footnote)
 
 /* ------------------------------------------------------------------ */
+/* 脚注：没人引用的定义不能被丢掉                                        */
+/*                                                                     */
+/* markdown-it-footnote 的 `footnote_tail` 只有在 `env.footnotes.list`   */
+/* 存在时才吐出定义块，而 `list` 只在「某个 `[^x]` 被成功解析成引用」时   */
+/* 才会被创建。于是两种情况下定义会整块消失、连原文都不剩：              */
+/*   1. 作者写了 `[^1]: …` 但忘了在正文里引用；                          */
+/*   2. 引用的写法 markdown-it 不认（例如写在代码块里），引用没成立。    */
+/* 对转换器来说这是静默的数据丢失 —— 一段参考书目就这么没了。            */
+/*                                                                     */
+/* 修法：在 `footnote_tail` 之前，把「有定义、没被引用」的标签补进 list， */
+/* 让它们照常出现在文末（排在已引用的之后），并记下标签供上层提示。      */
+/* ------------------------------------------------------------------ */
+
+const ORPHAN_FN_KEY = '__mvOrphanFn'
+
+interface FootnoteEnv {
+  footnotes?: { refs?: Record<string, number>; list?: { label?: string; count?: number }[] }
+  [ORPHAN_FN_KEY]?: string[]
+}
+
+md.core.ruler.before('footnote_tail', 'mv_footnote_orphans', (state) => {
+  const env = state.env as FootnoteEnv
+  const fn = env.footnotes
+  if (!fn?.refs) return
+
+  const list = (fn.list ??= [])
+  const known = new Set(list.map((x) => x.label))
+  const orphans: string[] = []
+
+  for (const key of Object.keys(fn.refs)) {
+    if (fn.refs[key] >= 0) continue // 已被引用过，list 里已经有它
+    const label = key.slice(1) // refs 的键统一带一个前导冒号（避开 Object 原型成员）
+    if (!label || known.has(label)) continue
+    list.push({ label, count: 0 })
+    known.add(label)
+    orphans.push(label)
+  }
+
+  if (orphans.length) env[ORPHAN_FN_KEY] = orphans
+})
+
+/* ------------------------------------------------------------------ */
 /* 预览渲染：独立成段的图片 → <figure> + 图注                            */
 /*                                                                     */
 /* 只影响「渲染」，不影响 tokenize —— parseArticle 读的是 token，不受干扰。 */
@@ -289,7 +331,10 @@ function parseInline(tokens: MdToken[]): Inline[] {
         }
 
         case 'footnote_ref': {
-          out.push({ t: 'fnref', id: String(tok.meta?.id ?? '') })
+          // label 是作者写的标记（`[^1]` 的 1），id 是内部序号 —— 两个都留着，
+          // Markdown 出口必须用 label 才能和 `[^1]:` 的定义对上
+          const label = String(tok.meta?.label ?? '')
+          out.push({ t: 'fnref', id: String(tok.meta?.id ?? ''), ...(label ? { label } : {}) })
           i++
           break
         }
@@ -565,8 +610,16 @@ export function parseArticle({ source, fileName = '' }: ParseInput): Doc {
   warnings.push(...pre.warnings)
 
   const lines = pre.src.split('\n')
-  const tokens = md.parse(pre.src, {}) as unknown as MdToken[]
+  const env: FootnoteEnv = {}
+  const tokens = md.parse(pre.src, env) as unknown as MdToken[]
   const blocks = parseBlocks(new Cursor(tokens, lines), new Set<string>())
+
+  const orphans = env[ORPHAN_FN_KEY] ?? []
+  if (orphans.length) {
+    warnings.push(
+      `有 ${orphans.length} 条脚注定义没有对应的引用（${orphans.map((l) => `[^${l}]`).join('、')}），已原样保留在文末 —— 若本意是正文注释，请检查引用是否写漏`,
+    )
+  }
 
   const bodyText = blocksToText(blocks)
   const fallbackTitle = fileName.replace(/\.md$/i, '').replace(/^\d{4}-\d{2}-\d{2}-/, '')
