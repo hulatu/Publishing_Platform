@@ -16,7 +16,7 @@
  */
 
 import type { Align, Block, ImageRef, Inline, LinkRef } from './ir'
-import { collectImages, collectLinks, inlineText } from './ir'
+import { collectImages, collectLinks, imageCaption, inlineText } from './ir'
 import { blocksToText } from './ir'
 
 export type StyleMap = Record<string, string>
@@ -232,6 +232,10 @@ function renderHeading(b: Block & { t: 'heading' }, ctx: Ctx): string {
 }
 
 function renderParagraph(inline: Inline[], ctx: Ctx, inQuote = false): string {
+  // 整段只有图 → 每张图各配一条图注（引用块里同样适用，figure 是并列块不会破结构）
+  const only = imagesOnly(inline)
+  if (only) return only.map((img) => renderFigure(img, ctx)).join('')
+
   const style = inQuote ? joinStyles(ctx.theme.p, ctx.theme.quoteP) : ctx.theme.p
   return `<p${attr(style)}>${renderInline(inline, ctx)}</p>`
 }
@@ -251,12 +255,60 @@ function renderCode(b: Block & { t: 'code' }, ctx: Ctx): string {
 }
 
 function renderImageBlock(b: Block & { t: 'img' }, ctx: Ctx): string {
+  return renderFigure(b, ctx)
+}
+
+/**
+ * 图 + 图注。
+ *
+ * 为什么图注要跟图做成**两个并列块**而不是嵌套：
+ * - 公众号（section）：嵌套合法，但 `<p>` 里再套 `<p>` 不合法，豆瓣那一路会
+ *   被浏览器自动闭合，外层 `text-align:center` 直接失效
+ * - 所以统一「图一个块、图注一个块」，两个都居中，图注靠自己的 margin-top 贴住图
+ *
+ * 图注文字见 `imageCaption()`：有 alt 用 alt，没有就退回文件名。
+ */
+function renderFigure(img: { src: string; alt: string }, ctx: Ctx): string {
   const { theme, opts } = ctx
   const wrapper = opts.target === 'web' ? 'p' : 'section'
-  const alt = b.alt.trim()
-  const caption = alt ? `<${wrapper}${attr(theme.caption)}>${escapeHtml(alt)}</${wrapper}>` : ''
-  const img = `<img src="${escapeHtml(b.src)}" alt="${escapeHtml(b.alt)}"${attr(theme.imgBlock)}>`
-  return `<${wrapper} style="margin:0 0 1.6em;text-align:center;">${img}${caption}</${wrapper}>`
+  const el = `<img src="${escapeHtml(img.src)}" alt="${escapeHtml(img.alt)}"${attr(theme.imgBlock)}>`
+  const name = imageCaption(img.src, img.alt)
+
+  if (!name) {
+    return `<${wrapper} style="margin:0 0 1.6em;text-align:center;">${el}</${wrapper}>`
+  }
+
+  // 图注自带 margin-top（贴住图片），补一个下边距把「一张图」整体撑开
+  const capStyle = joinStyles(theme.caption, { 'margin-bottom': '1.6em' })
+  return (
+    `<${wrapper} style="margin:1.6em 0 0;text-align:center;">${el}</${wrapper}>` +
+    `<${wrapper}${attr(capStyle)}>${escapeHtml(name)}</${wrapper}>`
+  )
+}
+
+/**
+ * 段落里是不是「只有图」——返回这些图；夹了文字就返回 null。
+ *
+ * Markdown 里 `![说明](x)` 单独占一行时，markdown-it 产出的是
+ * `<p><img></p>` —— 图片是 inline，不会变成独立的 img block。
+ * 不在这里识别的话，图注逻辑永远不会触发。
+ *
+ * 允许夹空白文本与 `<br>`（有些作者会在图片前后多敲一个换行）；
+ * 也允许连着好几张图（`breaks: false` 时相邻两行图片会落进同一个段落，
+ * 这时每张图各配一条图注，而不是整段放弃）。
+ */
+function imagesOnly(inline: Inline[]): (Inline & { t: 'img' })[] | null {
+  const imgs: (Inline & { t: 'img' })[] = []
+  for (const n of inline) {
+    if (n.t === 'text' && !n.v.trim()) continue
+    if (n.t === 'br') continue
+    if (n.t === 'img') {
+      imgs.push(n)
+      continue
+    }
+    return null
+  }
+  return imgs.length > 0 ? imgs : null
 }
 
 function renderList(b: Block & { t: 'list' }, ctx: Ctx): string {

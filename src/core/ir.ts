@@ -122,6 +122,36 @@ export interface ImageRef {
   blockIndex: number
 }
 
+/**
+ * 图片的「名字」—— 渲染成图下方那行图注。
+ *
+ * 优先取 alt：博客里的写法是 `![10 月跑量](https://img.hulatu.com/post/UILBl6.jpg)`，
+ * alt 才是人写的说明，URL 里的 `UILBl6` 是图床随机串，拿它当图注没有意义。
+ *
+ * alt 为空时才退回 URL 里的文件名（`./img/cover.png` → `cover.png`）——
+ * 这种情况文件名通常是作者自己起的，比什么都不显示强。
+ *
+ * 两者都取不到（data URI、以 `/` 结尾的路径、没有扩展名的路径）就返回空串，
+ * 调用方据此决定「不渲染图注」，不要输出空的一行。
+ */
+export function imageCaption(src: string, alt: string): string {
+  const text = alt.trim()
+  if (text) return text
+
+  const clean = src.split(/[?#]/)[0] ?? ''
+  if (!clean || /^data:/i.test(clean)) return ''
+
+  const name = clean.split('/').filter(Boolean).pop() ?? ''
+  // 得像个图片文件名：带常见扩展名。`/post/abc123` 这种没有扩展名的路径不当图注
+  if (!/\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i.test(name)) return ''
+
+  try {
+    return decodeURIComponent(name)
+  } catch {
+    return name
+  }
+}
+
 /** 收集全文所有图片（含行内图片、独立图片块、列表项内、引用块与脚注内） */
 export function collectImages(blocks: Block[]): ImageRef[] {
   const out: ImageRef[] = []

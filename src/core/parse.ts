@@ -14,7 +14,7 @@ import MarkdownIt from 'markdown-it'
 import footnote from 'markdown-it-footnote'
 import type { Align, Block, Doc, Inline } from './ir'
 import { buildMeta, parseFrontMatter, splitFrontMatter } from './frontmatter'
-import { blocksToText } from './ir'
+import { blocksToText, imageCaption } from './ir'
 
 /* ------------------------------------------------------------------ */
 /* 最小化的 token 结构（避免依赖 @types/markdown-it 的内部类型路径）      */
@@ -47,6 +47,65 @@ const md = new MarkdownIt({
   typographer: false,
 })
 md.use(footnote)
+
+/* ------------------------------------------------------------------ */
+/* 预览渲染：独立成段的图片 → <figure> + 图注                            */
+/*                                                                     */
+/* 只影响「渲染」，不影响 tokenize —— parseArticle 读的是 token，不受干扰。 */
+/* 图注的居中 / 灰字 / 小字号写在 global.css 的 .md-preview figcaption 里。 */
+/* ------------------------------------------------------------------ */
+
+const SOLE_IMG_KEY = '__mvSoleImg'
+
+/** 这个 inline token 是不是「只有图」（允许夹空白、换行，也允许多张） */
+function isSoleImageInline(token: { children?: unknown[] | null }): boolean {
+  const kids = (token.children ?? []) as { type: string; content?: string }[]
+  let found = false
+  for (const k of kids) {
+    if (k.type === 'text' && !String(k.content ?? '').trim()) continue
+    if (k.type === 'softbreak' || k.type === 'hardbreak') continue
+    if (k.type === 'image') {
+      found = true
+      continue
+    }
+    return false
+  }
+  return found
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+md.renderer.rules.paragraph_open = (tokens: any[], idx: number, options: any, env: any, self: any) => {
+  const next = tokens[idx + 1]
+  const sole = !!next && next.type === 'inline' && isSoleImageInline(next)
+  env[SOLE_IMG_KEY] = sole
+  return sole ? '' : self.renderToken(tokens, idx, options)
+}
+
+md.renderer.rules.paragraph_close = (tokens: any[], idx: number, options: any, env: any, self: any) => {
+  const sole = env[SOLE_IMG_KEY] === true
+  env[SOLE_IMG_KEY] = false
+  return sole ? '' : self.renderToken(tokens, idx, options)
+}
+
+md.renderer.rules.image = (tokens: any[], idx: number, options: any, env: any, self: any) => {
+  const token = tokens[idx]
+  // markdown-it 默认把 alt 填进 attrs；这里先按默认行为补上，再决定要不要包 figure
+  const altText = self.renderInlineAsText(token.children ?? [], options, env)
+  const altIdx = token.attrIndex('alt')
+  if (altIdx >= 0 && token.attrs) token.attrs[altIdx][1] = altText
+
+  const img = self.renderToken(tokens, idx, options)
+  if (env[SOLE_IMG_KEY] !== true) return img
+
+  const name = imageCaption(token.attrGet('src') ?? '', altText)
+  const cap = name ? `<figcaption>${escapeText(name)}</figcaption>` : ''
+  return `<figure class="md-figure">${img}${cap}</figure>`
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+function escapeText(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
 
 /* ------------------------------------------------------------------ */
 /* 预处理：处理无法安全进入 IR 的裸 HTML                                 */
@@ -202,7 +261,10 @@ function parseInline(tokens: MdToken[]): Inline[] {
 
         case 'image': {
           const src = attrOf(tok, 'src') ?? ''
-          const alt = attrOf(tok, 'alt') ?? ''
+          // ⚠️ alt 不在 attrs 里 —— markdown-it 把 `![这里](x)` 的文字放在
+          // token.content，attrs 里那条 alt 恒为空串。只读 attrs 会让全文图片
+          // 的说明文字静默丢失（图注、少数派 Markdown 输出都会变空）。
+          const alt = attrOf(tok, 'alt') || tok.content || ''
           const title = attrOf(tok, 'title')
           out.push({ t: 'img', src, alt, ...(title ? { title } : {}) })
           i++

@@ -1344,6 +1344,26 @@ select {
   box-shadow: var(--sh-2);
 }
 
+/* 独立成段的图片：图 + 图注。
+   图注居中、灰、比正文小一号（正文 16px → 0.82em ≈ 13px，跟公众号主题同一套比例） */
+.md-preview figure {
+  margin: 1.6em 0;
+  text-align: center;
+}
+
+.md-preview figure img {
+  margin: 0 auto;
+}
+
+.md-preview figcaption {
+  margin-top: 10px;
+  font-size: 0.82em;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
 .md-preview hr {
   border: none;
   border-top: 1px solid var(--line);

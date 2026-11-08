@@ -330,8 +330,10 @@ function makeTheme(spec: ThemeSpec): HtmlTheme {
 
     imgBlock: { 'max-width': '100%', height: 'auto', display: 'block', margin: '0 auto', 'border-radius': '6px' },
     imgInline: { 'max-width': '100%', height: 'auto', 'vertical-align': 'middle', 'border-radius': '4px' },
+    // 图注：正文的 0.82 倍（16px → 13px，15px → 12px），永远比正文小一号；
+    // 写死 13px 的话，14px 正文字号的主题里几乎看不出区别
     caption: {
-      'font-size': '13px',
+      'font-size': `${Math.max(11, Math.round(parseFloat(spec.pSize ?? '16') * 0.82))}px`,
       color: p.secondary,
       'text-align': 'center',
       'line-height': '1.6',
