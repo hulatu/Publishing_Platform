@@ -1651,7 +1651,14 @@ select {
   gap: 10px;
 }
 
-.publish-toggle {
+/* 「复制后自动打开」是开关，右边那个才是链接。两处都必须显式清掉 .check-row 的
+   上边距：那条 12px 是给设置面板里的多行选项写的，落到单行的操作条上会把
+   整块压低 6px，和右边的按钮对不齐（实测两个盒子中心差 6px）。
+   ⚠️ 选择器必须带 .publish-open 前缀：.check-row 在文件后面还有一条同名规则，
+   单靠 .publish-toggle 一个类会被它按「后来居上」盖掉，改了等于没改。 */
+.publish-open .publish-toggle {
+  margin-top: 0;
+  align-items: center;
   font-size: 11.5px;
   color: var(--ink-muted);
   white-space: nowrap;
@@ -1659,7 +1666,8 @@ select {
   user-select: none;
 }
 
-.publish-toggle input {
+.publish-open .publish-toggle input {
+  margin-top: 0;
   cursor: pointer;
 }
 
@@ -1669,6 +1677,15 @@ select {
   border-color: var(--line);
   font-size: 11.5px;
   padding: 5px 10px;
+  /* 这是个真 <a>：浏览器默认给链接加下划线，得显式关掉 */
+  text-decoration: none;
+}
+
+/* 外链箭头：一个轻提示，说明点完会离开本页 */
+.publish-now-arrow {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-muted);
 }
 
 /* ---------- 操作条 ---------- */

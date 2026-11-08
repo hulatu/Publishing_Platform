@@ -1081,16 +1081,6 @@ export default function App() {
     }
   }, [doc, hidden, themeId, tail, account, toast])
 
-  /** 手动打开发布页（不复制）。改写平台分段复制完再点这个 */
-  const openPublishNow = useCallback(() => {
-    const target = publishUrlOf(platform)
-    if (!target) {
-      toast('这个平台还没配发布页地址', 'info')
-      return
-    }
-    window.open(target.url, '_blank', 'noopener,noreferrer')
-  }, [platform, toast])
-
   const doSplitExport = useCallback(() => {
     if (!doc) return
     const parts = splitByH2(doc)
@@ -1489,7 +1479,9 @@ export default function App() {
 
               <div className="actionbar-spacer" />
 
-              {/* 发布页入口：只负责打开页面，登录与发布仍由人完成 */}
+              {/* 发布页入口：只负责打开页面，登录与发布仍由人完成。
+                  左边是开关（偏好），右边是真链接（动作）—— 原来两边都写「打开发布页」，
+                  读起来像两个一样的入口，点左边却只是勾选框，容易误会。 */}
               {kind !== 'card' ? (
                 <div className="publish-open">
                   <label
@@ -1504,15 +1496,28 @@ export default function App() {
                         saveOpenOnCopy(e.target.checked)
                       }}
                     />
-                    <span>复制后打开发布页</span>
+                    <span>复制后自动打开</span>
                   </label>
-                  <button
-                    className="btn btn-sm btn-quiet publish-now"
-                    onClick={openPublishNow}
-                    title={publishTarget?.note ?? '在浏览器里打开该平台的发布页'}
-                  >
-                    打开发布页
-                  </button>
+                  {publishTarget ? (
+                    /* 用 <a> 而不是 button + window.open：中键、右键「复制链接地址」、
+                       悬停看目标地址都能用，也不会被弹窗拦截器当成脚本弹窗 */
+                    <a
+                      className="btn btn-sm btn-quiet publish-now"
+                      href={publishTarget.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`在浏览器打开${currentPlatformMeta?.name ?? '该平台'}的发布页${
+                        publishTarget.note ? `（${publishTarget.note}）` : ''
+                      }`}
+                    >
+                      打开{currentPlatformMeta?.name ?? ''}发布页
+                      <span className="publish-now-arrow" aria-hidden>
+                        ↗
+                      </span>
+                    </a>
+                  ) : (
+                    <span className="muted actionbar-note">这个平台没有发布页</span>
+                  )}
                 </div>
               ) : null}
 
