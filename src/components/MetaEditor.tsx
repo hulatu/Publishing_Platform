@@ -24,7 +24,7 @@ export function MetaEditor({ meta, onChange }: Props) {
   return (
     <div className="side-section">
       <button className="side-collapse" onClick={() => setOpen((v) => !v)}>
-        <span className={`caret ${open ? 'open' : ''}`}>▸</span>
+        <span className={`caret ${open ? 'open' : ''}`}>▶</span>
         <span className="side-collapse-title">文章信息</span>
         <span className="side-collapse-value">{meta.title || '未命名'}</span>
         <span className="side-collapse-action">{open ? '收起' : '编辑'}</span>

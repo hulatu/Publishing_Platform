@@ -43,7 +43,7 @@ export function NoticeStack({ items, action }: Props) {
         {rest > 0 ? (
           <button className="notice-more" onClick={() => setOpen((v) => !v)}>
             {open ? '收起' : `还有 ${rest} 条`}
-            <span className={`caret ${open ? 'open' : ''}`}>▸</span>
+            <span className={`caret ${open ? 'open' : ''}`}>▶</span>
           </button>
         ) : null}
 

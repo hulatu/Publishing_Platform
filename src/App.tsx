@@ -1121,6 +1121,33 @@ export default function App() {
   const platformTotal = convertPlatforms.length + rewritePlatforms.length
   const ledgerDone = Object.keys(ledger).length
 
+  /* ---------------- 操作条高度 → CSS 变量 ---------------- */
+
+  /**
+   * toast 要浮在操作条上面，而操作条在窄窗口里会换行变高（实测 900px 宽时 56px → 94px）。
+   * 写死 `bottom: 78px` 在那种宽度下会把提示压在「导出全平台」上，所以量出来交给 CSS。
+   */
+  const actionbarRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = actionbarRef.current
+    const root = document.documentElement
+    if (!el) {
+      root.style.removeProperty('--actionbar-h')
+      return
+    }
+    const apply = () => {
+      root.style.setProperty('--actionbar-h', `${Math.round(el.getBoundingClientRect().height)}px`)
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.style.removeProperty('--actionbar-h')
+    }
+  }, [doc])
+
   return (
     <div className="app">
       {/* ================= 顶栏 ================= */}
@@ -1212,13 +1239,22 @@ export default function App() {
             <div className="head-row">
               <div className="head-title">
                 <h1 className="main-title">{currentPlatformMeta?.name}</h1>
-                <p className="main-hint">{currentPlatformMeta?.hint}</p>
+                {/* 平台限制跟 hint 放同一行，而不是塞进右边那排按钮里 ——
+                    按钮行是 flex-shrink:0，限制文案一长就被挤成两行，「域名」还会被从中间劈开 */}
+                <p className="main-hint">
+                  {currentPlatformMeta?.hint}
+                  {currentPlatformMeta?.limits ? (
+                    <span
+                      className="limit-note"
+                      title={`${currentPlatformMeta.name}的平台限制`}
+                    >
+                      {currentPlatformMeta.limits}
+                    </span>
+                  ) : null}
+                </p>
               </div>
 
               <div className="head-tools">
-                {currentPlatformMeta?.limits ? (
-                  <span className="limit-chip">{currentPlatformMeta.limits}</span>
-                ) : null}
                 {doc ? (
                   <button
                     className="head-chip meta-entry"
@@ -1420,7 +1456,7 @@ export default function App() {
 
           {/* ---------- 操作条 ---------- */}
           {doc ? (
-            <div className="actionbar">
+            <div className="actionbar" ref={actionbarRef}>
               {kind === 'convert' && output ? (
                 <>
                   <button className="btn btn-accent" onClick={doCopyPrimary}>

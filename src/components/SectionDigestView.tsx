@@ -53,7 +53,7 @@ export function SectionDigestView({
     <div className="digest-block">
       <div className="digest-bar">
         <button className="digest-toggle" onClick={() => setOpen((v) => !v)}>
-          <span className={`caret ${open ? 'open' : ''}`}>▸</span>
+          <span className={`caret ${open ? 'open' : ''}`}>▶</span>
           <span className="digest-bar-title">逐节摘要</span>
           <span className="digest-bar-count">
             {running

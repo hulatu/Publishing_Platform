@@ -628,8 +628,21 @@ select {
   gap: 7px;
   width: 100%;
   text-align: left;
-  padding: 2px 0;
+  /* 负 margin 抵掉内边距：整行可点，但文字仍与上方 file-row / 下方分组标题左对齐 */
+  padding: 3px 4px;
+  margin: -3px -4px;
+  border-radius: 6px;
   color: var(--ink-muted);
+  transition: background var(--dur) var(--ease);
+}
+
+.side-collapse:hover {
+  background: var(--hover);
+}
+
+/* 这个箭头不参与收缩，否则长标题会把它挤扁 */
+.side-collapse .caret {
+  flex-shrink: 0;
 }
 
 .side-collapse-title {
@@ -643,6 +656,10 @@ select {
 .side-collapse-value {
   flex: 1;
   min-width: 0;
+  /* 竖线把「文章信息」这个标签和文章标题分开 ——
+     之前两者只隔 7px 空格，读起来是「文章信息为什么我停掉了…」一整句 */
+  padding-left: 8px;
+  border-left: 1px solid var(--line-strong);
   font-size: 11.5px;
   color: var(--ink-soft);
   overflow: hidden;
@@ -749,13 +766,61 @@ select {
   margin-top: 16px;
 }
 
+/* 分组标题同时是折叠开关：整行可点，右侧显示「组里几个」或当前所在平台名 */
 .nav-group-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 3px 2px 2px;
+  margin-bottom: 6px;
+  border-radius: 5px;
   font-size: 10px;
   letter-spacing: 0.14em;
-  color: var(--ink-muted);
+  /* 原先是 --ink-muted（对 --sidebar-bg 只有 3.2:1）—— 分组标题是扫读时的锚点，不是装饰 */
+  color: var(--ink-soft);
   text-transform: uppercase;
-  margin-bottom: 6px;
-  padding-left: 2px;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.nav-group-label:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+
+.nav-group-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 收起时才出现的角标：默认显示组内数量，当前平台在这一组就改成平台名 */
+.nav-group-fold {
+  flex-shrink: 0;
+  max-width: 92px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--panel-inset);
+  color: var(--ink-muted);
+  font-size: 9.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-group-fold.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 收起后组与组之间不需要那么大空隙 */
+.nav-group.is-collapsed + .nav-group {
+  margin-top: 10px;
 }
 
 .nav-item {
@@ -910,21 +975,24 @@ select {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-  padding-top: 3px;
+  /* 与标题首行（20px / 行高 25px）光学居中：chips 高约 23px，往下让 1px 刚好 */
+  padding-top: 1px;
 }
 
-.limit-chip {
-  font-size: 10.5px;
-  color: var(--ink-muted);
-  line-height: 1.4;
-  max-width: 260px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.limit-chip::before {
-  content: '限制';
+/* 平台限制：跟在 hint 后面。
+   放按钮行里会被挤成两行（按钮行 flex-shrink:0，只能压文字），
+   而中文可以在任意字间断行，「微信域名」会被劈成「微信域 / 名」。
+   两者之间只留空隙、不画竖线 —— 窄屏时它会折到第二行开头，一条竖线悬在行首比没有更难看，
+   而橙色的「限制」两个字本身已经够当分隔了。 */
+.limit-note {
   display: inline-block;
+  margin-left: 12px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.limit-note::before {
+  content: '限制';
   margin-right: 5px;
   color: var(--warn);
   font-weight: 600;
@@ -952,6 +1020,8 @@ select {
   display: inline-flex;
   align-items: baseline;
   gap: 4px;
+  /* 值比标签重一档：标签是「图片」「外链」这类索引词，值才是要读的数 */
+  color: var(--ink-soft);
 }
 
 .stat-chip + .stat-chip::before {
@@ -962,7 +1032,6 @@ select {
 
 .stat-chip .stat-label {
   color: var(--ink-muted);
-  opacity: 0.85;
 }
 
 .stat-chip.warn {
@@ -1209,14 +1278,16 @@ select {
   gap: 6px;
   padding: 7px 11px;
   font-size: 11.5px;
-  color: var(--ink-muted);
+  /* 用 --ink-muted 时整条读起来像输入框里的占位符（边框 + 浅底 + 灰字），
+     而它其实是个可以点开的折叠项 */
+  color: var(--ink-soft);
   cursor: pointer;
   list-style: none;
   transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .details summary:hover {
-  color: var(--ink-soft);
+  color: var(--ink);
   background: var(--panel-soft);
 }
 
@@ -1225,8 +1296,10 @@ select {
 }
 
 .details summary::before {
-  content: '▸';
-  font-size: 9px;
+  content: '▶';
+  font-size: 8px;
+  line-height: 1;
+  color: var(--ink-muted);
   transition: transform var(--dur) var(--ease);
 }
 
@@ -1807,6 +1880,14 @@ select {
   gap: 8px;
   z-index: 200;
   pointer-events: none;
+}
+
+/* 有操作条时把 toast 抬到它上面。
+   原来固定在 bottom:24px —— 点「复制全文」弹出的成功提示正好压住隔壁的
+   「下载 .md」和「导出全平台」，两秒内既看不清提示也点不到按钮。
+   --actionbar-h 由 App 里量出来写进 :root（操作条在窄窗口会换行变高，写死偏移会算错）。 */
+.app:has(.actionbar) .toast-layer {
+  bottom: calc(var(--actionbar-h, 56px) + 20px);
 }
 
 .toast {
@@ -2532,9 +2613,12 @@ select {
   text-align: left;
 }
 
+/* 折叠箭头。原先用 ▸（U+25B8，小号三角）配 9px —— 渲染出来只有两三个像素，
+   在侧栏里跟一个间隔点没区别。换成 ▶（U+25B6）再降到 8px，笔画更实、边界更清楚。 */
 .caret {
   display: inline-block;
-  font-size: 9px;
+  font-size: 8px;
+  line-height: 1;
   color: var(--ink-muted);
   transition: transform var(--dur) var(--ease);
 }
