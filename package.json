@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "npm run check:parse && npm run check:roundtrip && npm run check:captions && npm run check:digest && npm run check:themes && npm run check:cards && npm run check:ledger && npm run check:compliance && npm run check:titles && npm run check:tail && npm run check:platforms && npm run check:drafts && npm run check:review && npm run check:network",
+    "check": "npm run check:parse && npm run check:roundtrip && npm run check:captions && npm run check:digest && npm run check:themes && npm run check:cards && npm run check:ledger && npm run check:compliance && npm run check:titles && npm run check:tail && npm run check:platforms && npm run check:drafts && npm run check:review && npm run check:network && npm run check:imgproxy",
     "check:roundtrip": "esbuild scripts/check-roundtrip.ts --bundle --platform=node --format=esm --outfile=.tmp/check-roundtrip.mjs --log-level=warning && node .tmp/check-roundtrip.mjs",
     "check:captions": "esbuild scripts/check-captions.ts --bundle --platform=node --format=esm --outfile=.tmp/check-captions.mjs --log-level=warning && node .tmp/check-captions.mjs",
     "check:cards": "esbuild scripts/check-cards.ts --bundle --platform=node --format=esm --outfile=.tmp/check-cards.mjs --log-level=warning && node .tmp/check-cards.mjs",
@@ -24,7 +24,8 @@
     "check:platforms": "esbuild scripts/check-platforms.ts --bundle --platform=node --format=esm --outfile=.tmp/check-platforms.mjs --log-level=warning && node .tmp/check-platforms.mjs",
     "check:drafts": "esbuild scripts/check-drafts.ts --bundle --platform=node --format=esm --outfile=.tmp/check-drafts.mjs --log-level=warning && node .tmp/check-drafts.mjs",
     "check:review": "esbuild scripts/check-review.ts --bundle --platform=node --format=esm --outfile=.tmp/check-review.mjs --log-level=warning && node .tmp/check-review.mjs",
-    "check:network": "esbuild scripts/check-network.ts --bundle --platform=node --format=esm --outfile=.tmp/check-network.mjs --log-level=warning && node .tmp/check-network.mjs"
+    "check:network": "esbuild scripts/check-network.ts --bundle --platform=node --format=esm --outfile=.tmp/check-network.mjs --log-level=warning && node .tmp/check-network.mjs",
+    "check:imgproxy": "esbuild scripts/check-imgproxy.ts --bundle --platform=node --format=esm --outfile=.tmp/check-imgproxy.mjs --log-level=warning && node .tmp/check-imgproxy.mjs"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",

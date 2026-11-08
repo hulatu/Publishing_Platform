@@ -5,7 +5,9 @@
  * 这一步就是把文章里的图按出现顺序列出来、按 01.jpg 这样的序号打包下载，
  * 用户拖进公众号编辑器再传一遍就行，不用回去翻原文章一张张存。
  *
- * 跨域是常态：图床没开 CORS 时 fetch 会失败，这时退化成「打开原图」逐张存。
+ * 跨域是常态：图床没开 CORS 时 fetch 会失败。这时先退到同源代理
+ * （functions/api/img.ts，Pages 部署后才有）再试一次，还不行才降级成
+ * 「打开原图」逐张存。
  */
 
 import { useMemo, useState } from 'react'
@@ -47,6 +49,13 @@ const IMAGE_CONCURRENCY = 3
 
 const IMAGE_TIMEOUT = 15_000
 
+/**
+ * 同源图片代理。图床只服务 `<img>`、不发 Access-Control-Allow-Origin 时，
+ * fetch 会被浏览器拦掉；`<img>` 却照常显示 —— 所以「预览正常、下载全红」。
+ * 这个路径由 Pages Function 转发并补上 CORS 头。
+ */
+const PROXY = '/api/img?u='
+
 async function fetchImageOnce(url: string): Promise<Blob> {
   // AbortSignal.timeout 在 Safari 16 以下没有，直接用会抛 TypeError，
   // 结果被当成「跨域失败」—— 提示全错。手动兜一层。
@@ -71,11 +80,18 @@ async function fetchImageOnce(url: string): Promise<Blob> {
  */
 async function fetchImage(url: string): Promise<Blob> {
   try {
-    return await fetchImageOnce(url)
-  } catch (err) {
-    const isTimeout = err instanceof DOMException && err.name === 'TimeoutError'
-    if (!isTimeout) throw err
-    return await fetchImageOnce(url)
+    try {
+      return await fetchImageOnce(url)
+    } catch (err) {
+      const isTimeout = err instanceof DOMException && err.name === 'TimeoutError'
+      if (!isTimeout) throw err
+      return await fetchImageOnce(url)
+    }
+  } catch {
+    // 直连不行就走同源代理再试一次。
+    // 代理不可用时（本地没跑 Functions、域名不在白名单）这里会再抛，
+    // 由上层把这张标成「跨域」。
+    return await fetchImageOnce(PROXY + encodeURIComponent(url))
   }
 }
 
@@ -220,7 +236,10 @@ export function ImageList({ open, onClose, images, title }: Props) {
           {failed > 0 ? (
             <div className="notice notice-warn" style={{ marginTop: 12 }}>
               <span className="notice-mark">!</span>
-              <span>{failed} 张图所在站点没开跨域，没法打包；点每张下面的「打开原图」另存即可。</span>
+              <span>
+                {failed} 张图所在站点没开跨域，代理也没放行（域名不在{' '}
+                <code>functions/api/img.ts</code> 的白名单里）；点每张下面的「打开原图」另存即可。
+              </span>
             </div>
           ) : null}
         </div>

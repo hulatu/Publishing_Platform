@@ -38,6 +38,7 @@ import {
 } from './core/ledger'
 import { summarizeAll } from './core/review'
 import { allPlatforms, cardPlatform, convertPlatforms, getConvertPlatform, rewritePlatforms, type RenderOutput } from './renderers'
+import { downloadBlob, safeFileName } from './cards/export'
 import { loadHidden, saveHidden, sortByWidth } from './core/platform-visibility'
 import { WECHAT_CONTENT_LIMIT } from './renderers/wechat'
 import { ThemePicker } from './components/ThemePicker'
@@ -179,6 +180,8 @@ export default function App() {
   const lastSnapRef = useRef<DraftSnapshot | null>(null)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
+  /** 「导出全平台」打包中 */
+  const [zipping, setZipping] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const { items: toasts, push: toast } = useToasts()
@@ -939,6 +942,45 @@ export default function App() {
     downloadText(output.primary, output.fileName ?? 'article.md', mimeFor(output.format))
   }, [output])
 
+  /**
+   * 把这篇文章在全部「转换」平台上的产物打成一个 zip。
+   *
+   * 逐个点「下载」会被浏览器拦（多个文件要授权一次），也麻烦。这里一次渲染
+   * 7 个平台，文件名带序号，解压后按名称排序就是侧栏的顺序。
+   *
+   * 只导转换平台：AI 改写的 4 个平台没有确定性产物（要先调模型），
+   * 配图是 PNG，走各自的导出入口。隐藏的平台不导 —— 隐藏本来就表示「我不发这家」。
+   */
+  const doExportAllPlatforms = useCallback(async () => {
+    if (!doc) return
+    const list = convertPlatforms.filter((p) => !hidden.has(p.id))
+    if (list.length === 0) {
+      toast('没有可导出的平台', 'error')
+      return
+    }
+    setZipping(true)
+    try {
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
+      const slug = safeFileName(doc.meta.slug || doc.meta.title || 'article')
+
+      for (const [i, p] of list.entries()) {
+        const out = p.render(doc, { wechatThemeId: themeId, tail, account })
+        const ext = out.format === 'markdown' ? 'md' : 'html'
+        // 平台名放在文件名里，解压后一眼知道哪个文件给哪家
+        zip.file(`${String(i + 1).padStart(2, '0')}-${safeFileName(p.name)}-${slug}.${ext}`, out.primary)
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob' })
+      downloadBlob(blob, `${slug}-全平台.zip`)
+      toast(`已导出 ${list.length} 个平台的产物`, 'success')
+    } catch (e) {
+      toast(`打包失败：${e instanceof Error ? e.message : String(e)}`, 'error')
+    } finally {
+      setZipping(false)
+    }
+  }, [doc, hidden, themeId, tail, account, toast])
+
   /** 手动打开发布页（不复制）。改写平台分段复制完再点这个 */
   const openPublishNow = useCallback(() => {
     const target = publishUrlOf(platform)
@@ -1293,6 +1335,15 @@ export default function App() {
                   ) : null}
                   <button className="btn" onClick={doDownload}>
                     下载 {output.format === 'markdown' ? '.md' : '.html'}
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={doExportAllPlatforms}
+                    disabled={zipping}
+                    title="把这篇文章在全部转换平台上的产物打成一个 zip（AI 改写的平台与配图不在这里）"
+                  >
+                    {zipping ? <span className="spinner" /> : null}
+                    {zipping ? '打包中…' : '导出全平台'}
                   </button>
                 </>
               ) : null}
