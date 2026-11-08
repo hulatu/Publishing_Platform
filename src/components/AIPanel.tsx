@@ -117,9 +117,11 @@ export function AIPanel({
       />
 
       {/* ---------- 第二段：平台文案 ---------- */}
+      {/* 这里原本有个 ② 角标，但上面那段「逐节摘要」并没有 ① —— 一个从 2 开始的编号，
+          看着像掉了东西。两段的头部本来就长得不一样（上一段是可折叠的条，这一段是纯标题），
+          与其补一个 ① 再为它俩对齐 12px 内边距打架，不如把编号去掉。 */}
       <div className="ai-stage">
         <div className="ai-stage-head">
-          <span className="ai-stage-no">②</span>
           <span className="ai-stage-title">{PLATFORM_NAME[platform]}文案</span>
           {running ? (
             <span className="ai-stage-status">
