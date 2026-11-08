@@ -49,7 +49,7 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
         <div className="modal-head">
           <div>
             <div className="modal-title">公众号文末</div>
-            <div className="ledger-sub">关注引导 / 往期推荐 / 版权 · 拼在正文之后，计入 20000 字符上限</div>
+            <div className="ledger-sub">关注引导 / 往期推荐 / 版权 · 拼在正文之后，计入 20000 字上限</div>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="关闭">
             ×

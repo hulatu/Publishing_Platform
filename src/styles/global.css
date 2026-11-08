@@ -5,6 +5,9 @@
    ========================================================================== */
 
 :root {
+  /* 让滚动条、原生控件跟着系统深浅走；不写死 light，否则深色下滚动条还是白的 */
+  color-scheme: light dark;
+
   /* 底色：三层明度，靠它区分「壳 / 侧栏 / 卡片」 */
   --bg: #f2efe9;
   --sidebar-bg: #fbf9f6;
@@ -55,11 +58,119 @@
   --sh-2: 0 2px 8px -2px rgba(32, 27, 22, 0.09), 0 1px 2px rgba(32, 27, 22, 0.04);
   --sh-3: 0 14px 34px -14px rgba(32, 27, 22, 0.24), 0 4px 10px -6px rgba(32, 27, 22, 0.1);
 
+  /* ------------------------------------------------------------------
+     深浅两套值差别太大的东西，单独给 token。
+     不抽出来的话，深色模式下会出现「白底白字」「黑底黑字」这类硬伤。
+     ------------------------------------------------------------------ */
+
+  /* 实心底色上的前景：底色一旦翻成浅色，字就得跟着翻成深色 */
+  --on-ink: #ffffff; /* 放在 --ink 底上的字 */
+  --on-accent: #ffffff; /* 放在 --accent 底上的字 */
+  --on-status: #ffffff; /* 放在 --ok / --error / --warn 实心底上的字 */
+  --ink-strong: #000000; /* --ink 的「更深一档」，用于 hover */
+
+  /* 半透明面 */
+  --chrome: rgba(255, 255, 255, 0.82); /* 顶栏 */
+  --chrome-solid: rgba(255, 255, 255, 0.9); /* 底部操作条 */
+  --hover: rgba(0, 0, 0, 0.028); /* 列表项悬停 */
+  --hover-2: rgba(0, 0, 0, 0.04); /* 小按钮悬停 */
+  --dash: rgba(0, 0, 0, 0.06); /* 虚线分隔 */
+  --hairline: rgba(0, 0, 0, 0.12); /* 色块描边 */
+
+  /* 浮层 */
+  --toast-bg: rgba(27, 25, 23, 0.94);
+  --toast-fg: #ffffff;
+  --badge-bg: rgba(27, 25, 23, 0.62); /* 压在图片上的角标 */
+  --scrim: rgba(27, 25, 23, 0.3); /* 弹层遮罩 */
+  --accent-soft-hover: #fbe7e4; /* 强调色浅底再深一档（悬停） */
+  --scroll-thumb: #d9d2c7;
+  --scroll-thumb-hover: #bfb6a8;
+
+  /* 「静默」的次要链接：平时压低存在感，hover 才亮起来。
+     透明度也得跟着主题走 —— 浅底上压到 0.75 刚好安静，
+     同样的 0.75 用在深底上会把强调色一起压暗，读起来吃力。 */
+  --quiet-link: 0.75;
+
   /* 动效：一套缓动，全站共用 */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur: 180ms;
   --dur-slow: 280ms;
+}
+
+/* ==========================================================================
+   深色模式 · 跟随系统
+   不提供切换按钮，也不存偏好 —— 系统是深色就深色。
+   --------------------------------------------------------------------------
+   两条原则：
+   1. **不反色，重新配一套**。暖纸底换成暖近黑（不是纯黑），明度层次照旧：
+      壳 < 侧栏 < 卡片，只是整条明度轴往下搬。
+   2. **强调色要提亮**。原来的 #c0392b 放在深底上对比度只有 2.7:1，字都看不清。
+      提亮到 #e2685a 后，作文字色有 4.6:1；作按钮底色时改用深字（--on-accent）。
+   ========================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14120f;
+    --sidebar-bg: #1a1714;
+    --main-bg: #17140f;
+    --panel: #221e18;
+    --panel-soft: #1e1a15;
+    --panel-inset: #100e0b;
+
+    --ink: #ece6dc;
+    --ink-soft: #b7afa3;
+    --ink-muted: #91897d;
+    --ink-strong: #f8f3eb;
+
+    --line: #322c24;
+    --line-soft: #2a251e;
+    --line-strong: #453d32;
+
+    --accent: #e2685a;
+    --accent-deep: #ef8272;
+    --accent-soft: #2b1a16;
+    --accent-line: #4b2721;
+
+    --ok: #5cbb91;
+    --ok-soft: #15241d;
+    --warn: #d8a541;
+    --warn-soft: #2a2113;
+    --error: #f07c6e;
+    --error-soft: #2e1917;
+
+    --on-ink: #17130f;
+    --on-accent: #1b1210;
+    --on-status: #12100d;
+
+    --chrome: rgba(26, 23, 20, 0.86);
+    --chrome-solid: rgba(26, 23, 20, 0.92);
+    --hover: rgba(255, 255, 255, 0.055);
+    --hover-2: rgba(255, 255, 255, 0.09);
+    --dash: rgba(255, 255, 255, 0.09);
+    --hairline: rgba(255, 255, 255, 0.14);
+
+    /* 深色底上「再黑一层」的浮层会糊成一片，所以 toast 反过来用浅底深字 */
+    --toast-bg: rgba(238, 233, 225, 0.96);
+    --toast-fg: #191510;
+    --badge-bg: rgba(10, 9, 7, 0.72);
+    --scrim: rgba(6, 5, 4, 0.66);
+
+    /* 深底上的静默链接只压一档就够，压到 0.75 会掉到 3.6:1 */
+    --quiet-link: 0.9;
+
+    --sh-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --sh-2: 0 2px 8px -2px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --sh-3: 0 14px 34px -14px rgba(0, 0, 0, 0.78), 0 4px 10px -6px rgba(0, 0, 0, 0.55);
+  }
+
+  /* 公众号预览 / 卡片预览里是「文章本身」，底色由文章主题决定（通常是白纸）。
+     深色模式下保持原样才叫所见即所得，所以这里只给它们补一圈轮廓，
+     免得白纸直接糊在深底上找不着边界。 */
+  .rich-preview,
+  .md-preview {
+    box-shadow: var(--sh-3);
+  }
 }
 
 * {
@@ -124,13 +235,13 @@ select {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d9d2c7;
+  background: var(--scroll-thumb);
   border-radius: 6px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #bfb6a8;
+  background: var(--scroll-thumb-hover);
   background-clip: content-box;
 }
 
@@ -158,7 +269,7 @@ select {
   gap: 14px;
   height: 58px;
   padding: 0 20px;
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--chrome);
   backdrop-filter: saturate(180%) blur(14px);
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
@@ -237,7 +348,7 @@ select {
   background: var(--error);
 }
 .dot-idle {
-  background: #cfc7ba;
+  background: var(--line-strong);
 }
 
 @keyframes pulse {
@@ -344,7 +455,7 @@ select {
   padding: 1px 4px;
   border-radius: 999px;
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
 }
 
 .nav-empty {
@@ -544,7 +655,7 @@ select {
   font-size: 11px;
   color: var(--accent);
   flex-shrink: 0;
-  opacity: 0.75;
+  opacity: var(--quiet-link);
 }
 
 .side-collapse:hover .side-collapse-action {
@@ -607,7 +718,7 @@ select {
 
 .field-input::placeholder,
 .field-textarea::placeholder {
-  color: #bcb5ab;
+  color: var(--ink-muted);
 }
 
 .field-hint {
@@ -660,7 +771,7 @@ select {
 }
 
 .nav-item:hover {
-  background: rgba(0, 0, 0, 0.028);
+  background: var(--hover);
 }
 
 .nav-item.active {
@@ -700,7 +811,7 @@ select {
 
 .nav-item.active .nav-mark {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .nav-item-body {
@@ -935,8 +1046,8 @@ select {
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1;
-  color: #fff;
-  background: var(--ink-muted);
+  color: var(--on-status);
+  background: var(--ink-soft);
 }
 
 .notice-info {
@@ -945,11 +1056,11 @@ select {
 }
 
 .notice-info .notice-mark {
-  background: var(--ink-muted);
+  background: var(--ink-soft);
 }
 
 .notice-warn {
-  border-color: #f0e2c4;
+  border-color: var(--warn-soft);
   background: var(--warn-soft);
 }
 
@@ -975,14 +1086,14 @@ select {
   border: 1px solid var(--warn-soft);
   border-left: 3px solid var(--warn);
   border-radius: var(--radius);
-  background: #fffdf6;
+  background: var(--warn-soft);
   overflow: hidden;
 }
 
 .notice-stack.level-error {
   border-color: var(--error-soft);
   border-left-color: var(--error);
-  background: #fffafa;
+  background: var(--error-soft);
 }
 
 .notice-stack.level-info {
@@ -998,7 +1109,7 @@ select {
   padding: 9px 12px;
   font-size: 12px;
   line-height: 1.6;
-  color: #7d5a15;
+  color: var(--warn);
 }
 
 .notice-stack.level-error .notice-line {
@@ -1037,7 +1148,7 @@ select {
   gap: 4px;
   font-size: 11px;
   color: inherit;
-  opacity: 0.7;
+  opacity: var(--quiet-link);
   flex-shrink: 0;
   padding: 2px 6px;
   border-radius: 4px;
@@ -1046,7 +1157,7 @@ select {
 
 .notice-more:hover {
   opacity: 1;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-2);
 }
 
 .notice-action {
@@ -1057,7 +1168,7 @@ select {
   margin: 0;
   padding: 2px 12px 9px 12px;
   list-style: none;
-  border-top: 1px dashed rgba(0, 0, 0, 0.06);
+  border-top: 1px dashed var(--dash);
   animation: slide-down var(--dur) var(--ease-out) both;
 }
 
@@ -1209,12 +1320,14 @@ select {
 }
 
 .md-preview {
-  background: var(--panel);
+  /* 阅读预览模拟的是「读者看到的文章页」，是一张纸。
+     里面的字号/颜色全是按纸白排的，深色模式下不能跟着翻，否则深底 + 深字直接看不见。 */
+  background: #ffffff;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--sh-2);
   padding: 44px 52px 52px;
-  color: var(--ink);
+  color: #24211e;
   font-size: 16px;
   line-height: 1.92;
   letter-spacing: 0.015em;
@@ -1566,7 +1679,7 @@ select {
   gap: 8px;
   padding: 11px 28px;
   border-top: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--chrome-solid);
   backdrop-filter: saturate(180%) blur(12px);
   flex-shrink: 0;
   flex-wrap: wrap;
@@ -1602,7 +1715,7 @@ select {
 
 .btn:hover:not(:disabled) {
   background: var(--panel);
-  border-color: #c4bbac;
+  border-color: var(--line-strong);
   color: var(--ink);
   box-shadow: var(--sh-1);
 }
@@ -1620,20 +1733,20 @@ select {
 .btn-primary {
   background: var(--ink);
   border-color: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
   font-weight: 500;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #000;
-  border-color: #000;
-  color: #fff;
+  background: var(--ink-strong);
+  border-color: var(--ink-strong);
+  color: var(--on-ink);
 }
 
 .btn-accent {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 500;
   box-shadow: 0 1px 2px rgba(192, 57, 43, 0.24);
 }
@@ -1641,7 +1754,7 @@ select {
 .btn-accent:hover:not(:disabled) {
   background: var(--accent-deep);
   border-color: var(--accent-deep);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: 0 3px 10px -3px rgba(192, 57, 43, 0.5);
 }
 
@@ -1685,9 +1798,9 @@ select {
   gap: 8px;
   padding: 9px 16px;
   border-radius: 10px;
-  background: rgba(27, 25, 23, 0.94);
+  background: var(--toast-bg);
   backdrop-filter: blur(10px);
-  color: #fff;
+  color: var(--toast-fg);
   font-size: 12.5px;
   box-shadow: var(--sh-3);
   animation: toast-in var(--dur-slow) var(--ease-out);
@@ -1695,11 +1808,13 @@ select {
 }
 
 .toast.error {
-  background: rgba(179, 38, 30, 0.96);
+  background: var(--error);
+  color: var(--on-status);
 }
 
 .toast.success {
-  background: rgba(47, 125, 93, 0.96);
+  background: var(--ok);
+  color: var(--on-status);
 }
 
 @keyframes toast-in {
@@ -1720,7 +1835,7 @@ select {
 .modal-mask {
   position: fixed;
   inset: 0;
-  background: rgba(27, 25, 23, 0.3);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
@@ -2176,7 +2291,7 @@ select {
   width: 11px;
   height: 11px;
   border-radius: 3px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--hairline);
 }
 
 /* ==========================================================================
@@ -2234,7 +2349,7 @@ select {
 }
 
 .thread-item:hover {
-  background: #fdfcfa;
+  background: var(--hover);
 }
 
 .thread-item:last-child {
@@ -2297,7 +2412,7 @@ select {
 }
 
 .topbar-ai.idle:hover {
-  background: #fbe7e4;
+  background: var(--accent-soft-hover);
 }
 
 /* ==========================================================================
@@ -2317,7 +2432,7 @@ select {
   padding: 13px 15px;
   border: 1px solid var(--accent-line);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, #fdf5f3, var(--accent-soft));
+  background: linear-gradient(180deg, var(--accent-soft-hover), var(--accent-soft));
 }
 
 .connect-banner-text {
@@ -2614,7 +2729,7 @@ select {
   text-align: center;
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
-  background: #fcfbf8;
+  background: var(--panel-soft);
 }
 
 .stage-empty-title {
@@ -2749,7 +2864,7 @@ select {
 }
 
 .theme-bar:hover {
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--hover);
 }
 
 .theme-bar-label {
@@ -2769,7 +2884,7 @@ select {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgba(27, 25, 23, 0.1);
+  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
 .theme-bar-current {
@@ -3018,7 +3133,7 @@ select {
 
 .check-chip.warn {
   color: var(--warn);
-  border-color: #e8d9b8;
+  border-color: var(--warn);
   background: var(--warn-soft);
 }
 
@@ -3220,7 +3335,7 @@ select {
   align-items: center;
   justify-content: center;
   font-size: 9px;
-  color: #fff;
+  color: var(--on-status);
   flex-shrink: 0;
 }
 
@@ -3369,14 +3484,15 @@ select {
 .draft-del.danger {
   background: var(--error);
   border-color: var(--error);
-  color: #fff;
+  color: var(--on-status);
 }
 
 .btn-danger:hover,
 .draft-del.danger:hover {
-  background: #9d1f18;
-  border-color: #9d1f18;
-  color: #fff;
+  background: var(--error);
+  border-color: var(--error);
+  color: var(--on-status);
+  filter: brightness(0.92);
 }
 
 /* ---------- 复盘 ---------- */
@@ -3603,7 +3719,7 @@ select {
   font-size: 9.5px;
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgba(27, 25, 23, 0.62);
+  background: var(--badge-bg);
   color: #fff;
 }
 
@@ -3618,16 +3734,16 @@ select {
 
 .img-badge.ok {
   background: var(--ok);
-  color: #fff;
+  color: var(--on-status);
 }
 
 .img-badge.fail {
   background: var(--error);
-  color: #fff;
+  color: var(--on-status);
 }
 
 .img-badge.busy {
-  background: rgba(27, 25, 23, 0.62);
+  background: var(--badge-bg);
   color: #fff;
 }
 
@@ -3656,8 +3772,10 @@ select {
 .spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
+  /* 跟着按钮的字色转：深底浅字、浅底深字都自动对，不用再分 light / dark 两个版本 */
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.62;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
@@ -3666,6 +3784,7 @@ select {
 .spinner.dark {
   border-color: var(--line-strong);
   border-top-color: var(--accent);
+  opacity: 1;
 }
 
 @keyframes spin {

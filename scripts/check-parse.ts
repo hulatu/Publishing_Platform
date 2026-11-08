@@ -10,13 +10,13 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
-import { renderWechat, WECHAT_CONTENT_LIMIT } from '../src/renderers/wechat'
+import { renderWechat, WECHAT_WORD_LIMIT } from '../src/renderers/wechat'
 import { renderSspai } from '../src/renderers/sspai'
 import { renderZhihu } from '../src/renderers/zhihu'
 import { renderDouban } from '../src/renderers/douban'
 import { collectImages, collectLinks, inlineText } from '../src/core/ir'
 import type { Block, Inline } from '../src/core/ir'
-import { splitThread, weightedLength, countEmoji } from '../src/core/cjk'
+import { splitThread, weightedLength, countEmoji, charCount } from '../src/core/cjk'
 import { decodeText, looksMojibake } from '../src/core/text'
 
 interface Case {
@@ -128,8 +128,10 @@ for (const c of cases) {
   // ---- 公众号 ----
   const wx = renderWechat(doc, { wechatThemeId: 'paper' })
   const wxChars = wx.html!.length
+  // 超限按**字数**算（微信编辑器的口径），HTML 字符数只反映粘贴体积
+  const wxWords = charCount(wx.text)
   console.log(
-    `  [公众号] HTML ${wxChars} 字符 (${Math.round((wxChars / WECHAT_CONTENT_LIMIT) * 100)}% of 20000)`,
+    `  [公众号] 正文 ${wxWords} 字 (${Math.round((wxWords / WECHAT_WORD_LIMIT) * 100)}% of 20000)，HTML ${wxChars} 字符`,
   )
   if (wx.html!.includes('<pre')) fail('公众号输出含 <pre>（微信移动端会截断代码）')
   if (/<pre[\s>]/.test(wx.html!)) fail('公众号输出含 <pre>')
@@ -139,8 +141,8 @@ for (const c of cases) {
   if (wx.html!.includes('<style')) fail('公众号输出含 <style>')
   if (wx.html!.includes('<a ')) fail('公众号输出含 <a>（未认证号外链会失效）')
   if (!wx.html!.includes('参考链接') && links.length > 0) fail('有外链但没生成参考链接区')
-  if (wxChars > WECHAT_CONTENT_LIMIT) {
-    console.log(`  ⚠ 超过 20000 字符上限 ${wxChars - WECHAT_CONTENT_LIMIT} 字符，需按 H2 拆篇`)
+  if (wxWords > WECHAT_WORD_LIMIT) {
+    console.log(`  ⚠ 正文 ${wxWords} 字，超过 20000 字上限 ${wxWords - WECHAT_WORD_LIMIT} 字，需按 H2 拆篇`)
   } else {
     ok('公众号 HTML 约束全部通过')
   }
@@ -196,40 +198,41 @@ for (const c of cases) {
 console.log(`\n${'='.repeat(70)}`)
 console.log(failures === 0 ? `全部检查通过（${seen.size} 篇）` : `发现 ${failures} 处问题`)
 
-/* ---------------- 全量扫描：公众号字符数分布 ---------------- */
-console.log(`\n${'='.repeat(70)}\n全量扫描 ${all.length} 篇：公众号 HTML 字符数分布\n`)
+/* ---------------- 全量扫描：公众号字数分布 ---------------- */
+console.log(`\n${'='.repeat(70)}\n全量扫描 ${all.length} 篇：公众号正文字数分布\n`)
 
 const buckets = { ok: 0, warn: 0, over: 0 }
-const overList: { file: string; chars: number }[] = []
-const stats: { file: string; chars: number; blocks: number }[] = []
+const overList: { file: string; words: number }[] = []
+const stats: { file: string; words: number; chars: number; blocks: number }[] = []
 
 for (const c of all) {
   const src = readFileSync(join(POSTS, c.file), 'utf8')
   const doc = parseArticle({ source: src, fileName: c.file })
   const wx = renderWechat(doc, { wechatThemeId: 'paper' })
-  const n = wx.html!.length
-  stats.push({ file: c.file, chars: n, blocks: doc.blocks.length })
-  if (n > WECHAT_CONTENT_LIMIT) {
+  const words = charCount(wx.text)
+  const chars = wx.html!.length
+  stats.push({ file: c.file, words, chars, blocks: doc.blocks.length })
+  if (words > WECHAT_WORD_LIMIT) {
     buckets.over++
-    overList.push({ file: c.file, chars: n })
-  } else if (n > WECHAT_CONTENT_LIMIT * 0.85) buckets.warn++
+    overList.push({ file: c.file, words })
+  } else if (words > WECHAT_WORD_LIMIT * 0.85) buckets.warn++
   else buckets.ok++
 }
 
-stats.sort((a, b) => b.chars - a.chars)
-console.log(`安全 (<17000)  : ${buckets.ok} 篇`)
-console.log(`接近 (17000-20000): ${buckets.warn} 篇`)
-console.log(`超限 (>20000)  : ${buckets.over} 篇`)
+stats.sort((a, b) => b.words - a.words)
+console.log(`安全 (<17000 字)    : ${buckets.ok} 篇`)
+console.log(`接近 (17000-20000 字): ${buckets.warn} 篇`)
+console.log(`超限 (>20000 字)    : ${buckets.over} 篇`)
 
-console.log('\n字符数 Top 10：')
+console.log('\n字数 Top 10（括号里是 HTML 体积，只影响粘贴快慢）：')
 for (const s of stats.slice(0, 10)) {
-  const flag = s.chars > WECHAT_CONTENT_LIMIT ? '  ⚠ 超限' : ''
-  console.log(`  ${String(s.chars).padStart(6)}  ${s.file}${flag}`)
+  const flag = s.words > WECHAT_WORD_LIMIT ? '  ⚠ 超限' : ''
+  console.log(`  ${String(s.words).padStart(6)} 字 (${s.chars} 字符)  ${s.file}${flag}`)
 }
 
 if (overList.length > 0) {
   console.log('\n需要按 H2 拆篇的文章：')
-  for (const o of overList) console.log(`  ${o.chars}  ${o.file}`)
+  for (const o of overList) console.log(`  ${o.words} 字  ${o.file}`)
 }
 
 /* ---------------- 全量扫描：Hugo 锚点不得漏进产物 ---------------- */

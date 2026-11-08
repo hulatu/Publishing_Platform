@@ -87,7 +87,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     name: '公众号',
     kind: 'convert',
     hint: '全 inline style，复制后直接粘进编辑器',
-    limits: '正文上限 20000 字符；图片需微信域名',
+    limits: '正文上限 20000 字（按字数算）；图片需微信域名',
     render: renderWechat,
   },
   {

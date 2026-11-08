@@ -40,7 +40,7 @@ import { summarizeAll } from './core/review'
 import { allPlatforms, cardPlatform, convertPlatforms, getConvertPlatform, rewritePlatforms, type RenderOutput } from './renderers'
 import { downloadBlob, safeFileName } from './cards/export'
 import { loadHidden, saveHidden, sortByWidth } from './core/platform-visibility'
-import { WECHAT_CONTENT_LIMIT } from './renderers/wechat'
+import { WECHAT_WORD_LIMIT } from './renderers/wechat'
 import { ThemePicker } from './components/ThemePicker'
 import { wechatThemes } from './themes/wechat'
 import { runDigest, runPlatform } from './ai/pipeline'
@@ -314,7 +314,12 @@ export default function App() {
     }
   }, [doc, platform, themeId, kind, tail, account])
 
-  const overLimit = Boolean(output && platform === 'wechat' && output.primary.length > WECHAT_CONTENT_LIMIT)
+  /**
+   * 公众号超限判定：按**字数**，和微信编辑器口径一致。
+   * 别再拿 HTML 字符数去比 —— 内联样式会让 1.1 万字的稿子变成 5.9 万字符，
+   * 那样每篇都会被误判超限。
+   */
+  const overLimit = Boolean(output && platform === 'wechat' && charCount(output.text) > WECHAT_WORD_LIMIT)
 
   /** Markdown 平台的阅读预览：和转换器共用同一套前置处理 */
   const previewHtml = useMemo(() => {

@@ -2,21 +2,24 @@
  * 公众号文末组件回归
  *
  * 两条主线：
- * 1. 断言 —— 转义、占位符、全关时不改变产物、标签配平
- * 2. 扫描 —— 109 篇真实文章套上默认配置后，字符数还在 20000 以内吗，
+ * 1. 断言 —— 转义、占位符、全关时不改变产物、标签配平、纯文本通道带文末
+ * 2. 扫描 —— 109 篇真实文章套上默认配置后，字数还在 20000 以内吗，
  *    有没有哪篇本来就在临界值上、加了尾部直接超限
  *
  * 第 2 条是重点：文末这三块是「每篇都加」的东西，一旦它把某篇从 19900 顶到 20200，
  * 用户就会在发布那一刻才发现，代价比在这里发现大得多。
+ *
+ * 注意按**字数**比，不按 HTML 字符数 —— 微信编辑器算的是字数。
  */
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
+import { charCount } from '../src/core/cjk'
 import { buildTailHtml, defaultTailConfig, applyVars, activeBlocks, type TailConfig } from '../src/core/tail'
 import { getWechatTheme, wechatThemes } from '../src/themes/wechat'
-import { renderWechat, WECHAT_CONTENT_LIMIT } from '../src/renderers/wechat'
+import { renderWechat, WECHAT_WORD_LIMIT } from '../src/renderers/wechat'
 
 let failed = 0
 function ok(cond: boolean, msg: string) {
@@ -116,9 +119,12 @@ for (const file of files) {
   const a = [...after.primary].length
   tailChars.push(a - b)
 
-  if (b > WECHAT_CONTENT_LIMIT) overBefore++
-  if (a > WECHAT_CONTENT_LIMIT) overAfter++
-  if (a > WECHAT_CONTENT_LIMIT * 0.95 && a <= WECHAT_CONTENT_LIMIT) nearLimit++
+  // 超限按**字数**算（微信编辑器的口径），不按 HTML 字符数
+  const bWords = charCount(before.text)
+  const aWords = charCount(after.text)
+  if (bWords > WECHAT_WORD_LIMIT) overBefore++
+  if (aWords > WECHAT_WORD_LIMIT) overAfter++
+  if (aWords > WECHAT_WORD_LIMIT * 0.95 && aWords <= WECHAT_WORD_LIMIT) nearLimit++
 
   // 尾部必须真的拼在最后 —— HTML 和纯文本两条通道都要
   const tail = buildTailHtml(defaultTailConfig, getWechatTheme('paper'), '胡拉图说')
@@ -136,9 +142,9 @@ const avgTail = tailChars.reduce((x, y) => x + y, 0) / Math.max(1, tailChars.len
 const maxTail = Math.max(...tailChars)
 
 console.log(`\n扫描 ${files.length} 篇：`)
-console.log(`  默认配置增加的字符：平均 ${avgTail.toFixed(0)}，最多 ${maxTail}`)
-console.log(`  超 20000 的篇数：不加尾部 ${overBefore} 篇 → 加尾部 ${overAfter} 篇`)
-console.log(`  加完落在 19000–20000 的：${nearLimit} 篇`)
+console.log(`  默认配置增加的 HTML 字符：平均 ${avgTail.toFixed(0)}，最多 ${maxTail}`)
+console.log(`  超 20000 字的篇数：不加尾部 ${overBefore} 篇 → 加尾部 ${overAfter} 篇`)
+console.log(`  加完落在 19000–20000 字的：${nearLimit} 篇`)
 
 if (overAfter > overBefore) {
   console.log(`\n✗ 有 ${overAfter - overBefore} 篇因为尾部而超限`)

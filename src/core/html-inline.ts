@@ -12,7 +12,7 @@
  * 3. 不能预置 data-src —— 微信自己会写回，预置会被当懒加载占位导致图不显示
  * 4. 间距必须四值显式 margin —— 只写 margin-bottom 会与微信默认 p margin 叠加
  * 5. 外链 <a> 在未认证号正文里整体失效 —— 所以抽成文末参考链接
- * 6. content 字段上限 20000 字符 —— 全局样式挂外层 <section> 靠继承，段落只写差异
+ * 6. HTML 越小粘得越快 —— 全局样式挂外层 <section> 靠继承，段落只写差异
  */
 
 import type { Align, Block, ImageRef, Inline, LinkRef } from './ir'
@@ -474,7 +474,7 @@ export function renderHtml(blocks: Block[], opts: HtmlRenderOptions): HtmlRender
   const body = renderBlocks(blocks, ctx)
   const tail = renderFootnotes(ctx) + renderRefs(ctx)
 
-  // 外层 <section> 承载全局样式，靠继承压缩字符数（公众号 content 上限 20000）
+  // 外层 <section> 承载全局样式，靠继承压缩体积（粘贴时少传一半字节）
   const html = `<section${attr(opts.theme.root)}>${body}${tail}</section>`
 
   const text = blocksToText(blocks)

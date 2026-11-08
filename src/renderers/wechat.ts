@@ -3,9 +3,10 @@
  *
  * 这是全工具踩坑最多的一个平台，几条约束直接决定了实现方式：
  *
- * 1. **content 字段上限 20000 字符** —— 最长一篇正文 15.5k 字，若每个节点都写完整
- *    style 会膨胀到 3–5 万字符必然超限。对策：全局字体/行高/字距/颜色只写在外层
- *    <section>，靠 CSS 继承；段落只写 margin 等差异属性。
+ * 1. **正文上限 20000 字** —— 按字数算，不按 HTML 字符数（见下方 WECHAT_WORD_LIMIT）。
+ *    不过 HTML 体积仍然要控制：每个节点都写完整 style 会膨胀到 3–5 万字符，粘贴变慢。
+ *    对策：全局字体/行高/字距/颜色只写在外层 <section>，靠 CSS 继承；
+ *    段落只写 margin 等差异属性。
  * 2. **正文图片必须是微信自己的域名** —— 外链图在草稿箱里可能显示，但保存/发布时
  *    会被过滤成裂图。所以必须提示用户逐张重新上传。
  * 3. **外链 <a> 在未认证号正文里整体失效** —— 抽成文末「参考链接」编号表，
@@ -22,8 +23,17 @@ import { getWechatTheme } from '../themes/wechat'
 import { activeBlocks, buildTailHtml } from '../core/tail'
 import type { ConvertOptions, RenderOutput } from './index'
 
-/** 微信公众号 content 字段的硬上限 */
-export const WECHAT_CONTENT_LIMIT = 20000
+/**
+ * 公众号编辑器的正文上限。
+ *
+ * 它算的是**字数**，不是 HTML 字符数 —— 后台报错的原话是
+ * 「正文不能为空且长度不能超过 20000 字」。
+ *
+ * 以前这里拿 HTML 字符数去比：一篇 1.1 万字的稿子，因为每个节点都写内联样式，
+ * HTML 膨胀到 5.9 万字符，就会被判「294% 超限」并劝你拆篇 —— 纯属误报。
+ * HTML 大小只影响粘贴快慢，跟能不能发出去没关系。
+ */
+export const WECHAT_WORD_LIMIT = 20000
 
 export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
   const theme = getWechatTheme(opts.wechatThemeId)
@@ -44,7 +54,10 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
   const html = tail?.html ? result.html + tail.html : result.html
   // 纯文本通道也要带上文末 —— 富文本那条一旦降级成纯文本，少了它整块内容就没了
   const text = tail?.text ? `${result.text}\n\n${tail.text}` : result.text
+  // 字符数只作为「粘进去要传多大一坨」的参考，不再拿它判超限
   const charTotal = [...html].length
+  // 超限判定走字数，和微信编辑器的口径一致
+  const words = charCount(text)
   const tailBlocks = opts.tail ? activeBlocks(opts.tail) : 0
 
   if (tail && tail.droppedLinks > 0) {
@@ -62,14 +75,14 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
     warnings.push(`${links.length} 个外链已抽成文末「参考链接」编号表（未认证号正文链接会失效）`)
   }
 
-  const overLimit = charTotal > WECHAT_CONTENT_LIMIT
+  const overLimit = words > WECHAT_WORD_LIMIT
   if (overLimit) {
     warnings.push(
-      `HTML 已达 ${charTotal} 字符，超过 20000 上限。请用「按 H2 拆篇」拆成多篇发布。`,
+      `正文 ${words} 字，超过微信编辑器 20000 字上限。请用「按 H2 拆篇」拆成多篇发布。`,
     )
   }
 
-  const pct = Math.round((charTotal / WECHAT_CONTENT_LIMIT) * 100)
+  const pct = Math.round((words / WECHAT_WORD_LIMIT) * 100)
 
   return {
     primary: html,
@@ -80,11 +93,11 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
     warnings: [...warnings, ...result.warnings],
     stats: [
       {
-        label: 'HTML 字符',
-        value: `${charTotal} / ${WECHAT_CONTENT_LIMIT}（${pct}%）`,
+        label: '正文字数',
+        value: `${words} / ${WECHAT_WORD_LIMIT}（${pct}%）`,
         level: overLimit ? 'error' : pct > 85 ? 'warn' : 'ok',
       },
-      { label: '正文', value: `${charCount(result.text)} 字` },
+      { label: 'HTML', value: `${charTotal} 字符` },
       {
         label: '图片',
         value: `${images.length} 张待重传`,
