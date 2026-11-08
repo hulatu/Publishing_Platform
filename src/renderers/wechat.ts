@@ -42,6 +42,8 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
   // 文末三块拼在正文（含参考链接）之后：关注引导放最后是公众号的惯例
   const tail = opts.tail ? buildTailHtml(opts.tail, theme, opts.account ?? '') : null
   const html = tail?.html ? result.html + tail.html : result.html
+  // 纯文本通道也要带上文末 —— 富文本那条一旦降级成纯文本，少了它整块内容就没了
+  const text = tail?.text ? `${result.text}\n\n${tail.text}` : result.text
   const charTotal = [...html].length
   const tailBlocks = opts.tail ? activeBlocks(opts.tail) : 0
 
@@ -72,7 +74,7 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
   return {
     primary: html,
     html,
-    text: result.text,
+    text,
     format: 'html',
     copyMode: 'rich',
     warnings: [...warnings, ...result.warnings],

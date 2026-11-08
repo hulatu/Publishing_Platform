@@ -140,6 +140,14 @@ export function applyVars(text: string, account: string): string {
 
 export interface TailRenderResult {
   html: string
+  /**
+   * 与 html 内容等价的纯文本。
+   *
+   * 不能只产出 HTML：公众号复制走的是 text/html + text/plain 双通道，
+   * 一旦富文本那条失败降级成纯文本，只给 result.text 的话**文末三块整块消失**，
+   * 用户粘出来就是「复制不完全、丢了后面的内容」。
+   */
+  text: string
   /** 实际用到的往期条目数 */
   historyCount: number
   /** 有链接但没法渲染成 <a> 的条目数，用于提示 */
@@ -149,6 +157,8 @@ export interface TailRenderResult {
 export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string): TailRenderResult {
   const p = paletteOf(theme)
   const blocks: string[] = []
+  /** 和 blocks 一一对应的纯文本，顺序必须完全一致 */
+  const texts: string[] = []
   let historyCount = 0
   let droppedLinks = 0
 
@@ -177,6 +187,11 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
           'letter-spacing': '0.3px',
         })}>${esc(applyVars(cfg.follow.text, account))}</section>` +
         `</section>`,
+    )
+    texts.push(
+      [cfg.follow.title.trim(), applyVars(cfg.follow.text, account)]
+        .filter(Boolean)
+        .join('\n'),
     )
   }
 
@@ -210,6 +225,11 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
           rows +
           `</section>`,
       )
+      texts.push(
+        [cfg.history.title.trim(), ...items.map((item, i) => `${i + 1}. ${item.title.trim()}`)]
+          .filter(Boolean)
+          .join('\n'),
+      )
     }
   }
 
@@ -225,7 +245,8 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
         'letter-spacing': '0.2px',
       })}>${esc(applyVars(cfg.copyright.text, account))}</section>`,
     )
+    texts.push(applyVars(cfg.copyright.text, account))
   }
 
-  return { html: blocks.join(''), historyCount, droppedLinks }
+  return { html: blocks.join(''), text: texts.join('\n\n'), historyCount, droppedLinks }
 }

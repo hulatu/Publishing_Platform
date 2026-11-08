@@ -63,18 +63,20 @@ export function saveOpenOnCopy(on: boolean): void {
 /* ------------------------------------------------------------------ */
 
 export interface PendingTab {
-  /** 复制成功了，导航过去 */
+  /** 导航到目标地址 */
   commit: () => void
-  /** 复制失败了，把空白页关掉，别留一个白屏标签 */
-  discard: () => void
 }
 
 /**
- * 在用户手势里同步开一个空白标签，等复制成功再导航到 url。
+ * 在用户手势里开一个空白标签，紧接着 `commit()` 导航过去。
  *
- * 为什么不能等复制完再 `window.open`：复制是 `await` 的，等到 Promise resolve
- * 时浏览器的「用户激活」窗口已经过期，`window.open` 会被当成弹窗拦掉
- * （Safari 尤其严格，Chrome 大约 5 秒后失效）。所以只能先占位、后导航。
+ * **调用顺序：先复制，后开标签。** 反过来（先开标签再复制）会让新标签把本页的焦点抢走，
+ * 剪贴板 API 抛 `NotAllowedError: Document is not focused`、`execCommand` 返回 false，
+ * 三个通道一起失效。详见 core/copy.ts 的文件头。
+ *
+ * 因为复制走的是同步通道，`preopenTab` 调用时人还在用户手势里，
+ * 不会遇到「等 Promise resolve 后 window.open 被当成弹窗拦掉」那个问题。
+ * 万一将来有人把复制改回 `await` 再开标签，就要重新考虑弹窗拦截。
  *
  * 返回 null 表示弹窗被拦了 —— 调用方什么都不用做，功能降级成「只复制」。
  */
@@ -100,13 +102,6 @@ export function preopenTab(url: string): PendingTab | null {
         } catch {
           // 都不行就保持空白页，用户自己关掉
         }
-      }
-    },
-    discard: () => {
-      try {
-        win.close()
-      } catch {
-        // 已经关了或跨源，忽略
       }
     },
   }

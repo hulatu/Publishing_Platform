@@ -54,6 +54,13 @@ ok(r1.droppedLinks === 1, `带链接的条目统计到 ${r1.droppedLinks} 条`)
 const empty = buildTailHtml(full, theme, '')
 ok(empty.html.includes('本号'), '账号名为空时退化成「本号」，不会留下半个句子')
 
+// 纯文本通道：公众号复制是 text/html + text/plain 双通道，
+// 富文本那条一旦降级成纯文本，少了这份文末就等于「复制丢了后半篇」
+ok(r1.text.includes('胡拉图说'), '纯文本通道同样替换了 {account}')
+ok(r1.text.includes('第一篇') && r1.text.includes('第二篇'), '纯文本通道包含全部往期条目')
+ok(!/[<>]/.test(r1.text), '纯文本通道里没有残留标签')
+ok(r1.text.includes('关于作者'), '纯文本通道保留了小标题')
+
 // 转义：用户会在标题里写尖括号和引号
 const nasty = buildTailHtml(
   {
@@ -74,6 +81,7 @@ const off: TailConfig = {
   copyright: { on: false, text: '' },
 }
 ok(buildTailHtml(off, theme, 'x').html === '', '三块全关时不产出任何字符')
+ok(buildTailHtml(off, theme, 'x').text === '', '三块全关时纯文本通道同样不产出字符')
 ok(activeBlocks(off) === 0 && activeBlocks(full) === 3, '启用块数统计正确')
 
 // 标签配平
@@ -112,11 +120,15 @@ for (const file of files) {
   if (a > WECHAT_CONTENT_LIMIT) overAfter++
   if (a > WECHAT_CONTENT_LIMIT * 0.95 && a <= WECHAT_CONTENT_LIMIT) nearLimit++
 
-  // 尾部必须真的拼在最后
-  const tailHtml = buildTailHtml(defaultTailConfig, getWechatTheme('paper'), '胡拉图说').html
-  if (tailHtml && !after.primary.endsWith(tailHtml)) {
+  // 尾部必须真的拼在最后 —— HTML 和纯文本两条通道都要
+  const tail = buildTailHtml(defaultTailConfig, getWechatTheme('paper'), '胡拉图说')
+  if (tail.html && !after.primary.endsWith(tail.html)) {
     failed++
-    console.log(`  ✗ ${file}：尾部没有拼在产物末尾`)
+    console.log(`  ✗ ${file}：尾部没有拼在 HTML 产物末尾`)
+  }
+  if (tail.text && !after.text.endsWith(tail.text)) {
+    failed++
+    console.log(`  ✗ ${file}：尾部没有拼在纯文本产物末尾（降级成纯文本时会丢文末）`)
   }
 }
 

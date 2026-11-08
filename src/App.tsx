@@ -4,7 +4,7 @@ import { blocksToText, collectImages } from './core/ir'
 import { parseArticle, renderPreviewHtml } from './core/parse'
 import { charCount } from './core/cjk'
 import { splitSections } from './core/sections'
-import { copyByMode, copyPlain, downloadText, mimeFor } from './core/copy'
+import { copyByMode, copyPlain, copySync, downloadText, mimeFor } from './core/copy'
 import { splitByH2 } from './core/split'
 import { checkText, scopeOf, stripHtml } from './core/compliance'
 import { activeBlocks, readTailConfig, writeTailConfig, type TailConfig } from './core/tail'
@@ -113,6 +113,14 @@ function readStoredTheme(): string {
   }
   return 'paper'
 }
+
+/**
+ * 复制失败时的提示文案。
+ *
+ * 「剪贴板没被改写」这句必须说清：写失败时剪贴板里留的是**上一次**的内容，
+ * 用户直接粘出来会以为「复制不全、后半篇丢了」，其实是拿到了旧快照。
+ */
+const COPY_FAILED = '复制失败：剪贴板没被改写，里面还是上一次的内容'
 
 export default function App() {
   const [doc, setDoc] = useState<Doc | null>(null)
@@ -844,23 +852,38 @@ export default function App() {
 
   /* ---------------- 复制 / 下载 ---------------- */
 
+  /**
+   * 写一段纯文本进剪贴板。
+   *
+   * 先走同步通道：execCommand 在用户手势里一次就落地，不 await、不受焦点影响。
+   * 只有同步通道不可用时才退到异步的 clipboard API。
+   */
+  const writePlain = useCallback(async (text: string): Promise<boolean> => {
+    if (copySync('plain', { text })) return true
+    try {
+      await copyPlain(text)
+      return true
+    } catch {
+      return false
+    }
+  }, [])
+
   const copyPlainText = useCallback(
     async (text: string, label: string) => {
-      try {
-        await copyPlain(text)
-        // 改写平台复制成功也算发过了；第一次会顺带提示，避免用户以为只是复制
-        let tail = ''
-        if (articleKey && isRewriteId(platform)) {
-          const persisted = applyLedger(markRecord(articleKey, platform))
-          // 没写进去就别在成功提示里说「已记为已发」——上面已经报过错了
-          if (persisted && !ledger[platform]) tail = ' · 已记为已发'
-        }
-        toast(`已复制${label}${tail}`, 'success')
-      } catch {
-        toast('复制失败，浏览器拒绝了剪贴板访问', 'error')
+      if (!(await writePlain(text))) {
+        toast(COPY_FAILED, 'error')
+        return
       }
+      // 改写平台复制成功也算发过了；第一次会顺带提示，避免用户以为只是复制
+      let tail = ''
+      if (articleKey && isRewriteId(platform)) {
+        const persisted = applyLedger(markRecord(articleKey, platform))
+        // 没写进去就别在成功提示里说「已记为已发」——上面已经报过错了
+        if (persisted && !ledger[platform]) tail = ' · 已记为已发'
+      }
+      toast(`已复制${label}${tail}`, 'success')
     },
-    [toast, articleKey, platform, ledger, applyLedger],
+    [toast, articleKey, platform, ledger, applyLedger, writePlain],
   )
 
   /**
@@ -870,14 +893,13 @@ export default function App() {
    */
   const copyTextOnly = useCallback(
     async (text: string, label: string) => {
-      try {
-        await copyPlain(text)
-        toast(`已复制${label}`, 'success')
-      } catch {
-        toast('复制失败，浏览器拒绝了剪贴板访问', 'error')
+      if (!(await writePlain(text))) {
+        toast(COPY_FAILED, 'error')
+        return
       }
+      toast(`已复制${label}`, 'success')
     },
-    [toast],
+    [toast, writePlain],
   )
 
   /**
@@ -901,40 +923,77 @@ export default function App() {
     [openOnCopy],
   )
 
-  const doCopyPrimary = useCallback(async () => {
+  /**
+   * 复制当前平台的产物。
+   *
+   * 顺序是这段代码的全部要点：**先同步复制，再开标签**。
+   * 反过来（先 preopenTab 再 await 复制）会让新标签把本页的焦点抢走，
+   * 剪贴板 API 抛 NotAllowedError: Document is not focused，
+   * execCommand 也返回 false —— 三个通道一起废掉，用户看到「复制失败」，
+   * 而剪贴板里还留着上一次的内容，粘出来就是「复制不完全、丢了后面新加的部分」。
+   */
+  const doCopyPrimary = useCallback(() => {
     if (!output) return
-    // 先占位开标签（同步），复制成功再导航过去
-    const tab = openPublishFor(platform)
-    try {
-      const mode = await copyByMode(output.copyMode, { html: output.html, text: output.text })
-      tab?.commit()
+
+    const payload = { html: output.html, text: output.text }
+    const finish = (channel: 'rich' | 'plain') => {
       const persisted = articleKey ? applyLedger(markRecord(articleKey, platform)) : false
       const tail = persisted && !ledger[platform] ? ' · 已记为已发' : ''
       if (output.copyMode === 'rich') {
         toast(
-          mode === 'rich' ? `已复制富文本，直接粘进编辑器即可${tail}` : `浏览器不支持富文本复制，已改为复制纯文本${tail}`,
-          mode === 'rich' ? 'success' : 'info',
+          channel === 'rich'
+            ? `已复制富文本，直接粘进编辑器即可${tail}`
+            : `浏览器不支持富文本复制，已改为复制纯文本${tail}`,
+          channel === 'rich' ? 'success' : 'info',
         )
       } else {
         toast(`已复制${tail}`, 'success')
       }
-    } catch {
-      // 复制失败就把占位的空白页关掉，别留一个白屏标签
-      tab?.discard()
-      toast('复制失败', 'error')
     }
+
+    // 1) 同步通道：还在用户手势里、本页也还有焦点，一次写完
+    const channel = copySync(output.copyMode, payload)
+    if (channel) {
+      // 2) 复制已经落地，这时候再开标签，焦点被抢走也无所谓了
+      openPublishFor(platform)?.commit()
+      finish(channel)
+      return
+    }
+
+    // 3) 同步通道不可用（极老浏览器 / execCommand 被禁用）才走异步。
+    //    这里同样不能先开标签，否则异步复制也会因为失焦而失败。
+    //    代价是此时 window.open 已经不在用户激活窗口里了，可能被当成弹窗拦掉 ——
+    //    拦了就只复制、不开页面，用户点旁边的「打开发布页」按钮一样能到。
+    void (async () => {
+      try {
+        const mode = await copyByMode(output.copyMode, payload)
+        finish(mode)
+        openPublishFor(platform)?.commit()
+      } catch {
+        toast(COPY_FAILED, 'error')
+      }
+    })()
   }, [output, toast, articleKey, platform, ledger, applyLedger, openPublishFor])
 
-  const doCopySource = useCallback(async () => {
+  const doCopySource = useCallback(() => {
     if (!output) return
-    try {
-      await copyPlain(output.primary)
+    const finish = () => {
       const persisted = articleKey ? applyLedger(markRecord(articleKey, platform)) : false
       const tail = persisted && !ledger[platform] ? ' · 已记为已发' : ''
       toast(`已复制源码${tail}`, 'success')
-    } catch {
-      toast('复制失败', 'error')
     }
+    if (copySync('plain', { text: output.primary })) {
+      finish()
+      return
+    }
+    void (async () => {
+      try {
+        await copyPlain(output.primary)
+        finish()
+      } catch {
+        toast(COPY_FAILED, 'error')
+      }
+    })()
   }, [output, toast, articleKey, platform, ledger, applyLedger])
 
   const doDownload = useCallback(() => {
