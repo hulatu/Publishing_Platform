@@ -1,0 +1,691 @@
+<!doctype html><html lang=zh-CN><head><meta charset=utf-8>
+<style>
+:root{--fg:#1f2328;--muted:#59636e;--bd:#d1d9e0;--bg:#fff;--soft:#f6f8fa;--link:#0969da;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,'PingFang SC',system-ui,sans-serif;}
+.wrap{max-width:920px;margin:0 auto;padding:40px 32px 80px}
+h1,h2,h3{line-height:1.3;font-weight:600}
+h1{font-size:2em;margin:.4em 0 .3em;border:0}
+h2{font-size:1.5em;margin:36px 0 14px;padding-bottom:.3em;border-bottom:1px solid var(--bd)}
+h3{font-size:1.2em;margin:24px 0 10px}
+p{margin:0 0 14px}
+a{color:var(--link);text-decoration:none}a:hover{text-decoration:underline}
+code{background:rgba(129,139,152,.14);padding:.15em .35em;border-radius:5px;font:.86em ui-monospace,SFMono-Regular,monospace}
+pre{background:var(--soft);padding:14px 16px;border-radius:8px;overflow:auto;border:1px solid var(--bd)}
+pre code{background:none;padding:0;font-size:.86em}
+table{border-collapse:collapse;width:100%;margin:0 0 18px;display:block;overflow:auto;font-size:.95em}
+th,td{border:1px solid var(--bd);padding:7px 11px;text-align:left;vertical-align:top}
+th{background:var(--soft);font-weight:600}
+tr:nth-child(2n) td{background:#fbfcfd}
+blockquote{margin:0 0 16px;padding:0 1em;color:var(--muted);border-left:.25em solid var(--bd)}
+blockquote p{margin:6px 0}
+details{margin:0 0 16px;padding:10px 14px;background:var(--soft);border:1px solid var(--bd);border-radius:8px}
+summary{cursor:pointer;font-weight:600}
+details[open] summary{margin-bottom:12px}
+hr{border:0;border-top:1px solid var(--bd);margin:28px 0}
+img{max-width:100%;vertical-align:middle}
+ul,ol{margin:0 0 14px;padding-left:2em}
+sub{color:var(--muted)}
+</style></head><body><div class=wrap><div align="center">
+<h1>✍️ 胡拉图说</h1>
+<p><strong>一个普通研究生的个人博客。</strong></p>
+<p>记录思考、分享日常、观察生活 —— 内容包含但不限于运动、健康、成长、科研与工具折腾。</p>
+<br>
+<p><a href="https://hulatu.com/archive/"><img src="https://img.shields.io/static/v1?label=%E5%86%85%E5%AE%B9&amp;message=137%20%E7%AF%87&amp;color=1b1917&amp;style=flat-square" alt="内容"></a>
+<a href="https://hulatu.com/weekly/"><img src="https://img.shields.io/static/v1?label=%E5%91%A8%E5%88%8A&amp;message=28%20%E6%9C%9F&amp;color=c0392b&amp;style=flat-square" alt="周刊"></a>
+<a href="https://gohugo.io/"><img src="https://img.shields.io/static/v1?label=Hugo&amp;message=0.167&amp;color=ff4088&amp;style=flat-square&amp;logo=hugo&amp;logoColor=white" alt="Hugo"></a>
+<a href="#-%E5%8F%91%E5%B8%83"><img src="https://img.shields.io/static/v1?label=%E9%83%A8%E7%BD%B2&amp;message=Cloudflare%20Pages&amp;color=f38020&amp;style=flat-square&amp;logo=cloudflare&amp;logoColor=white" alt="部署"></a>
+<a href="https://hulatu.com/index.xml"><img src="https://img.shields.io/static/v1?label=%E8%AE%A2%E9%98%85&amp;message=RSS%20%E5%85%A8%E6%96%87&amp;color=e8892e&amp;style=flat-square&amp;logo=rss&amp;logoColor=white" alt="RSS"></a>
+<a href="#-%E8%AE%B8%E5%8F%AF"><img src="https://img.shields.io/static/v1?label=%E8%AE%B8%E5%8F%AF&amp;message=CC%20BY-NC-SA%204.0&amp;color=2f7d5d&amp;style=flat-square" alt="许可"></a></p>
+<br>
+<p><strong><a href="https://hulatu.com/">🌐 hulatu.com</a></strong> ・ <strong><a href="https://hulatu.com/index.xml">📮 订阅</a></strong> ・ <strong><a href="https://hulatu.com/featured/">📚 精选</a></strong></p>
+</div>
+<hr>
+<blockquote>
+<p><strong>这份 README 只讲「怎么跑起来」和「想改什么去哪改」。</strong></p>
+<p>更深入的两份：<strong><a href="MAINTENANCE.md">MAINTENANCE.md</a></strong>（文件地图、坑、验收清单）、
+<strong><a href="DESIGN.md">DESIGN.md</a></strong>（视觉规范与站点层每个文件的偏离）。
+<strong>三份冲突时以 <a href="http://MAINTENANCE.md">MAINTENANCE.md</a> 为准。</strong></p>
+</blockquote>
+<h2>📑 目录</h2>
+<table>
+<thead>
+<tr>
+<th>想做什么</th>
+<th>看这里</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>了解这是个什么站</td>
+<td><a href="#-%E8%BF%99%E6%98%AF%E4%B8%AA%E4%BB%80%E4%B9%88%E7%AB%99">🌱 这是个什么站</a></td>
+</tr>
+<tr>
+<td>在本机跑起来</td>
+<td><a href="#-%E6%9C%AC%E5%9C%B0%E8%B7%91%E8%B5%B7%E6%9D%A5">🚀 本地跑起来</a></td>
+</tr>
+<tr>
+<td>找文件</td>
+<td><a href="#-%E4%BB%93%E5%BA%93%E5%9C%B0%E5%9B%BE">🗂 仓库地图</a></td>
+</tr>
+<tr>
+<td>改点什么</td>
+<td><a href="#-%E6%83%B3%E6%94%B9%E4%BB%80%E4%B9%88-%E5%8E%BB%E5%93%AA%E6%94%B9">🎛 想改什么 去哪改</a></td>
+</tr>
+<tr>
+<td>发一篇文章</td>
+<td><a href="#-%E5%86%99%E4%B8%8E%E5%8F%91">📝 写与发</a></td>
+</tr>
+<tr>
+<td>部署 / 订阅 / 评论</td>
+<td><a href="#-%E5%8F%91%E5%B8%83">🚢 发布</a> ・ <a href="#-%E8%AE%A2%E9%98%85%E4%B8%8E%E8%AF%84%E8%AE%BA">📡 订阅与评论</a></td>
+</tr>
+<tr>
+<td>看现在的家底</td>
+<td><a href="#-%E7%AB%99%E7%82%B9%E7%8E%B0%E7%8A%B6">🧭 站点现状</a></td>
+</tr>
+<tr>
+<td>这里为什么是这样</td>
+<td><a href="#-%E5%8F%98%E6%9B%B4%E6%97%B6%E9%97%B4%E7%BA%BF">📜 变更时间线</a></td>
+</tr>
+</tbody>
+</table>
+<h2>🌱 这是个什么站</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🌐 <strong>线上地址</strong></td>
+<td><a href="https://hulatu.com/">https://hulatu.com/</a></td>
+</tr>
+<tr>
+<td>🧱 <strong>框架</strong></td>
+<td><a href="https://gohugo.io/">Hugo</a> <code>0.167.0</code> extended</td>
+</tr>
+<tr>
+<td>🎨 <strong>主题</strong></td>
+<td>上游 <a href="https://github.com/rokcso/hugo-bearneo">hugo-bearneo</a> 的副本（<code>themes/</code> 里 <strong>27 个文件逐字节未改</strong>，只有 <code>style.html</code> 两处登记改动：正文行高 1.6→1.8、删掉未启用的 upvote CSS）</td>
+</tr>
+<tr>
+<td>☁️ <strong>托管</strong></td>
+<td>Cloudflare Pages（Git 集成，push 即自动构建）</td>
+</tr>
+<tr>
+<td>💬 <strong>评论</strong></td>
+<td>giscus（GitHub Discussions，只挂长文页）</td>
+</tr>
+<tr>
+<td>📊 <strong>统计</strong></td>
+<td>GoatCounter（无 Cookie）</td>
+</tr>
+<tr>
+<td>📡 <strong>订阅</strong></td>
+<td>RSS 2.0 全文输出</td>
+</tr>
+<tr>
+<td>🏗 <strong>形态</strong></td>
+<td><strong>单站单仓库</strong> —— 2026-10-12 起原先四个子站全部下线，内容并回主站</td>
+</tr>
+</tbody>
+</table>
+<p><strong>站点结构</strong>（导航 6 项完全由 <code>hugo.toml</code> 的 <code>[[menu.main]]</code> 驱动，模板里不写死任何链接）：</p>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>页面</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/</code></td>
+<td>首页</td>
+<td>招呼 + 题记 + 简介 + 支持链接 + 平台入口 + 最近 5 篇</td>
+</tr>
+<tr>
+<td><code>/archive/</code></td>
+<td>文章</td>
+<td>全站唯一的搜索框 + 系列入口 + 年份分组</td>
+</tr>
+<tr>
+<td><code>/weekly/</code></td>
+<td>周刊</td>
+<td>独立栏目，单独的 RSS</td>
+</tr>
+<tr>
+<td><code>/series/</code></td>
+<td>系列</td>
+<td>跨文章的系列总览</td>
+</tr>
+<tr>
+<td><code>/featured/</code></td>
+<td>精选</td>
+<td>手工挑的几篇</td>
+</tr>
+<tr>
+<td><code>/roll/</code></td>
+<td>友链</td>
+<td>全站唯一的链接页（导航里的「友链」）</td>
+</tr>
+<tr>
+<td><code>/about/</code></td>
+<td>关于</td>
+<td>无标题无头像</td>
+</tr>
+<tr>
+<td><code>/run/</code></td>
+<td>跑步</td>
+<td>读 <code>data/runs.json</code>，每天自动同步 Garmin</td>
+</tr>
+<tr>
+<td><code>/donate/</code></td>
+<td>支持</td>
+<td>两个赞赏码</td>
+</tr>
+<tr>
+<td><code>/wechat/</code></td>
+<td>公众号</td>
+<td>二维码页</td>
+</tr>
+<tr>
+<td><code>/privacy/</code></td>
+<td>隐私</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>/feed/</code></td>
+<td>订阅源浏览器视图</td>
+<td>内容协商落点，见 <a href="#-%E8%AE%A2%E9%98%85%E4%B8%8E%E8%AF%84%E8%AE%BA">订阅与评论</a></td>
+</tr>
+</tbody>
+</table>
+<p><strong>几条贯穿全站的设计取舍</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>做法</th>
+<th>为什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🌗 深浅色</td>
+<td>完全跟随系统，<strong>没有切换按钮</strong></td>
+<td>上游如此，少一个控件少一份状态</td>
+</tr>
+<tr>
+<td>🔍 搜索</td>
+<td>只在 <code>/archive/</code> 顶部</td>
+<td>词条页和周刊列表挂搜索框是纯噪音</td>
+</tr>
+<tr>
+<td>📖 目录</td>
+<td>只在 <strong>&gt;1200px</strong> 的桌面端，平时隐形、悬停显形</td>
+<td>手机端折叠目录 2026-11-02 已删除，不恢复</td>
+</tr>
+<tr>
+<td>🖼 图片放大</td>
+<td><strong>零 JS</strong>：checkbox + <code>--zoom-src</code> 背景图</td>
+<td>每张图在 DOM 里只占 1 个节点，放大时内联图不离流、零回流</td>
+</tr>
+<tr>
+<td>⬆️ 返回顶部</td>
+<td>纯 CSS 滚动驱动动画，零 JS</td>
+<td>只挂长文页</td>
+</tr>
+<tr>
+<td>🔗 标题锚点</td>
+<td>只在文章页输出可点的 <code>#</code></td>
+<td>独立页模板层就不输出</td>
+</tr>
+<tr>
+<td>🎲 404</td>
+<td>「随便看一篇」构建时抽签，每次发布换一篇</td>
+<td>死链也能有个去处</td>
+</tr>
+<tr>
+<td>📰 RSS</td>
+<td>浏览器打开 feed 时内容协商到站内 HTML 页</td>
+<td>Chromium 移除 XSLT，详见时间线</td>
+</tr>
+</tbody>
+</table>
+<h2>🚀 本地跑起来</h2>
+<p><strong>1. 装 Hugo（Extended，0.167.0+）</strong></p>
+<pre><code class="language-bash">brew install hugo                          # macOS
+winget install Hugo.Hugo.Extended          # Windows
+hugo version                               # 只要 extended 就行，版本号见下
+</code></pre>
+<blockquote>
+<p>⚠️ <strong>构建版本钉在 <code>0.167.0</code></strong>：CI（<code>.github/workflows/build.yml</code> 的 <code>hugo-version</code>，还会
+<code>grep -q v0.167.0</code> 硬校验）和 Cloudflare Pages 的 <code>HUGO_VERSION</code> 都是它，<code>hugo.toml</code> 的
+<code>[module.hugoVersion]</code> 写的是 <code>min = &quot;0.167.0&quot;</code>。</p>
+<p>本机 <code>brew install hugo</code> 现在给的是 <strong>0.169.0</strong>，跑本地预览没问题（更高版本向后兼容），
+但<strong>别把本机版本号抄进 CI 或平台变量</strong>——三处不一致的典型症状是「本地正常、线上构建失败」。</p>
+</blockquote>
+<p><strong>2. 预览</strong></p>
+<pre><code class="language-bash">hugo server -D          # -D 连草稿一起显示，改文件自动刷新
+./deploy.sh             # 干净构建到 public/，检查 livereload 与站内断链
+</code></pre>
+<blockquote>
+<p>⚠️ <code>hugo server</code> 开着会持续覆盖 <code>public/</code>。想在不打扰 server 的情况下验收，
+构建到临时目录：<code>hugo --gc --minify --cleanDestinationDir --destination /tmp/hb-check</code>。</p>
+</blockquote>
+<p><strong>3. 写一篇</strong> —— 见 <a href="#-%E5%86%99%E4%B8%8E%E5%8F%91">📝 写与发</a>。</p>
+<h2>🗂 仓库地图</h2>
+<pre><code>Blog/
+├── hugo.toml                 # 站点配置：导航 / 参数 / permalinks / 高亮 / 版本约束
+├── content/
+│   ├── _index.md             # 首页文案（招呼、题记、简介、平台入口）
+│   ├── posts/                # 109 篇文章
+│   ├── weekly/               # 28 期周刊（单独开了 RSS 输出）
+│   ├── feed/                 # 订阅源「浏览器视图」的两个壳
+│   ├── about / archive / roll / series / featured / run / donate / wechat / privacy
+│   └── categories/           # 8 个分类
+├── layouts/                  # ★ 站点层覆盖（40 个文件），主题一律不改
+│   ├── index.html            #   首页
+│   ├── _default/             #   baseof / single / list / rss / archive / run / series / featured
+│   ├── feed/                 #   /feed/ 与 /feed/weekly/ 的视图
+│   ├── partials/             #   nav / footer / custom_head / giscus / seo_tags / breadcrumbs …
+│   └── _markup/              #   render-heading（标题锚点）/ render-link / render-image
+├── themes/hugo-bearneo/      # ★ 上游主题副本，**别随手改**
+├── assets/js/                # giscus.js / code-copy.js（只在需要的页加载）
+├── data/
+│   ├── runs.json             # 跑步数据（/run/ 在读）
+│   └── image-dims.json       # 正文图片真实宽高
+├── static/                   # 原样发布：_headers / _redirects / 图标 / images
+├── functions/_middleware.js  # Cloudflare Pages Functions：订阅源内容协商
+├── scripts/                  # 12 个脚本：发布前检查、链接检查、Garmin 同步、图床尺寸 …
+├── archetypes/               # hugo new 的模板（posts / weekly）
+├── publish.sh                # 一键发布：补锚点 → 刷 lastmod → 提交 → 推
+├── deploy.sh                 # 本地干净构建，不部署
+├── DESIGN.md                 # 设计规范
+└── MAINTENANCE.md            # 维护手册（**冲突以它为准**）
+</code></pre>
+<h2>🎛 想改什么 去哪改</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>想改什么</th>
+<th>去哪改</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🏷</td>
+<td>博客名 / 描述 / 作者 / 邮箱</td>
+<td><code>hugo.toml</code> 顶部与 <code>[params]</code></td>
+</tr>
+<tr>
+<td>🧭</td>
+<td><strong>导航菜单</strong>（增删项 / 改标签 / 换落点）</td>
+<td><code>hugo.toml</code> 的 <code>[[menu.main]]</code>（<code>weight</code> 控顺序），<strong>不用碰模板</strong></td>
+</tr>
+<tr>
+<td>🦶</td>
+<td>页脚</td>
+<td><code>hugo.toml</code> 的 <code>copyright</code> / <code>copyrightNote</code> / <code>licenseName</code> / <code>licenseURL</code> / <code>[params.footer]</code>；结构在 <code>partials/footer.html</code>（四行：Made with → Copyright → 订阅行 → 英文授权行）</td>
+</tr>
+<tr>
+<td>🏠</td>
+<td>首页文案</td>
+<td><code>content/_index.md</code></td>
+</tr>
+<tr>
+<td>🔢</td>
+<td>首页列几篇</td>
+<td><code>hugo.toml</code> 的 <code>homeRecentCount</code>（当前 5，设 0 不显示）</td>
+</tr>
+<tr>
+<td>📐</td>
+<td>首页列表的对齐</td>
+<td><code>partials/custom_head.html</code> 第 04 段（<code>padding-left: 0</code> 保证与标题左对齐）</td>
+</tr>
+<tr>
+<td>💰</td>
+<td>支持页 / 换赞赏码</td>
+<td><code>content/donate.md</code> + <code>custom_head.html</code> 第 08 段。⚠️ 换码后去 Cloudflare Purge <code>/images/donate/*</code></td>
+</tr>
+<tr>
+<td>🔗</td>
+<td>链接页（朋友 / 聚合站 / 点评）</td>
+<td><code>content/roll.md</code> —— 全站唯一的链接页，一条平铺 13 项，格式 <code>名称：一句话点评</code></td>
+</tr>
+<tr>
+<td>👤</td>
+<td>关于页</td>
+<td><code>content/about.md</code>（纯 Markdown，<strong>没有头像</strong>）</td>
+</tr>
+<tr>
+<td>🎨</td>
+<td><strong>颜色 / 字体 / 宽度 / 圆角</strong></td>
+<td><code>themes/hugo-bearneo/layouts/partials/style.html</code> 的 <code>:root</code>（改上游，改完在 <a href="http://DESIGN.md">DESIGN.md</a> 第 5 节登记）</td>
+</tr>
+<tr>
+<td>📝</td>
+<td>正文排版（标题间距 / 中文字体）</td>
+<td><code>layouts/partials/custom_head.html</code> 第 02 段</td>
+</tr>
+<tr>
+<td>🍞</td>
+<td>面包屑</td>
+<td><code>layouts/partials/breadcrumbs.html</code> + <code>custom_head.html</code> 第 13 段</td>
+</tr>
+<tr>
+<td>👁</td>
+<td>独立页是否显示标题</td>
+<td>front matter 的 <code>hideTitle: true</code>（<code>/roll/</code> <code>/about/</code> 开着）</td>
+</tr>
+<tr>
+<td>📚</td>
+<td>文末「系列」/「相关文章」/「上一篇 下一篇」</td>
+<td><code>_default/single.html</code> + <code>custom_head.html</code> 第 09 / 10 段</td>
+</tr>
+<tr>
+<td>🗂</td>
+<td>「系列」入口 / 总览页</td>
+<td>入口 <code>_default/archive.html</code>；总览页 <code>_default/series.html</code> + <code>content/series.md</code></td>
+</tr>
+<tr>
+<td>🎲</td>
+<td>404 页</td>
+<td><code>layouts/404.html</code> + <code>custom_head.html</code> 第 15 段</td>
+</tr>
+<tr>
+<td>🔗</td>
+<td>标题锚点 / 孤行保护</td>
+<td><code>_markup/render-heading.html</code>（只文章页）+ <code>partials/orphan-safe.html</code>（全站）</td>
+</tr>
+<tr>
+<td>⬆️</td>
+<td>返回顶部</td>
+<td><code>partials/back-top.html</code> + <code>custom_head.html</code> 第 16 段</td>
+</tr>
+<tr>
+<td>📋</td>
+<td>代码复制按钮</td>
+<td><code>assets/js/code-copy.js</code> + <code>partials/code-copy.html</code> + 第 18 段</td>
+</tr>
+<tr>
+<td>📄</td>
+<td>分页</td>
+<td><strong>全站都不分页</strong>（上游不用 <code>.Paginate</code>）。旧地址由 <code>static/_redirects</code> 301 兜底</td>
+</tr>
+<tr>
+<td>📖</td>
+<td>目录</td>
+<td><strong>&gt;1200px</strong> 桌面端右侧悬浮（<code>custom_head.html</code> 第 20 段）；<strong>≤1200px 没有目录</strong></td>
+</tr>
+<tr>
+<td>🖼</td>
+<td>图标</td>
+<td><code>static/favicon.svg</code>（全站唯一图标）</td>
+</tr>
+<tr>
+<td>💬</td>
+<td>评论</td>
+<td><code>hugo.toml</code> 的 <code>[params.giscus]</code>；单篇用 <code>comments: false</code> 关掉</td>
+</tr>
+<tr>
+<td>📊</td>
+<td>统计</td>
+<td><code>hugo.toml</code> 的 <code>[params.analytics]</code>（GoatCounter，挂在 <code>custom_head.html</code> 末尾）</td>
+</tr>
+<tr>
+<td>🖼</td>
+<td>分享图</td>
+<td><code>hugo.toml</code> 的 <code>params.images</code>（<strong>全站同一张</strong> <code>share.webp</code>）+ <code>ogImageWidth</code> / <code>ogImageHeight</code>（当前 1200 / 630，换图要跟着改）</td>
+</tr>
+<tr>
+<td>🔎</td>
+<td><strong>SEO 头</strong>（canonical / OG / JSON-LD）</td>
+<td><code>layouts/partials/seo_tags.html</code> —— 整份覆盖上游同名 partial：删掉 <code>keywords</code> 与不生效的微数据，改按页型输出 JSON-LD</td>
+</tr>
+<tr>
+<td>↩️</td>
+<td>加 301 / 改缓存头</td>
+<td><code>static/_redirects</code>（首条命中即生效）/ <code>static/_headers</code></td>
+</tr>
+<tr>
+<td>➕</td>
+<td>加根级独立页</td>
+<td><code>content/xxx.md</code>（<code>hideDate: true</code> + <code>toc: false</code>；纯工具页再加 <code>noindex: true</code>）+ 回 <code>_headers</code> 补缓存规则</td>
+</tr>
+</tbody>
+</table>
+<h2>📝 写与发</h2>
+<pre><code class="language-bash">hugo new content/posts/文章名.md           # 周刊：hugo new content/weekly/周刊-第N期.md
+</code></pre>
+<p>按 <code>archetypes/posts.md</code> 的清单填 front matter，把 <code>draft</code> 改成 <code>false</code> 就发布。</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>date</code></td>
+<td>决定 URL（<code>/posts/年/月/日/slug/</code>）</td>
+</tr>
+<tr>
+<td><code>slug</code></td>
+<td>决定 URL 最后一段</td>
+</tr>
+<tr>
+<td><code>series</code></td>
+<td><strong>在用</strong>：文章页「系列坐标带」+ <code>/archive/</code> 入口 + <code>/series/</code> 总览都读它（一篇只能属于一个系列）</td>
+</tr>
+<tr>
+<td><code>tags</code></td>
+<td>标签行 + 归档页标签云</td>
+</tr>
+<tr>
+<td><code>categories</code></td>
+<td>面包屑第三段（<strong>周刊刻意不加</strong>）</td>
+</tr>
+</tbody>
+</table>
+<p>日常一条命令：</p>
+<pre><code class="language-bash">up                          # 或 cd ~/Blog &amp;&amp; ./publish.sh
+</code></pre>
+<p><code>publish.sh</code> 提交前会自动做两件事（失败不阻断发布）：给新写的中文标题补 <code>{#pinyin}</code> 锚点、
+刷新改动过文章的 <code>lastmod</code>。</p>
+<h2>📡 订阅与评论</h2>
+<p><strong>RSS</strong> —— 两个源都只收文章页，每源最多 20 条：</p>
+<table>
+<thead>
+<tr>
+<th>源</th>
+<th>地址</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全站</td>
+<td><a href="https://hulatu.com/index.xml">https://hulatu.com/index.xml</a></td>
+</tr>
+<tr>
+<td>周刊专线</td>
+<td><a href="https://hulatu.com/weekly/index.xml">https://hulatu.com/weekly/index.xml</a></td>
+</tr>
+</tbody>
+</table>
+<p>feed 本身是<strong>纯 XML</strong>（顶部没有 <code>&lt;?xml-stylesheet?&gt;</code>）。浏览器直接打开时，
+<code>functions/_middleware.js</code> 做内容协商，改写到站内 HTML 页 <code>/feed/</code> 与 <code>/feed/weekly/</code>；
+<strong>订阅器不受影响，订阅地址一个字没变</strong>。</p>
+<p><strong>giscus 评论</strong> —— 基于 GitHub Discussions，不用自建后端：</p>
+<ol>
+<li>仓库设为 <strong>public</strong></li>
+<li><strong>Settings → General → Features</strong> 里开启 <strong>Discussions</strong></li>
+<li>打开 <a href="https://giscus.app">giscus.app</a>，填仓库地址、选分类</li>
+<li>把生成的 <code>data-repo</code> / <code>data-repo-id</code> / <code>data-category</code> / <code>data-category-id</code> 抄进 <code>hugo.toml</code> 的 <code>[params.giscus]</code></li>
+<li>重新构建：文章页正文下方出现评论区（<code>repo</code> 留空则整块不显示）</li>
+</ol>
+<blockquote>
+<p>⚠️ <code>mapping = &quot;pathname&quot;</code> —— <strong>只要 URL 不变，老评论就直接接上</strong>。
+改 <code>[permalinks]</code> 会让评论全部断掉。</p>
+</blockquote>
+<h2>🚢 发布</h2>
+<p>线上是 <strong>Cloudflare Pages 的 Git 集成</strong>在构建：push → 自动构建发布。
+本机不装 wrangler，也不手动上传。</p>
+<p><strong>CI</strong>（<code>.github/workflows/</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>工作流</th>
+<th>做什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>build.yml</code></td>
+<td>push / PR 时用<strong>同一个 Hugo 版本</strong>构建主站，并检查中文标题锚点 —— 把「本地没事、平台构建失败」挡在推送前</td>
+</tr>
+<tr>
+<td><code>sync-garmin.yml</code></td>
+<td>每天 22:00（Asia/Taipei）拉一次跑步数据，写进 <code>data/runs.json</code></td>
+</tr>
+</tbody>
+</table>
+<h2>🧭 站点现状</h2>
+<details>
+<summary><b>点开看具体数字（截至 2026-11-07，随内容增长会变）</b></summary>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>数量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文章（<code>content/posts/</code>）</td>
+<td>109 篇</td>
+</tr>
+<tr>
+<td>周刊（<code>content/weekly/</code>）</td>
+<td>28 期</td>
+</tr>
+<tr>
+<td>合计</td>
+<td><strong>137 篇</strong> —— 周刊也走 <code>/posts/:year/:month/:day/:slug/</code>，所以线上 <code>/posts/</code> 下共 137 个文章页</td>
+</tr>
+<tr>
+<td>分类</td>
+<td>8 个（健康 / 周刊 / 学习科研 / 工具 / 思考 / 记录 / 运动 / 饮食）</td>
+</tr>
+<tr>
+<td>标签词条页</td>
+<td>219 个</td>
+</tr>
+<tr>
+<td>系列</td>
+<td>6 组</td>
+</tr>
+<tr>
+<td>草稿</td>
+<td>0</td>
+</tr>
+<tr>
+<td>产出 HTML</td>
+<td>379 个文件（Hugo 报 384 页，含 XML / JSON 输出）</td>
+</tr>
+<tr>
+<td>首页体积</td>
+<td>6592 B，gzip 2918 B</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>每页都有 JSON-LD（首页 <code>WebSite</code> / 文章页 <code>BlogPosting</code> / 独立页与 404 <code>WebPage</code> /
+section 与词条 <code>CollectionPage</code>）。</li>
+<li><strong><code>noindex, follow</code></strong> 覆盖标签词条、<code>/privacy/</code>、<code>/posts/</code>、<code>/donate/</code>、<code>/wechat/</code>、404 与
+<code>/feed/</code> 那两页；<strong>分类词条页 2026-10-26 起可索引</strong>。</li>
+<li><strong>og:image 全站同一张</strong> <code>share.webp</code>（1200×630）。</li>
+</ul>
+</details>
+<h2>📜 变更时间线</h2>
+<details>
+<summary><b>点开看这个站是怎么长成现在这样的</b></summary>
+<table>
+<thead>
+<tr>
+<th>日期</th>
+<th>改了什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-10-10</td>
+<td>整站从<strong>自建主题</strong>迁移到上游 hugo-bearneo；主题文件逐字节未改，站点特有内容全部走 <code>layouts/</code> 覆盖</td>
+</tr>
+<tr>
+<td>2026-10-11</td>
+<td>周刊回到导航；<code>links.md</code> 删除、友链并入 <code>roll.md</code>；<code>/donate/</code> 搬回；清理 125 张按 slug 分的 og 图，改成全站一张 <code>share.webp</code></td>
+</tr>
+<tr>
+<td>2026-10-12</td>
+<td><strong>四个子站（run / shot / share / profile）全部下线</strong>，<code>sites/</code> 与 <code>scripts/build-subdomains.sh</code> 从仓库删除；导航撤掉 <code>Hub</code>，内容并入 <code>/about/</code> 与 <code>/run/</code></td>
+</tr>
+<tr>
+<td>2026-10-13</td>
+<td>移除 <code>issue</code>（周刊期号）字段；删掉 PWA 五件套图标</td>
+</tr>
+<tr>
+<td>2026-10-14</td>
+<td>加载速率审计并全部实施：新增 <code>partials/seo_tags.html</code>（删掉 <code>keywords</code> 与不生效的微数据，改按页型输出 JSON-LD）、图片放大换成不重复 <code>&lt;img&gt;</code> 的方案。首页全页 gzip 5941 → 5082 B，全站 <code>&lt;img&gt;</code> 节点 644 → 323</td>
+</tr>
+<tr>
+<td>2026-10-15</td>
+<td><strong>浏览器打开 RSS 换了实现</strong>：Chromium 正在移除 XSLT，所以撤掉 <code>static/rss.xsl</code> 与 feed 顶部的 <code>&lt;?xml-stylesheet?&gt;</code>，改由 <code>functions/_middleware.js</code> 内容协商到 <code>/feed/</code> 与 <code>/feed/weekly/</code></td>
+</tr>
+<tr>
+<td>2026-10-25</td>
+<td>首页 <code>Hi!</code> 从 h2 升到 h1、<code>Recent Posts:</code> 升到 h2（与 h1 不跳级）</td>
+</tr>
+<tr>
+<td>2026-10-26</td>
+<td>分类词条页开放索引</td>
+</tr>
+<tr>
+<td>2026-11-02</td>
+<td>删除手机端折叠目录，不恢复</td>
+</tr>
+<tr>
+<td>2026-11-03</td>
+<td>关于页撤掉「内容平台」一节（入口只留首页那一行）；「上一篇 / 下一篇」只给非系列文章；词条页与 <code>/weekly/</code> 不再挂搜索框</td>
+</tr>
+<tr>
+<td>2026-11-05</td>
+<td>新增 <code>/featured/</code> 精选页（<code>layout: &quot;featured&quot;</code>，与 <code>/series/</code> 同一套做法）</td>
+</tr>
+<tr>
+<td>2026-11-07</td>
+<td>新增 <code>/wechat/</code> 公众号二维码页（<code>noindex</code>）；首页平台入口加了 X</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>更早的历史：<code>git log --all</code> 。子站源码没有迁移到别处，需要时 <code>git show &lt;commit&gt;:sites/README.md</code> 取回。</p>
+</blockquote>
+</details>
+<h2>📄 许可</h2>
+<p>文章内容采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> —— 署名、非商业性使用、相同方式共享。
+页脚那行由 <code>hugo.toml</code> 的 <code>copyrightNote</code> / <code>licenseName</code> / <code>licenseURL</code> 三个参数拼出。</p>
+<p>代码部分随意取用。</p>
+<hr>
+<div align="center">
+<p><strong><a href="https://hulatu.com/">🌐 hulatu.com</a></strong> ・ <strong><a href="https://hulatu.com/index.xml">📮 订阅</a></strong></p>
+<p><sub>Hugo · Cloudflare Pages · 无广告 · 无追踪 Cookie</sub></p>
+</div>
+</div></body></html>

@@ -53,8 +53,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone()
-          caches.open(SHELL).then((c) => c.put('./index.html', copy))
+          // 只缓存成功的入口：404 / 500 的错误页也写进 ./index.html，
+          // 下次断网打开的就是那张错误页。
+          if (res.ok) {
+            const copy = res.clone()
+            caches.open(SHELL).then((c) => c.put('./index.html', copy))
+          }
           return res
         })
         .catch(() =>

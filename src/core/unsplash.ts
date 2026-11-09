@@ -208,14 +208,27 @@ function authHeader(key: string): HeadersInit {
   return { Authorization: `Client-ID ${key}` }
 }
 
-/** 统一超时：AbortSignal.timeout 在 Safari 16 以下没有，手动兜一层 */
+/**
+ * 统一超时：AbortSignal.timeout 在 Safari 16 以下没有，手动兜一层。
+ *
+ * 注意：不能写 `signal: init.signal ?? ctrl.signal` —— 一旦调用方传了 signal，
+ * 超时计时器 abort 的就是没人听的 ctrl，12 秒超时等于不存在。
+ * 这里把外部 signal 转发到同一个 ctrl 上，超时和外部取消都能掐断请求。
+ */
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(new DOMException('timeout', 'TimeoutError')), TIMEOUT)
+  const external = init.signal
+  const onExternalAbort = () => ctrl.abort()
+  if (external) {
+    if (external.aborted) ctrl.abort()
+    else external.addEventListener('abort', onExternalAbort, { once: true })
+  }
   try {
-    return await fetch(url, { ...init, signal: init.signal ?? ctrl.signal })
+    return await fetch(url, { ...init, signal: ctrl.signal })
   } finally {
     clearTimeout(timer)
+    external?.removeEventListener('abort', onExternalAbort)
   }
 }
 

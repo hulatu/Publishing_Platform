@@ -548,7 +548,8 @@ export async function completeWithRetry(
       // 用户主动取消：一次都不重试
       if (opts.signal?.aborted) throw err
       if (!isRetryableAIError(err) || i === NET_RETRIES) throw err
-      await sleep(1200 * (i + 1))
+      // 退避加抖动：固定间隔会让同时失败的请求撞在同一个时刻重试
+      await sleep(1200 * (i + 1) + Math.random() * 1000)
       onRetry?.()
     }
   }
@@ -576,6 +577,10 @@ export async function pingByok(settings: ByokSettings): Promise<PingResult> {
     return { ok: false, message: '接口地址、API Key、模型名三项都要填。', ms: 0 }
   }
 
+  // 手动超时：AbortSignal.timeout 在 Safari 16 以下不存在，直接用会抛 TypeError，
+  // 结果会被当成「连接失败」，提示全错。手动兜一层（和 fetchOnce 同一套做法）。
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(new DOMException('timeout', 'TimeoutError')), 20_000)
   try {
     const res = await fetch(joinUrl(settings.endpoint, '/chat/completions'), {
       method: 'POST',
@@ -589,7 +594,7 @@ export async function pingByok(settings: ByokSettings): Promise<PingResult> {
         max_tokens: 8,
         stream: false,
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: ctrl.signal,
     })
 
     const ms = Date.now() - started
@@ -614,6 +619,8 @@ export async function pingByok(settings: ByokSettings): Promise<PingResult> {
       return { ok: false, message: '请求超时 20 秒。地址可能不通，或该服务不允许浏览器直连。', ms }
     }
     return { ok: false, message: describeAIError(err), ms }
+  } finally {
+    clearTimeout(timer)
   }
 }
 

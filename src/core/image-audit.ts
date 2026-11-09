@@ -446,14 +446,17 @@ export async function auditImage(src: string, rule: ImageRule): Promise<AuditRow
     return { src, issues: judge({}, rule, src), probed: false }
   }
 
-  const size = await measureImage(src)
+  // 量尺寸和探代理是两条独立的路（一个走 <img>、一个走 Worker），并行跑：
+  // 串行时一张图最坏要 15 秒 + 15 秒，20 张图、并发 3 能到 200 秒。
+  const [size, probe] = await Promise.all([
+    measureImage(src),
+    remote ? probeImage(src) : Promise.resolve(null),
+  ])
   const facts: ImageFacts = { loaded: size.loaded, width: size.width, height: size.height }
   let probed = false
 
-  if (remote) {
-    const probe = await probeImage(src)
-    if (probe.ok) {
-      probed = true
+  if (probe && probe.ok) {
+    probed = true
       // 只有「200 + 真是张图」才算取到了。404 的页面上也可能带着
       // content-length（错误页的字节数），拿它当图片体积会得出荒唐的结论。
       const isImage = probe.status === 200 && Boolean(probe.contentType)
@@ -463,7 +466,6 @@ export async function auditImage(src: string, rule: ImageRule): Promise<AuditRow
         facts.bytes = probe.bytes
       }
       facts.hotlink = probe.hotlink
-    }
   }
 
   return { src, ...facts, issues: judge(facts, rule, src), probed }

@@ -67,6 +67,8 @@ interface HeadResult {
 async function head(target: URL, referer?: string): Promise<HeadResult> {
   const init: RequestInit & { cf?: Record<string, unknown> } = {
     headers: referer ? { Referer: referer } : {},
+    // 上游挂起时 10 秒掐断：客户端 15 秒就放弃了，Worker 没必要继续等到平台兜底
+    signal: AbortSignal.timeout(10_000),
     // 探测结果不缓存：防盗链是随时会被打开的开关，缓存一天就等于看不见
     cf: { cacheTtl: 0 },
   }
@@ -138,6 +140,8 @@ export const onRequestGet = async (ctx: { request: Request }): Promise<Response>
   // （实测同一张 37KB 的 jpg 变成 25KB 的 avif），字节格式和原扩展名就对不上，
   // 打包时按 URL 猜出来的 .webp 里装的其实是 avif。省这点带宽不值得。
   const init: RequestInit & { cf?: Record<string, unknown> } = {
+    // 上游挂起时 10 秒掐断（同 head）
+    signal: AbortSignal.timeout(10_000),
     cf: { cacheEverything: true, cacheTtl: 86400 },
   }
 
@@ -159,7 +163,24 @@ export const onRequestGet = async (ctx: { request: Request }): Promise<Response>
   const len = Number(upstream.headers.get('content-length') ?? '0')
   if (len > MAX_BYTES) return new Response('image too large', { status: 413 })
 
-  return new Response(upstream.body, {
+  // content-length 只能防「老实交代体积」的源站：分块编码不发长度时，
+  // 上面的 413 检查等于没做。用 TransformStream 边流边数，超了就掐断 ——
+  // 总比把一张 100MB 的图整个流进 Worker、再塞进 zip 里强。
+  // 掐断后客户端读流会失败，调用方按「这张图拿不到」处理，不会静默混进坏数据。
+  if (!upstream.body) return new Response('upstream empty body', { status: 502 })
+  let seen = 0
+  const guard = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      seen += chunk.byteLength
+      if (seen > MAX_BYTES) {
+        controller.error(new Error('image too large'))
+        return
+      }
+      controller.enqueue(chunk)
+    },
+  })
+
+  return new Response(upstream.body.pipeThrough(guard), {
     headers: {
       'content-type': type,
       // 这个头就是整件事的目的：让页面里的 fetch 能读到字节

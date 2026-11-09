@@ -1,0 +1,228 @@
+<!doctype html><html lang=zh-CN><head><meta charset=utf-8><base href="file:///Users/hulatu/sspai-tidy/"><style>
+:root{--fg:#1f2328;--muted:#59636e;--bd:#d1d9e0;--soft:#f6f8fa;--link:#0969da}
+body{margin:0;background:#fff;color:var(--fg);font:16px/1.65 -apple-system,'PingFang SC',system-ui,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:40px 32px 80px}
+h1{font-size:2em;margin:.2em 0 .4em}
+h2{font-size:1.45em;margin:34px 0 12px;padding-bottom:.3em;border-bottom:1px solid var(--bd)}
+h3{font-size:1.15em;margin:24px 0 10px}
+a{color:var(--link);text-decoration:none}a:hover{text-decoration:underline}
+code{background:rgba(129,139,152,.14);padding:.15em .35em;border-radius:5px;font:.86em ui-monospace,monospace}
+pre{background:var(--soft);padding:14px 16px;border-radius:8px;overflow:auto;border:1px solid var(--bd)}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;margin:0 0 18px;display:block;overflow:auto;font-size:.95em}
+th,td{border:1px solid var(--bd);padding:7px 11px;text-align:left;vertical-align:top}
+th{background:var(--soft);font-weight:600}
+tr:nth-child(2n) td{background:#fbfcfd}
+blockquote{margin:0 0 16px;padding:0 1em;color:var(--muted);border-left:.25em solid var(--bd)}
+img{max-width:100%;border-radius:6px;border:1px solid var(--bd)}
+hr{border:0;border-top:1px solid var(--bd);margin:28px 0}
+</style></head><body><div class=wrap><div align="center">
+<h1>📰 少数派 · 阅读增强</h1>
+<p><strong>一个 Tampermonkey 用户脚本，把 <a href="https://sspai.com">sspai.com</a> 改成一个只用来读东西的地方。</strong></p>
+<p><a href="sspai-tidy.user.js"><img src="https://img.shields.io/badge/version-1.3.0-1b1917?style=flat-square" alt="version"></a>
+<a href="https://sspai.com"><img src="https://img.shields.io/static/v1?label=%E5%B9%B3%E5%8F%B0&amp;message=sspai.com&amp;color=d71a1b&amp;style=flat-square" alt="platform"></a>
+<a href="https://www.tampermonkey.net/"><img src="https://img.shields.io/static/v1?label=%E7%B1%BB%E5%9E%8B&amp;message=UserScript&amp;color=2f7d5d&amp;style=flat-square" alt="userscript"></a>
+<a href="LICENSE"><img src="https://img.shields.io/static/v1?label=%E8%AE%B8%E5%8F%AF&amp;message=MIT&amp;color=1b1917&amp;style=flat-square" alt="license"></a></p>
+<p><strong><a href="https://raw.githubusercontent.com/hulatu/sspai-tidy/main/sspai-tidy.user.js">⬇️ 安装</a></strong> ・
+<strong><a href="#-%E6%83%B3%E5%BE%AE%E8%B0%83">🎛 想改点什么</a></strong> ・
+<strong><a href="#-%E6%B3%A8%E6%84%8F">⚠️ 失效了怎么办</a></strong></p>
+</div>
+<p><img src="screenshots/home.png" alt="首页"></p>
+<h2>📑 目录</h2>
+<table>
+<thead>
+<tr>
+<th>想了解</th>
+<th>看这里</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>它到底动了什么</td>
+<td><a href="#-%E4%B8%80%E5%8F%A5%E8%AF%9D">🎯 一句话</a> ・ <a href="#-%E6%95%B0%E5%AD%97%E5%AF%B9%E6%AF%94">📊 数字对比</a></td>
+</tr>
+<tr>
+<td>文章页有什么变化</td>
+<td><a href="#-%E6%96%87%E7%AB%A0%E9%A1%B5%E8%AF%BB%E5%AE%8C%E5%B0%B1%E7%BB%93%E6%9D%9F">📖 文章页：读完就结束</a></td>
+</tr>
+<tr>
+<td>1.3 新增了什么</td>
+<td><a href="#-%E6%96%B0%E5%A2%9E%E7%9A%84%E5%9B%9B%E4%BB%B6%E4%BA%8B">✨ 新增的四件事</a></td>
+</tr>
+<tr>
+<td>怎么装</td>
+<td><a href="#-%E8%A3%85%E6%B3%95">🚀 装法</a></td>
+</tr>
+<tr>
+<td>想自己调</td>
+<td><a href="#-%E6%83%B3%E5%BE%AE%E8%B0%83">🎛 想微调</a></td>
+</tr>
+<tr>
+<td>坏了 / 不生效</td>
+<td><a href="#-%E6%B3%A8%E6%84%8F">⚠️ 注意</a></td>
+</tr>
+</tbody>
+</table>
+<h2>🎯 一句话</h2>
+<p>少数派的列表页把三分之二的屏幕给了轮播、侧栏和推广卡，文章页在正文之后又堆了近 2000px 的广告、打赏、评论和「关联阅读」。</p>
+<p>这个脚本把它们都拿掉，<strong>一屏从 4 篇变成 9 篇，文章页读完正文就结束</strong>；然后补上几个原站没有、但读长文很需要的小东西：进度条、点图放大、代码块复制、已读标记。</p>
+<h2>📊 数字对比</h2>
+<p>在 1440×900 的窗口下实测（单条 = 一篇的高度）：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>首页</th>
+<th>Matrix</th>
+<th>作者主页</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>列表宽度</td>
+<td>520 → <strong>1064px</strong></td>
+<td>741 → <strong>1064px</strong></td>
+<td>588 → <strong>1064px</strong></td>
+</tr>
+<tr>
+<td>单条高度</td>
+<td>189 → <strong>99px</strong></td>
+<td>136 → <strong>92px</strong></td>
+<td>178 → <strong>121px</strong></td>
+</tr>
+<tr>
+<td>一屏（900px 高）能看到</td>
+<td>4 → <strong>9 篇</strong></td>
+<td>6 → <strong>9 篇</strong></td>
+<td>5 → <strong>7 篇</strong></td>
+</tr>
+</tbody>
+</table>
+<p><img src="screenshots/matrix.png" alt="Matrix"></p>
+<h2>📖 文章页：读完就结束</h2>
+<p>一篇 11000px 的长文，原文总高 <strong>13466px</strong>，其中约 2400px（18%）不是正文。清完是 <strong>11097px</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>清掉的块</th>
+<th>高度</th>
+<th>是什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.article__charge__card</code></td>
+<td>222px</td>
+<td>「N 位派友已充电」打赏卡</td>
+</tr>
+<tr>
+<td><code>.advertisement__box</code></td>
+<td><strong>398px</strong></td>
+<td>文末广告位</td>
+</tr>
+<tr>
+<td><code>.post__comments</code></td>
+<td>237px</td>
+<td>讨论区（底部固定栏的评论按钮还能打开弹窗，不算丢了入口）</td>
+</tr>
+<tr>
+<td><code>.related__read__wrapper</code></td>
+<td>864px</td>
+<td>「关联阅读」</td>
+</tr>
+<tr>
+<td><code>.comment__footer__wrapper</code> ×7</td>
+<td>392px</td>
+<td>正文每个章节末尾的「发表首评 + 表情」互动条</td>
+</tr>
+</tbody>
+</table>
+<p><strong>保留</strong>：正文、文章标签与责编信息、目录、底部固定的「说点什么… / 分享」栏。</p>
+<p><img src="screenshots/article.png" alt="文章页"></p>
+<h2>✨ 新增的四件事</h2>
+<blockquote>
+<p>1.2 只有「减法」。1.3 补了四个「加法」——都是原站没有、但读长文会用到的。</p>
+</blockquote>
+<h3>📊 阅读进度条</h3>
+<p>文章页顶部一条 2px 的红线，跟着滚动走。首页、Matrix、作者页不显示。
+滚到底时宽度到 100%，<code>requestAnimationFrame</code> 节流，不占主线程。</p>
+<h3>🖼 点图放大</h3>
+<p>原站的正文图<strong>点不开</strong>（页面上没有任何图片查看器）。现在点一下就是全屏黑底 + 原图：</p>
+<ul>
+<li>用的是 <code>data-original</code> 里的<strong>原始尺寸</strong>，不是正文那张 1120px 的压缩版</li>
+<li>再点图片在「适应屏幕 / 原始大小」之间切换</li>
+<li><code>Esc</code> 或点空白处关闭，打开时会锁住页面滚动</li>
+</ul>
+<p><img src="screenshots/viewer.png" alt="点图放大"></p>
+<h3>📋 代码块复制</h3>
+<p>正文里的 <code>&lt;pre&gt;</code> 右上角会出现一个「复制」按钮，悬停才显示，点一下变「已复制」。
+复制的是纯文本（不含按钮自己那两个字），优先走 <code>navigator.clipboard</code>，不行就退回 <code>execCommand</code>。</p>
+<h3>✅ 已读标记</h3>
+<p>读过的文章，在首页 / Matrix / 作者页的列表里会<strong>压暗到 48%</strong>，鼠标悬停恢复原亮度。
+记录只写在你自己浏览器的 <code>localStorage</code>（<code>sspai-tidy:read</code>），最多存 400 条，不上传任何地方。</p>
+<h2>🚀 装法</h2>
+<ol>
+<li>装 <a href="https://www.tampermonkey.net/">Tampermonkey</a>（Chrome / Edge / Firefox 商店都有；Safari 用 <a href="https://apps.apple.com/app/userscripts/id1463298887">Userscripts</a>）。</li>
+<li>点 <strong><a href="https://raw.githubusercontent.com/hulatu/sspai-tidy/main/sspai-tidy.user.js">sspai-tidy.user.js</a></strong> —— 会弹出安装页，点「安装」。</li>
+<li>打开 <a href="https://sspai.com/">https://sspai.com/</a> ，生效。</li>
+</ol>
+<blockquote>
+<p>脚本头里写了 <code>@updateURL</code> / <code>@downloadURL</code>，以后我推新版本，Tampermonkey 会自己提示更新，不用手动重装。</p>
+</blockquote>
+<p>装不上就手动来：Tampermonkey 面板 → 添加新脚本 → 把 <code>.user.js</code> 全文粘进去替换模板 → <code>Cmd/Ctrl + S</code>。</p>
+<h2>🎛 想微调</h2>
+<p>脚本开头有一个 <code>CFG</code>，改完保存即生效：</p>
+<pre><code class="language-js">const CFG = {
+  // ---- 列表页：减法 ----
+  hideHero:      true,   // 顶部大 banner 区（派早报 / 投稿须知 / 广告位）
+  hideLeftNav:   true,   // 首页左侧「推荐 / 全部内容 / 话题讨论 / 热门内容」
+  hideRightSide: true,   // 首页「派友在看」、Matrix「值得关注 / 专栏推荐」
+  hidePrime:     true,   // 列表里的 PRIME 会员社区精选
+  hidePromo:     true,   // 列表里的「一派投票 / 讨论」推广卡
+  hideCustomerService: true, // 右下角「联系客服」问号按钮（保留旁边的返回顶部）
+  autoLoad:      true,   // 滚到底自动点「加载更多」（Matrix）
+  thumb:         128,    // 列表缩略图宽度 px，0 = 不显示缩略图
+  thumbSide:     'left', // 'left' 图在标题左边；'right' 保持站点原样
+  compact:       true,   // false = 行高恢复宽松
+  userDefaultPosts: true, // 进作者主页默认显示「文章」列表
+  userWide:      true,   // 作者主页也拉宽、按首页样式重排
+
+  // ---- 文章页：减法 ----
+  hideArticleCharge:   true, // 「N 位派友已充电」打赏卡
+  hideArticleAd:       true, // 文末广告位
+  hideArticleComments: true, // 讨论区
+  hideArticleRelated:  true, // 「关联阅读」
+  hideInlineComment:   true, // 正文各章节末尾的「发表首评」互动条
+
+  // ---- 文章页：加法（1.3 新增）----
+  progressBar:   true,   // 顶部阅读进度条
+  imageViewer:   true,   // 点图放大（用原图）
+  codeCopy:      true,   // 代码块右上角「复制」
+  markRead:      true    // 列表里把读过的文章压暗
+};
+</code></pre>
+<p>几个常见的改法：</p>
+<ul>
+<li><strong>只想清广告，不想动排版</strong>：<code>compact: false</code> + <code>userWide: false</code></li>
+<li><strong>想更极端地只看标题</strong>：<code>thumb: 0</code>，变成纯文字列表（单条 99 → 92px），没有图更安静</li>
+<li><strong>想留评论区</strong>（少数派的评论质量通常不错）：<code>hideArticleComments: false</code></li>
+<li><strong>不喜欢被压暗</strong>：<code>markRead: false</code>（已经记下的条目不会被清掉）</li>
+<li><strong>只想要阅读进度条</strong>：把上面所有 <code>hide*</code> 都改成 <code>false</code>，只留 <code>progressBar: true</code></li>
+</ul>
+<h2>🚧 注意</h2>
+<ul>
+<li><strong>少数派改版后类名可能会变</strong>，脚本会失效（页面恢复原样，不会坏）。到时候把新类名替换进选择器即可 —— 改版最容易先坏的是 <code>.article__card</code> / <code>.post-item</code> / <code>.article__main__content</code> 这三个。</li>
+<li>改宽度和行高的规则<strong>只在窗口 ≥1000px 时生效</strong>，窄窗口下用站点自己的布局，不会打架。</li>
+<li>作者页的跳转只在<strong>进入主页那一刻</strong>发生：进去之后再手动点「动态 / 收藏」，不会被抢回来。</li>
+<li>文章页那两个 <code>.article__subsection__wrapper</code> 只能清里面的内容块，<strong>不能整个藏掉</strong> —— 底部那条「说点什么…」固定栏的占位元素挂在里面，整块 <code>display:none</code> 会让那条栏塌成 0×0。脚本里已经按这个约束写了。</li>
+<li>站点把整列包在 <code>.feed__wrapper</code> 里，并写死 <code>max-width: 960px</code>；只改 <code>.feed</code> 会被它卡住（实测只能到 960 / 卡片 904），所以两个都要放开。</li>
+<li>脚本只改样式、点几下按钮、写一条本地的已读记录；<strong>不碰登录态、不读你的数据、不发任何请求</strong>。</li>
+</ul>
+<h2>🧪 兼容性</h2>
+<p>在 Chrome（Helium 157）+ Tampermonkey 下开发，1440×900 窗口实测；首页 / Matrix / 作者主页 / 文章页四条路径都验证过，含浅色与深色主题。</p>
+<p>用到的都是现代 CSS（<code>:has()</code>、<code>aspect-ratio</code>、CSS 变量），Chrome 105+ / Safari 15.4+ / Firefox 121+ 都没问题。</p>
+<p>深色主题下同样生效，颜色全部走站点自己的 CSS 变量：</p>
+<p><img src="screenshots/home-dark.png" alt="深色主题"></p>
+<h2>📄 许可</h2>
+<p><a href="LICENSE">MIT</a> —— 随便改、随便用，出问题别找我。</p>
+</div></body></html>

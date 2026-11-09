@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Doc, DocMeta } from './core/ir'
 import { blocksToText, collectImages } from './core/ir'
 import { parseArticle, renderPreviewHtml } from './core/parse'
@@ -65,8 +65,15 @@ import { DEFAULT_SITE_NAME } from './cards/build'
 import { ImportPanel } from './components/ImportPanel'
 import { MetaEditor } from './components/MetaEditor'
 import { PlatformNav } from './components/PlatformNav'
-import { AIPanel } from './components/AIPanel'
-import { CardStudio } from './components/CardStudio'
+// AIPanel / CardStudio 只在导入文章、选了平台之后才渲染，首屏不需要：
+// 拆成懒加载 chunk，省掉首屏主包里的一大块。其它面板（SettingsSheet 等）
+// 是常驻挂载的，懒加载省不掉首屏请求，就不拆了。
+const AIPanel = lazy(() =>
+  import('./components/AIPanel').then((m) => ({ default: m.AIPanel })),
+)
+const CardStudio = lazy(() =>
+  import('./components/CardStudio').then((m) => ({ default: m.CardStudio })),
+)
 import { SettingsSheet } from './components/SettingsSheet'
 import { ComplianceChip } from './components/ComplianceChip'
 import { PublishLedger } from './components/PublishLedger'
@@ -1385,6 +1392,7 @@ export default function App() {
                     )
                   ) : kind === 'rewrite' && isRewriteId(platform) ? (
                     <div className="panel-card">
+                      <Suspense fallback={<p>加载中…</p>}>
                       <AIPanel
                         platform={platform}
                         ai={currentAI}
@@ -1401,9 +1409,11 @@ export default function App() {
                         onEditOneLiner={editOneLiner}
                         onOpenSettings={() => setSettingsOpen(true)}
                       />
+                      </Suspense>
                     </div>
                   ) : (
                     <div className="panel-card">
+                      <Suspense fallback={<p>加载中…</p>}>
                       <CardStudio
                         doc={doc}
                         sections={sections}
@@ -1414,6 +1424,7 @@ export default function App() {
                         onSiteNameChange={setSiteName}
                         onToast={toast}
                       />
+                      </Suspense>
                     </div>
                   )}
                 </div>
