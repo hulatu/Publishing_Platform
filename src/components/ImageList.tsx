@@ -1,15 +1,15 @@
 /**
  * 正文图片清单
  *
- * 三个用途，都挂在同一个面板上：
+ * 两个用途，都挂在同一个面板上：
  * 1. 体检 —— 发布前查一遍「能不能取到 / 别的站引用会不会被拒 / 多大 / 什么格式」；
- * 2. 打包下载 —— 按 01.jpg 这样的序号拿一份原图（备份、换图床、传别的平台）；
- * 3. 传图床 —— 把 md 里的本地路径换成能外链的地址。
+ * 2. 导出 —— 按 01.jpg 这样的序号拿一份「这个平台能直接用」的图。
  *
- * 顺序就是使用顺序：先体检，再决定要不要折腾。
+ * 顺序就是使用顺序：先体检，再导出。
  *
- * 不再假设「公众号必须 mmbiz.qpic.cn」：实测自建图床的外链在公众号正文里显示正常，
- * 所以这里不劝人重传，只把事实摆出来。
+ * 这里**不接管图床**：图片从哪来、存在哪，是作者自己的事（upic + R2 也好，
+ * 别的图床也好）。工具只读 md 里的链接，不改写、不上传、不替你换地址。
+ * 一个发布台如果连图床都要管，那就变成了另一个图床。
  *
  * 跨域是常态：图床没开 CORS 时 fetch 会失败。这时先退到同源代理
  * （functions/api/img.ts，Pages 部署后才有）再试一次，还不行才降级成
@@ -21,8 +21,6 @@ import type { ImageRef } from '../core/ir'
 import { mapLimit } from '../core/async'
 import { downloadBlob } from '../cards/export'
 import { safeFileName } from '../cards/export'
-import type { AssetFile } from '../core/local-assets'
-import { HostUploader } from './HostUploader'
 import {
   auditImage,
   fmtBytes,
@@ -32,95 +30,31 @@ import {
   type AuditRow,
   type ImageIssue,
 } from '../core/image-audit'
+import {
+  IMAGE_CONCURRENCY,
+  exportRule,
+  fetchImage,
+  fileNameFor,
+  fmtSize,
+  manifestText,
+  planSummary,
+  transcode,
+  type ManifestRow,
+} from '../core/image-export'
 
 interface Props {
   open: boolean
   onClose: () => void
   images: ImageRef[]
   title: string
-  /** 当前平台，决定体检用哪套阈值（公众号禁 SVG、小红书要 3:4） */
+  /** 当前平台，决定体检阈值和导出规则（公众号禁 SVG、小红书要 3:4） */
   platform: string
-  /** 同一个文件夹里拖进来的本地图片，传图床要用 */
-  assets: AssetFile[]
-  /** 上传完成：把正文里的本地路径换成图床地址 */
-  onUploaded: (mapping: Map<string, string>) => void
-  onAddAssets: (assets: AssetFile[]) => void
-  onOpenSettings: () => void
-  onToast: (message: string, kind?: 'success' | 'error' | 'info') => void
+  /** 平台显示名，只用在清单和提示里 */
+  platformLabel: string
 }
 
 type Status = 'idle' | 'busy' | 'ok' | 'fail'
-type Tab = 'audit' | 'download' | 'host'
-
-const EXT: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/svg+xml': 'svg',
-  'image/avif': 'avif',
-}
-
-function extOf(blob: Blob, url: string): string {
-  const byType = EXT[blob.type.toLowerCase()]
-  if (byType) return byType
-  const m = /\.([a-z0-9]{2,5})(?:\?|#|$)/i.exec(url)
-  return m ? m[1].toLowerCase() : 'jpg'
-}
-
-/**
- * 并发度。浏览器同域本来就允许 6 个连接，串行等于只用了 1/6；
- * 取 3 而不是 6，是不想同时向同一个图床开满连接 —— 容易被当成爬虫。
- */
-const IMAGE_CONCURRENCY = 3
-
-const IMAGE_TIMEOUT = 15_000
-
-/**
- * 同源图片代理。图床只服务 `<img>`、不发 Access-Control-Allow-Origin 时，
- * fetch 会被浏览器拦掉；`<img>` 却照常显示 —— 所以「预览正常、下载全红」。
- * 这个路径由 Pages Function 转发并补上 CORS 头。
- */
-const PROXY = '/api/img?u='
-
-async function fetchImageOnce(url: string): Promise<Blob> {
-  // AbortSignal.timeout 在 Safari 16 以下没有，直接用会抛 TypeError，
-  // 结果被当成「跨域失败」—— 提示全错。手动兜一层。
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(new DOMException('timeout', 'TimeoutError')), IMAGE_TIMEOUT)
-  try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit', signal: ctrl.signal })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const blob = await res.blob()
-    if (!blob.type.startsWith('image/')) throw new Error('不是图片')
-    return blob
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-/**
- * 超时重试一次。
- *
- * 只重试超时：CORS 被拦和网络失败在浏览器里都是同一个 TypeError，
- * 分不出来，重试也是白等 15 秒。而超时是明确信号 —— 图床慢一下很常见。
- */
-async function fetchImage(url: string): Promise<Blob> {
-  try {
-    try {
-      return await fetchImageOnce(url)
-    } catch (err) {
-      const isTimeout = err instanceof DOMException && err.name === 'TimeoutError'
-      if (!isTimeout) throw err
-      return await fetchImageOnce(url)
-    }
-  } catch {
-    // 直连不行就走同源代理再试一次。
-    // 代理不可用时（本地没跑 Functions、域名不在白名单）这里会再抛，
-    // 由上层把这张标成「跨域」。
-    return await fetchImageOnce(PROXY + encodeURIComponent(url))
-  }
-}
+type Tab = 'audit' | 'export'
 
 /** 最严重的那条结论，缩略图角标只显示它 —— 一张图挂三处，先说致命的那处 */
 function worst(issues: ImageIssue[]): ImageIssue | null {
@@ -140,19 +74,8 @@ function factLine(row: AuditRow | undefined, hasLocal: boolean): string {
   return parts.join(' · ')
 }
 
-export function ImageList({
-  open,
-  onClose,
-  images,
-  title,
-  platform,
-  assets,
-  onUploaded,
-  onAddAssets,
-  onOpenSettings,
-  onToast,
-}: Props) {
-  /** 打包下载 / 传图床 / 体检 —— 同一批图片的几件事，放一个面板里省几个顶栏入口 */
+export function ImageList({ open, onClose, images, title, platform, platformLabel }: Props) {
+  /** 体检 / 导出 —— 同一批图片的两件事，放一个面板里省一个顶栏入口 */
   const [tab, setTab] = useState<Tab>('audit')
   const [status, setStatus] = useState<Record<string, Status>>({})
   /** <img> 自身加载失败（链接失效、防盗链），和「跨域打不进包」是两回事 */
@@ -162,6 +85,13 @@ export function ImageList({
   const [done, setDone] = useState(0)
   /** 打包阶段（不是下载阶段）的失败原因 */
   const [error, setError] = useState('')
+  /** 上一次导出留下的「没处理」说明，按编号对齐，导出完才显示 */
+  const [notes, setNotes] = useState<{ name: string; text: string }[]>([])
+  /** 导出后每张的结果：体积 + 处理说明。不解压也能看见发生了什么 */
+  const [outRows, setOutRows] = useState<Record<string, { bytes: number; done: string; skipped: string }>>({})
+
+  /** 导出规则：这个平台对图片有什么硬要求 */
+  const outRule = useMemo(() => exportRule(platform), [platform])
 
   /* ---------- 体检 ---------- */
 
@@ -243,25 +173,37 @@ export function ImageList({
 
   const setOne = (src: string, s: Status) => setStatus((prev) => ({ ...prev, [src]: s }))
 
-  const downloadAll = async () => {
+  const exportAll = async () => {
     if (images.length === 0 || busy) return
     setBusy(true)
     setStatus({})
     setDone(0)
     setError('')
+    setNotes([])
+    setOutRows({})
 
     let ok = 0
 
     try {
-      // 并发拉图。命名放在最后按原顺序做 —— 并发是乱序完成的，
-      // 边下边编号会把 03 号图存成 01。
-      const blobs = await mapLimit(images, IMAGE_CONCURRENCY, async (img) => {
+      // 并发取图 + 转码。编号放在最后按原顺序做 —— 并发是乱序完成的，
+      // 边转边编号会把 03 号图存成 01。
+      const results = await mapLimit(images, IMAGE_CONCURRENCY, async (img) => {
         setOne(img.src, 'busy')
         try {
           const blob = await fetchImage(img.src)
+          // 体检那一轮已经量过尺寸和体积，这里直接复用，省一轮重复请求。
+          // 没体检过也能跑：facts 全空时 planExport 会退化成「原样导出」。
+          const row = rows[img.src]
+          const out = await transcode(blob, outRule, {
+            bytes: row?.bytes,
+            contentType: row?.contentType ?? blob.type,
+            width: row?.width,
+            height: row?.height,
+            urlExt: mimeExt(row?.contentType) || undefined,
+          })
           setOne(img.src, 'ok')
           ok++
-          return blob
+          return { blob: out.blob, ext: out.ext, done: out.done, skipped: out.skipped, src: img }
         } catch {
           setOne(img.src, 'fail')
           return null
@@ -276,15 +218,41 @@ export function ImageList({
       const { default: JSZip } = await import('jszip')
       const zip = new JSZip()
       const folder = zip.folder('images') ?? zip
+      const manifest: ManifestRow[] = []
 
-      images.forEach((img, i) => {
-        const blob = blobs[i]
-        if (!blob) return
-        folder.file(`${String(i + 1).padStart(2, '0')}.${extOf(blob, img.src)}`, blob)
+      results.forEach((r, i) => {
+        if (!r) return
+        const name = fileNameFor(i, r.ext)
+        folder.file(name, r.blob)
+        manifest.push({
+          name,
+          src: r.src.src,
+          alt: r.src.alt,
+          bytes: r.blob.size,
+          done: r.done,
+          skipped: r.skipped,
+        })
       })
 
+      // 清单和图片放一起：解开 zip 只看文件名，对不上文中位置，会传错顺序
+      const when = new Date().toLocaleString('zh-CN', { hour12: false })
+      zip.file('图片清单.txt', manifestText(manifest, platformLabel, when))
+
       const out = await zip.generateAsync({ type: 'blob' })
-      downloadBlob(out, `${safeFileName(title)}-正文图片.zip`)
+      downloadBlob(out, `${safeFileName(title)}-${platformLabel}图片.zip`)
+
+      // 卡片上就地显示结果：不用解压就能确认「哪张被压了、哪张没动」
+      const shown: Record<string, { bytes: number; done: string; skipped: string }> = {}
+      results.forEach((r) => {
+        if (!r) return
+        shown[r.src.src] = {
+          bytes: r.blob.size,
+          done: r.done.join('；'),
+          skipped: r.skipped.join('；'),
+        }
+      })
+      setOutRows(shown)
+      setNotes(manifest.filter((m) => m.skipped.length > 0).map((m) => ({ name: m.name, text: m.skipped.join('；') })))
     } catch (e) {
       // 图下好了却打包失败（图太大、内存不够）以前是静默什么都不发生，
       // 用户会以为是没点到按钮
@@ -294,8 +262,8 @@ export function ImageList({
     }
   }
 
-  /** 缩略图 + 元信息。体检和打包下载共用，区别只在右上角那个角标。 */
-  const grid = (mode: 'audit' | 'download') => (
+  /** 缩略图 + 元信息。体检和导出共用，区别只在右上角那个角标。 */
+  const grid = (mode: 'audit' | 'export') => (
     <div className="img-grid">
       {images.map((img, i) => {
         const row = rows[img.src]
@@ -319,15 +287,32 @@ export function ImageList({
               {mode === 'audit'
                 ? issue && <span className={`img-badge ${issue.level}`} title={issue.detail}>{issue.tag}</span>
                 : null}
-              {mode === 'download' && s === 'ok' ? <span className="img-badge ok">✓</span> : null}
-              {mode === 'download' && s === 'fail' ? <span className="img-badge fail">跨域</span> : null}
-              {mode === 'download' && s === 'busy' ? <span className="img-badge busy">…</span> : null}
+              {mode === 'export' && s === 'ok' ? <span className="img-badge ok">✓</span> : null}
+              {mode === 'export' && s === 'fail' ? <span className="img-badge fail">失败</span> : null}
+              {mode === 'export' && s === 'busy' ? <span className="img-badge busy">…</span> : null}
             </div>
             <div className="img-meta">
               <span className="img-alt" title={img.alt || img.src}>
                 {img.alt || '（无说明文字）'}
               </span>
               {mode === 'audit' && facts ? <span className="img-facts">{facts}</span> : null}
+              {mode === 'export' && outRows[img.src] ? (
+                <span
+                  className="img-facts"
+                  title={
+                    [outRows[img.src].done, outRows[img.src].skipped].filter(Boolean).join('；') ||
+                    '原样导出，没有重新编码'
+                  }
+                >
+                  {fmtSize(outRows[img.src].bytes)}
+                  {/* 「已处理」和「未处理」必须分开：动图是没处理，不是处理过 */}
+                  {outRows[img.src].done
+                    ? ' · 已处理'
+                    : outRows[img.src].skipped
+                      ? ' · 未处理'
+                      : ' · 原样'}
+                </span>
+              ) : null}
               <a className="img-open" href={img.src} target="_blank" rel="noreferrer">
                 打开原图
               </a>
@@ -358,30 +343,19 @@ export function ImageList({
             <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>
               体检
             </button>
-            <button className={tab === 'download' ? 'active' : ''} onClick={() => setTab('download')}>
-              打包下载
-            </button>
-            <button className={tab === 'host' ? 'active' : ''} onClick={() => setTab('host')}>
-              传图床
+            <button className={tab === 'export' ? 'active' : ''} onClick={() => setTab('export')}>
+              导出
             </button>
           </div>
 
-          {tab === 'host' ? (
-            <HostUploader
-              images={images}
-              assets={assets}
-              onUploaded={onUploaded}
-              onAddAssets={onAddAssets}
-              onOpenSettings={onOpenSettings}
-              onToast={onToast}
-            />
-          ) : tab === 'download' ? (
+          {tab === 'export' ? (
             <>
               <div className="notice notice-info" style={{ marginBottom: 14 }}>
                 <span className="notice-mark">i</span>
                 <span>
-                  按正文出现顺序编号。打包下载可以一次拿到全部原图；
-                  切到「传图床」能把 md 里的本地图片换成外链地址。
+                  按正文出现顺序编号，打包成 zip，里面附一份「图片清单.txt」对上位置。
+                  {planSummary(outRule)}
+                  <span className="audit-why">{outRule.note}</span>
                 </span>
               </div>
 
@@ -390,7 +364,7 @@ export function ImageList({
                   这篇文章里没有图片。
                 </div>
               ) : (
-                grid('download')
+                grid('export')
               )}
 
               {error ? (
@@ -404,8 +378,21 @@ export function ImageList({
                 <div className="notice notice-warn" style={{ marginTop: 12 }}>
                   <span className="notice-mark">!</span>
                   <span>
-                    {failed} 张图所在站点没开跨域，代理也没放行（域名不在{' '}
-                    <code>functions/api/img.ts</code> 的白名单里）；点每张下面的「打开原图」另存即可。
+                    {failed} 张没导出来：站点没开跨域、代理也没放行（域名不在{' '}
+                    <code>functions/api/img.ts</code> 的白名单里），或者这张图本身就取不到。
+                    点每张下面的「打开原图」另存即可。
+                  </span>
+                </div>
+              ) : null}
+
+              {notes.length > 0 ? (
+                <div className="notice notice-warn" style={{ marginTop: 12 }}>
+                  <span className="notice-mark">!</span>
+                  <span>
+                    {notes.length} 张按原样导出，没有处理：
+                    <span className="audit-why">
+                      {notes.map((n) => `${n.name} — ${n.text}`).join('；')}
+                    </span>
                   </span>
                 </div>
               ) : null}
@@ -459,10 +446,10 @@ export function ImageList({
               {auditing ? `体检中 ${auditDone}/${images.length}…` : audited ? '重查一遍' : '开始体检'}
             </button>
           ) : null}
-          {tab === 'download' ? (
-            <button className="btn btn-primary btn-sm" onClick={downloadAll} disabled={busy || images.length === 0}>
+          {tab === 'export' ? (
+            <button className="btn btn-primary btn-sm" onClick={exportAll} disabled={busy || images.length === 0}>
               {busy ? <span className="spinner dark" /> : null}
-              {busy ? `正在打包 ${done}/${images.length}…` : `打包下载（${images.length} 张）`}
+              {busy ? `正在导出 ${done}/${images.length}…` : `导出（${images.length} 张）`}
             </button>
           ) : null}
         </div>

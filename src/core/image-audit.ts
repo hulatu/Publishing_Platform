@@ -186,7 +186,10 @@ export function judge(facts: ImageFacts, rule: ImageRule, src: string): ImageIss
     issues.push({
       level: 'error',
       tag: '本地路径',
-      detail: '这张图还是本地相对路径，粘到任何平台都取不到。切到「传图床」把它换成外链地址。',
+      detail:
+        '这张图还是本地相对路径，粘到任何平台都取不到。' +
+        '先在 upic（或你自己的图床）把它传上去，再把正文里的路径换成外链地址 —— ' +
+        '这个工具不改写正文，只读链接。',
     })
   } else if (facts.loaded === false) {
     if (facts.reachable === true) {

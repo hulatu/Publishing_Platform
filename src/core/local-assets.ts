@@ -1,24 +1,12 @@
 /**
- * 本地图片资源
+ * 拖进来的文件
  *
- * 拖一个文件夹进来时，md 里的 `./images/a.jpg` 和磁盘上的 `images/a.jpg`
- * 是两回事：前者是作者写的一串字符，后者是真实的字节。这个模块负责把两者对上。
+ * 只做两件事：从拖放事件里把文件（含文件夹）读出来，判断哪个是 .md。
  *
- * 匹配从严到宽三档，因为「严」的那档最不容易配错：
- *   1. 完整相对路径相等        images/a.jpg  ==  images/a.jpg
- *   2. 结尾匹配                拖的是整个博客目录时，路径会带前缀 post/images/a.jpg
- *   3. 文件名唯一匹配          只拖了几张图、md 里写的是 ../images/a.jpg
- *
- * 第 3 档必须要求「唯一」：两篇文章各有一张 `1.jpg` 是常态，
- * 名字撞了就宁可不匹配、让用户自己指，也不能传错图 —— 传错了是静默的，
- * 用户直到发出去才发现封面变成了别人的图。
+ * 这里**不收集图片**。图片归作者自己的图床管 —— 这个工具只读 md 里的链接，
+ * 不上传、不改写、也不猜「这张本地图对应正文哪一处」。少一层猜测，
+ * 就少一种「传错图还是静默的」事故。
  */
-
-export interface AssetFile {
-  /** 相对根目录的路径（拖文件夹时来自 webkitRelativePath，单独选时就是文件名） */
-  path: string
-  file: File
-}
 
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|svg|avif|bmp)$/i
 
@@ -29,48 +17,6 @@ export function isImageFile(file: File): boolean {
 
 export function isMarkdownFile(file: File): boolean {
   return /\.(md|markdown|txt)$/i.test(file.name)
-}
-
-function pathOf(file: File): string {
-  // webkitRelativePath 只在「选文件夹」或「拖目录」时有值
-  const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath
-  return (rel && rel.trim()) || file.name
-}
-
-export function collectAssets(files: File[]): AssetFile[] {
-  return files
-    .filter(isImageFile)
-    .map((file) => ({ path: pathOf(file).replace(/^\.\//, ''), file }))
-}
-
-function baseName(path: string): string {
-  const parts = path.split('/')
-  return parts[parts.length - 1] ?? path
-}
-
-/**
- * 给一个 md 里的 src 找对应的本地文件。找不到返回 null。
- *
- * `src` 应当已经过 normalizeSrc 处理（去掉 ./、前导 /、query）。
- */
-export function matchAsset(normalizedSrc: string, assets: AssetFile[]): AssetFile | null {
-  if (!normalizedSrc) return null
-
-  // 1. 完整路径相等
-  const exact = assets.find((a) => a.path === normalizedSrc)
-  if (exact) return exact
-
-  // 2. 结尾匹配：/post/images/a.jpg 以 images/a.jpg 结尾
-  const suffix = `/${normalizedSrc}`
-  const bySuffix = assets.filter((a) => a.path.endsWith(suffix))
-  if (bySuffix.length === 1) return bySuffix[0]
-
-  // 3. 文件名唯一匹配
-  const name = baseName(normalizedSrc)
-  const byName = assets.filter((a) => baseName(a.path) === name)
-  if (byName.length === 1) return byName[0]
-
-  return null
 }
 
 /* ------------------------------------------------------------------ */
@@ -101,7 +47,7 @@ async function readDirEntry(entry: FsEntry, out: File[]): Promise<void> {
   if (!entry.createReader) return
   const reader = entry.createReader()
   // readEntries 一次最多返回 100 条，必须循环读到空数组为止，
-  // 否则超过 100 张图的目录会被悄悄截断
+  // 否则超过 100 个文件的目录会被悄悄截断 —— 而截断的位置正好可能是那个 .md
   for (;;) {
     const batch = await new Promise<FsEntry[]>((resolve) => {
       reader.readEntries(
@@ -143,41 +89,6 @@ export async function readDataTransfer(dt: DataTransfer): Promise<File[]> {
     } else if (e.isDirectory) {
       await readDirEntry(e, out)
     }
-  }
-  return out
-}
-
-/* ------------------------------------------------------------------ */
-/* 改写 Markdown                                                       */
-/* ------------------------------------------------------------------ */
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-/**
- * 把正文里指定的图片地址换掉。
- *
- * 只在「图片语法里」替换，不做全局字符串替换 —— `images/a.jpg` 这种串
- * 完全可能出现在正文的代码块或说明文字里，全局换会把文章改坏。
- *
- * 支持两种写法：
- *   ![alt](./images/a.jpg "标题")
- *   <img src="./images/a.jpg">
- */
-export function rewriteImageSrc(md: string, mapping: Map<string, string>): string {
-  if (mapping.size === 0) return md
-  let out = md
-  for (const [from, to] of mapping) {
-    if (!from || from === to) continue
-    const re = escapeRe(from)
-
-    // Markdown 图片：![alt](src) 或 ![alt](src "title")
-    out = out.replace(
-      new RegExp(`(!\\[[^\\]]*\\]\\()${re}(\\s+(?:"[^"]*"|'[^']*'))?\\)`, 'g'),
-      (_m, head: string, title?: string) => `${head}${to}${title ?? ''})`,
-    )
-
-    // HTML img：属性顺序不定，只认 src 本身
-    out = out.replace(new RegExp(`(<img\\b[^>]*?\\bsrc=["'])${re}(["'])`, 'gi'), (_m, head: string, tail: string) => `${head}${to}${tail}`)
   }
   return out
 }

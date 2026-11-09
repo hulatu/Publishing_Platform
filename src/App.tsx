@@ -72,7 +72,6 @@ import { ComplianceChip } from './components/ComplianceChip'
 import { PublishLedger } from './components/PublishLedger'
 import { ImageList } from './components/ImageList'
 import { CoverSheet } from './components/CoverSheet'
-import { rewriteImageSrc, type AssetFile } from './core/local-assets'
 import { MetaLab } from './components/MetaLab'
 import { TailSheet } from './components/TailSheet'
 import { DraftsSheet } from './components/DraftsSheet'
@@ -182,8 +181,6 @@ export default function App() {
   const [tailOpen, setTailOpen] = useState(false)
   /** 导入时的完整原文（含 front matter），草稿要连正文一起存才恢复得回来 */
   const [sourceText, setSourceText] = useState('')
-  /** 和 md 一起拖进来的本地图片，上传图床时按路径匹配 */
-  const [assets, setAssets] = useState<AssetFile[]>([])
   const [drafts, setDrafts] = useState<DraftSnapshot[]>(listDrafts)
   const [draftsOpen, setDraftsOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -261,7 +258,7 @@ export default function App() {
    * AI 面板会显示「N 节」而摘要只有 M 条，看着像坏了，其实是两份东西。
    */
   const load = useCallback(
-    (source: string, name: string, nextAssets: AssetFile[] = []) => {
+    (source: string, name: string) => {
       const parsed = parseArticle({ source, fileName: name })
       const key = articleKeyOf(parsed)
       const fp = fingerprintOf(parsed, splitSections(parsed).length)
@@ -271,7 +268,6 @@ export default function App() {
       setFileName(name)
       setSourceText(source)
       setArticleKey(key)
-      setAssets(nextAssets)
 
       if (saved && parsed.blocks.length > 0 && saved.fingerprint === fp && draftValue(saved).worth) {
         setDigest(saved.digest)
@@ -299,35 +295,6 @@ export default function App() {
 
   const updateMeta = useCallback((patch: Partial<DocMeta>) => {
     setDoc((d) => (d ? { ...d, meta: { ...d.meta, ...patch } } : d))
-  }, [])
-
-  /**
-   * 图床上传完成后，把正文里的本地路径换成图床地址。
-   *
-   * 只替换「图片语法里」的地址，不做全局字符串替换 —— `images/a.jpg` 这种串
-   * 完全可能出现在正文说明或代码块里，全局换会把文章改坏。
-   *
-   * 替换后重新解析，让预览、复制、导出全部用上新链接；但**不动**已经生成的
-   * AI 文案和台账 —— 换个图片地址不该把摘要和改写结果清空。
-   */
-  const applyHostUrls = useCallback(
-    (mapping: Map<string, string>) => {
-      if (mapping.size === 0) return
-      const next = rewriteImageSrc(sourceText, mapping)
-      if (next === sourceText) return
-      setSourceText(next)
-      setDoc(parseArticle({ source: next, fileName }))
-    },
-    [sourceText, fileName],
-  )
-
-  const addAssets = useCallback((more: AssetFile[]) => {
-    setAssets((prev) => {
-      // 同路径的后来者覆盖前面的：用户补选就是为了换掉缺的那张
-      const map = new Map(prev.map((a) => [a.path, a]))
-      for (const a of more) map.set(a.path, a)
-      return [...map.values()]
-    })
   }, [])
 
   /* ---------------- 渲染 ---------------- */
@@ -1603,14 +1570,7 @@ export default function App() {
         images={images}
         title={doc?.meta.title ?? '文章'}
         platform={platform}
-        assets={assets}
-        onUploaded={applyHostUrls}
-        onAddAssets={addAssets}
-        onOpenSettings={() => {
-          setImagesOpen(false)
-          setSettingsOpen(true)
-        }}
-        onToast={toast}
+        platformLabel={allPlatforms.find((p) => p.id === platform)?.name ?? platform}
       />
 
       <CoverSheet

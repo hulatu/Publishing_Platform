@@ -3871,18 +3871,6 @@ select {
   letter-spacing: 0.3px;
 }
 
-/* 缺文件时缩略图位置的占位。比空白方块多说一句，省得用户以为是加载慢 */
-.img-thumb-empty {
-  font-size: var(--fs-2xs);
-  color: var(--ink-soft);
-  letter-spacing: 0.3px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  margin: 10px;
-  background: var(--panel-soft);
-}
-
 .img-index {
   position: absolute;
   left: 6px;
@@ -4560,67 +4548,10 @@ select {
   color: var(--ink-muted);
 }
 
-/* ---------- 图床上传 ---------- */
+/* ---------- 图片面板 ---------- */
 
 .img-tabs {
   margin-bottom: 14px;
-}
-
-.host-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.host-chip {
-  font-size: var(--fs-xs);
-  padding: 2px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--panel-soft);
-  /* 这三个数是「数一数有几张」的结果，不是装饰：用 ink-soft 而不是 ink-muted，
-     浅色下 3.19:1 那种压得过头的灰会让「已外链 1」几乎读不出来 */
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
-
-/* 待上传是「要动手」的那一类，给强调色；已外链是「不用管」，压到最淡 */
-.host-chip.ready {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--accent-deep);
-}
-
-/* 缺文件是真问题，用 warn 的实心描边 + 深一档的字，比软底软字醒目 */
-.host-chip.missing {
-  border-color: var(--warn);
-  background: var(--warn-soft);
-  color: var(--warn);
-  font-weight: 600;
-}
-
-/* 匹配到的本地文件名 = 用户核对「有没有配错图」的唯一依据，必须读得清 */
-.img-host-state {
-  font-size: var(--fs-2xs);
-  color: var(--ink-soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.img-host-err {
-  margin-top: 4px;
-  font-size: var(--fs-2xs);
-  line-height: 1.5;
-  color: var(--error);
-}
-
-.host-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 14px;
 }
 
 @media (max-width: 980px) {

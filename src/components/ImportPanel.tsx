@@ -1,11 +1,10 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { decodeText, looksMojibake } from '../core/text'
-import { collectAssets, isImageFile, isMarkdownFile, readDataTransfer, type AssetFile } from '../core/local-assets'
+import { isImageFile, isMarkdownFile, readDataTransfer } from '../core/local-assets'
 
 interface Props {
   currentName: string
-  /** assets 是同一个文件夹里的图片，上传图床时要用；单独选 .md 时为空 */
-  onLoad: (source: string, fileName: string, assets?: AssetFile[]) => void
+  onLoad: (source: string, fileName: string) => void
   onError: (message: string) => void
   /** 非错误的提示，比如「这份文件是 GBK 编码，已自动转换」 */
   onNotice?: (message: string) => void
@@ -22,7 +21,7 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
 
   const compact = Boolean(currentName) && !reopen
 
-  const readFile = async (file: File, assets: AssetFile[] = []) => {
+  const readFile = async (file: File) => {
     if (!/\.(md|markdown|txt)$/i.test(file.name)) {
       onError('只支持 .md / .markdown / .txt 文件')
       return
@@ -41,14 +40,11 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
       // 这种情况自动转码救不回来，只能提醒用户回头查源头
       onNotice?.('正文看起来是乱码，可能是复制粘贴时用了错误的编码，建议检查原文')
     }
-    if (assets.length > 0) {
-      onNotice?.(`同时收到 ${assets.length} 张本地图片，可以在「图片」面板里传图床`)
-    }
-    onLoad(text, file.name, assets)
+    onLoad(text, file.name)
     setReopen(false)
   }
 
-  /** 一批文件里挑出 .md，其余当本地图片。拖文件夹和选文件夹都走这里 */
+  /** 一批文件里挑出 .md。拖文件夹和选文件夹都走这里 */
   const applyFiles = async (files: File[]) => {
     const md = files.find(isMarkdownFile)
     if (!md) {
@@ -59,7 +55,7 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
       )
       return
     }
-    await readFile(md, collectAssets(files))
+    await readFile(md)
   }
 
   const handleDrop = async (e: DragEvent) => {
@@ -118,11 +114,11 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
               </svg>
             </span>
             <span className="dropzone-main">把 .md 拖到这里</span>
-            <span className="dropzone-hint">拖整个文件夹也行，图片会一起收下</span>
+            <span className="dropzone-hint">拖整个文件夹也行，会自动找出里面的 .md</span>
           </div>
 
           <button className="paste-toggle" onClick={() => dirRef.current?.click()}>
-            选文件夹（md + 图片一起）
+            选文件夹（自动找 .md）
           </button>
 
           <button className="paste-toggle" onClick={() => setPasteOpen((v) => !v)}>

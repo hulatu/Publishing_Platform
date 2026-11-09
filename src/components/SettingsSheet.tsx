@@ -23,8 +23,6 @@ import {
   type PingResult,
 } from '../ai/provider'
 import { loadUnsplashKey, saveUnsplashKey } from '../core/unsplash'
-import { hostLabels, hostReady, loadHostConfig, saveHostConfig, type HostConfig } from '../core/image-host'
-import { HostSettings } from './HostSettings'
 
 interface Props {
   open: boolean
@@ -44,15 +42,12 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
   /** Unsplash 的 Access Key：和 AI Key 一样只存本机，但两者用途不同，各存各的 */
   const [unsplashKey, setUnsplashKey] = useState('')
   const [showUnsplash, setShowUnsplash] = useState(false)
-  /** 图床：把 md 里的本地图片传上去，换成能外链的地址 */
-  const [host, setHost] = useState<HostConfig>(loadHostConfig)
 
   useEffect(() => {
     if (!open) return
     setByok(loadByok())
     setCloudModel(loadCloudModel())
     setUnsplashKey(loadUnsplashKey())
-    setHost(loadHostConfig())
     setPing(null)
     setShowKey(false)
     setShowUnsplash(false)
@@ -108,14 +103,13 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
     saveCloudModel(cloudModel)
     // Unsplash Key 单独存：没填就是清空，不该影响 AI Key 的保存结果
     const unsplashStored = saveUnsplashKey(unsplashKey)
-    const hostStored = saveHostConfig(host)
     onSaved(
-      stored && unsplashStored && hostStored
+      stored && unsplashStored
         ? ready
           ? `已保存，使用 ${byok.model}`
           : '已保存'
         : '浏览器拒绝写入本地存储（隐私模式？），Key 只在本次会话有效',
-      stored && unsplashStored && hostStored ? 'success' : 'error',
+      stored && unsplashStored ? 'success' : 'error',
     )
     onClose()
   }
@@ -312,16 +306,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
             </button>
           </div>
 
-          {/* ---------- 图床（可选） ---------- */}
-          <div className="side-title" style={{ marginTop: 24, marginBottom: 10 }}>
-            <span>图床（可选）</span>
-            <span className="count">{hostReady(host) ? hostLabels[host.kind] : '未配置'}</span>
-          </div>
-          <div className="field-hint" style={{ marginBottom: 10 }}>
-            把 md 里的本地图片传上去，换成能外链的地址。本来就在网上的图不动 —— 你原本用哪个图床，就还是哪个链接。
-          </div>
-          <HostSettings cfg={host} onChange={setHost} />
-
+          {/* 这里不提供图床设置：图片归作者自己的图床管，这个工具只读 md 里的链接 */}
           <div style={{ marginTop: 18 }}>
             <button
               className="btn btn-sm"
