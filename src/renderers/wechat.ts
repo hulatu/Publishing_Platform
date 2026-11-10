@@ -82,7 +82,9 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
     warnings: [...warnings, ...result.warnings],
     stats: [
       {
-        label: '正文字数',
+        // 顶栏显示的是正文（不含文末）的字数，这里含文末 —— 文末是跟着一起粘贴的，
+        // 20000 字上限按总数算。标签写明「含文末」，免得同一篇文章两个数字对不上。
+        label: '正文字数（含文末）',
         value: `${words} / ${WECHAT_WORD_LIMIT}（${pct}%）`,
         level: overLimit ? 'error' : pct > 85 ? 'warn' : 'ok',
       },
@@ -90,7 +92,8 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
       // 只是一个计数，不是待办：外链图在公众号里能正常显示，不需要重传
       { label: '图片', value: `${images.length} 张` },
       { label: '外链', value: `${links.length} 个已转文末` },
-      { label: '文末', value: tailBlocks > 0 ? `${tailBlocks} 块` : '未启用' },
+      // 和顶部「文末 2/3」小按钮同一口径，别一边写「2 块」一边写「2/3」
+      { label: '文末', value: tailBlocks > 0 ? `${tailBlocks}/3` : '未启用' },
     ],
     fileName: `${doc.meta.slug || 'article'}.html`,
   }

@@ -184,7 +184,9 @@ function renderInline(nodes: Inline[], ctx: Ctx): string {
       case 'fnref': {
         if (!ctx.fnOrder.includes(n.id)) ctx.fnOrder.push(n.id)
         const idx = ctx.fnOrder.indexOf(n.id) + 1
-        out += `<sup${attr(theme.linkMark)}>[${idx}]</sup>`
+        // 脚注用 [注n]，和外链的 [n] 区分开 —— 两边都从 1 开始编，
+        // 不区分的话同一篇文章里会出现两个 [1]，一个是注释、一个是参考链接
+        out += `<sup${attr(theme.linkMark)}>[注${idx}]</sup>`
         break
       }
 
@@ -437,7 +439,8 @@ function renderFootnotes(ctx: Ctx): string {
       const fn = ctx.fnMap.get(id)
       const text = fn ? blocksToText(fn.children) : ''
       if (!fn) ctx.warnings.push(`脚注 [^${id}] 在正文里被引用但找不到定义`)
-      return `<section${attr(theme.fnItem)}>[${i + 1}] ${escapeHtml(text)}</section>`
+      // 和正文里的上标一致：脚注是 [注n]，外链是 [n]，不共用编号
+      return `<section${attr(theme.fnItem)}>[注${i + 1}] ${escapeHtml(text)}</section>`
     })
     .join('')
   return title + items

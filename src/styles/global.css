@@ -95,7 +95,7 @@
   --radius-lg: 13px;
   --radius-xl: 18px;
   --radius-pill: 999px;
-  --sidebar-w: 300px;
+  --sidebar-w: 320px;
 
   /* 预览区的阅读列宽。提示条、折叠清单、源码卡片、富文本预览、Markdown 预览、
      改写/配图面板全用这一个值 —— 原先分别是 780 / 780 / 780 / 720 / 760 / 820，
@@ -628,10 +628,12 @@ select {
 .paste-toggle {
   margin-top: 8px;
   width: 100%;
-  padding: 6px 0;
+  padding: 7px 0;
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  font-size: var(--fs-xs);
-  color: var(--ink-muted);
+  background: var(--panel);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
   transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
@@ -714,8 +716,10 @@ select {
   font-size: var(--fs-xs);
   color: var(--ink-soft);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 长标题别一行截断：和侧栏平台说明一样放两行，读得到完整标题 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   letter-spacing: 0;
 }
 
@@ -753,7 +757,7 @@ select {
 
 .field-label {
   display: block;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   color: var(--ink-muted);
   margin-bottom: 4px;
   letter-spacing: 0.02em;
@@ -793,7 +797,7 @@ select {
 
 .field-hint {
   margin-top: 4px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   color: var(--ink-muted);
   line-height: 1.6;
 }
@@ -952,10 +956,10 @@ select {
 }
 
 .nav-item-meta {
-  /* 10px 的汉字在 PingFang 下已经挤成一团，10.5 是还能读的下限；
-     配上提到 4.87:1 的 --ink-muted，侧栏这行说明才真的能读。
+  /* 10.5px 的汉字在 PingFang 下已经挤成一团，之前是「还能读的下限」；
+     实测侧栏说明还是吃力，提到 11.5px，配上提到 4.87:1 的 --ink-muted 才真的能读。
      一行截断读不到完整说明，改成最多两行（hover 时 title 属性仍给全文）。 */
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-xs);
   color: var(--ink-muted);
   line-height: 1.4;
   display: -webkit-box;
@@ -1956,8 +1960,8 @@ select {
 }
 
 .btn-sm {
-  padding: 5px 10px;
-  font-size: var(--fs-xs);
+  padding: 6px 12px;
+  font-size: var(--fs-sm);
 }
 
 .btn-quiet {
@@ -2197,8 +2201,8 @@ select {
 }
 
 .icon-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2225,9 +2229,9 @@ select {
 }
 
 .segmented button {
-  padding: 4px 11px;
+  padding: 6px 12px;
   border-radius: var(--radius-xs);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   color: var(--ink-muted);
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
@@ -2261,6 +2265,21 @@ select {
 .studio-panel {
   flex: 1;
   min-width: 0;
+}
+
+/* 配图导出按钮吸底：面板很长（卡片列表 + 一堆编辑表单），导出按钮在最底下，
+   不吸底首屏看不到，得一直滚到底。sticky 贴在预览滚动区的底部，
+   背景用主区底色盖住下面滚过的内容，顶上加一条线分开 */
+.studio-exportbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--line);
+  background: var(--main-bg);
 }
 
 .card-frame {
@@ -2582,11 +2601,11 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   color: var(--ink-muted);
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  padding: 3px 10px;
+  padding: 5px 12px;
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
     color var(--dur) var(--ease);
 }
@@ -2969,10 +2988,10 @@ select {
 }
 
 .preset-chip {
-  padding: 4px 11px;
+  padding: 6px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
   background: var(--panel);
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
@@ -3053,7 +3072,7 @@ select {
 
 .field-label .link-btn {
   margin-left: 6px;
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-xs);
 }
 
 /* ---------- 公众号主题选择器 ---------- */
@@ -3298,9 +3317,9 @@ select {
 
 /* 主标题右侧的 chip */
 .head-chip {
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
-  padding: 3px 9px;
+  padding: 6px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -4339,7 +4358,7 @@ select {
 
 @media (max-width: 1180px) {
   :root {
-    --sidebar-w: 268px;
+    --sidebar-w: 288px;
   }
   .main-head,
   .actionbar,

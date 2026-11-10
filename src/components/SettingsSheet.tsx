@@ -118,7 +118,9 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
     <div className="modal-mask" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <span className="modal-title">设置 · 接入大模型</span>
+          {/* 标题只写「设置」：这个弹窗不只管大模型，下面还有 Unsplash 封面图 Key。
+              写「接入大模型」会让人以为它只管 Key，找封面设置时想不到来这里 */}
+          <span className="modal-title">设置</span>
           <button className="icon-btn" onClick={onClose}>
             ×
           </button>

@@ -117,6 +117,12 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
             <span className="dropzone-hint">拖整个文件夹也行，会自动找出里面的 .md</span>
           </div>
 
+          {/* 单文件入口：点拖放区也能选文件，但那不明显。文件夹 input 选单个 .md 没反应
+              （directory 模式只要文件夹），所以单文件要一个自己的按钮 */}
+          <button className="paste-toggle" onClick={() => fileRef.current?.click()}>
+            选择 .md 文件
+          </button>
+
           <button className="paste-toggle" onClick={() => dirRef.current?.click()}>
             选文件夹（自动找 .md）
           </button>

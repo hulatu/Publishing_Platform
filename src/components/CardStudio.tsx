@@ -476,7 +476,7 @@ export function CardStudio({
           </>
         ) : null}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <div className="studio-exportbar">
           <button className="btn btn-accent" onClick={exportOne} disabled={exporting || !selected}>
             {exporting ? <span className="spinner" /> : null}
             导出这张

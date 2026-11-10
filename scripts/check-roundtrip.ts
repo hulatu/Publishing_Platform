@@ -210,7 +210,8 @@ console.log('\n5. 补回定义后，各出口仍然能正常渲染')
 
   const d = doc(orphanSrc)
   const wx = renderWechat(d, { wechatThemeId: 'paper' }).html ?? ''
-  check(/\[1\][^<]*被引用的定义/.test(wx), '公众号 HTML 里脚注编号与内容对得上')
+  // 脚注是 [注n]（和外链的 [n] 区分开），这里断言编号与内容对得上
+  check(/\[注1\][^<]*被引用的定义/.test(wx), '公众号 HTML 里脚注编号与内容对得上')
   check(!wx.includes('落单的定义'), '公众号只列被引用过的脚注（落单的进不了注释区）')
   check(!wx.includes('[^'), '公众号 HTML 里没有残留的 [^a] 字面量')
 }
