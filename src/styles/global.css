@@ -642,6 +642,18 @@ select {
   background: var(--accent-soft);
 }
 
+/* 导入的两个入口并排成一行，地位对等 */
+.import-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.import-actions .paste-toggle {
+  margin-top: 0;
+}
+
 .paste-wrap {
   animation: slide-down var(--dur-slow) var(--ease-out) both;
 }
@@ -3340,8 +3352,9 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-2xs);
-  padding: 3px 9px 3px 8px;
+  /* 和同一行的 head-chip 同尺寸、同字号，别再小一圈 */
+  font-size: var(--fs-sm);
+  padding: 6px 12px 6px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -3351,9 +3364,14 @@ select {
     background var(--dur) var(--ease);
 }
 
+.check-chip.ok:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
 .check-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--ink-muted);
   flex-shrink: 0;

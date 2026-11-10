@@ -1,6 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { decodeText, looksMojibake } from '../core/text'
-import { isImageFile, isMarkdownFile, readDataTransfer } from '../core/local-assets'
+import { isImageFile, isMarkdownFile } from '../core/local-assets'
 
 interface Props {
   currentName: string
@@ -17,7 +17,6 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
   /** 已经导入过就收起成一行 —— 侧栏的空间要留给平台导航 */
   const [reopen, setReopen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-  const dirRef = useRef<HTMLInputElement>(null)
 
   const compact = Boolean(currentName) && !reopen
 
@@ -44,7 +43,7 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
     setReopen(false)
   }
 
-  /** 一批文件里挑出 .md。拖文件夹和选文件夹都走这里 */
+  /** 一批文件里挑出 .md。拖入和选文件都走这里 */
   const applyFiles = async (files: File[]) => {
     const md = files.find(isMarkdownFile)
     if (!md) {
@@ -61,11 +60,10 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
   const handleDrop = async (e: DragEvent) => {
     e.preventDefault()
     setOver(false)
-    // 拖文件夹时 dataTransfer.files 可能只有一层甚至是空的，
-    // 必须走 webkitGetAsEntry 递归读，所以这里不能同步取 files[0]
-    const files = await readDataTransfer(e.dataTransfer)
+    // 只认直接拖入的文件，不再递归读文件夹
+    const files = [...e.dataTransfer.files]
     if (files.length === 0) {
-      onError('没读到文件。如果是文件夹，试试点下面的「选文件夹」')
+      onError('没读到文件，请重新拖入 .md 文件')
       return
     }
     await applyFiles(files)
@@ -114,22 +112,19 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
               </svg>
             </span>
             <span className="dropzone-main">把 .md 拖到这里</span>
-            <span className="dropzone-hint">拖整个文件夹也行，会自动找出里面的 .md</span>
+            <span className="dropzone-hint">支持 .md / .markdown / .txt，最大 4MB</span>
           </div>
 
-          {/* 单文件入口：点拖放区也能选文件，但那不明显。文件夹 input 选单个 .md 没反应
-              （directory 模式只要文件夹），所以单文件要一个自己的按钮 */}
-          <button className="paste-toggle" onClick={() => fileRef.current?.click()}>
-            选择 .md 文件
-          </button>
+          {/* 只有两个入口：选文件、粘贴。并排成一行，地位对等 */}
+          <div className="import-actions">
+            <button className="paste-toggle" onClick={() => fileRef.current?.click()}>
+              选择 .md 文件
+            </button>
 
-          <button className="paste-toggle" onClick={() => dirRef.current?.click()}>
-            选文件夹（自动找 .md）
-          </button>
-
-          <button className="paste-toggle" onClick={() => setPasteOpen((v) => !v)}>
-            {pasteOpen ? '收起粘贴区' : '直接粘贴 Markdown'}
-          </button>
+            <button className="paste-toggle" onClick={() => setPasteOpen((v) => !v)}>
+              {pasteOpen ? '收起粘贴区' : '直接粘贴 Markdown'}
+            </button>
+          </div>
 
           {pasteOpen ? (
             <div className="paste-wrap">
@@ -160,20 +155,6 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
         onChange={(e) => {
           const file = e.target.files?.[0]
           if (file) void readFile(file)
-          e.target.value = ''
-        }}
-      />
-
-      {/* 选文件夹：md 和图片一次给齐。webkitdirectory 是 Chromium / Safari 的私有属性，
-          React 的类型里没有，只能绕过类型检查挂上去 */}
-      <input
-        ref={dirRef}
-        type="file"
-        className="hidden"
-        {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
-        onChange={(e) => {
-          const files = [...(e.target.files ?? [])]
-          if (files.length > 0) void applyFiles(files)
           e.target.value = ''
         }}
       />
