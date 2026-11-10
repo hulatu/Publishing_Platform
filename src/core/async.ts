@@ -11,6 +11,9 @@
  * fn 自己负责吞掉异常。这里不做 catch：一个失败就整体 reject 会让
  * 「20 张图里 1 张跨域」变成「一张都拿不到」，而调用方通常需要
  * 知道每一张各自的结果。
+ *
+ * 真抛出来的失败（fn 没吞住）会让剩下的 worker 提前停：反正整批已经
+ * reject 了，继续发请求只是白白浪费通道。
  */
 export async function mapLimit<T, R>(
   items: readonly T[],
@@ -19,12 +22,19 @@ export async function mapLimit<T, R>(
 ): Promise<R[]> {
   const results = new Array<R>(items.length)
   let cursor = 0
+  let aborted = false
 
   const worker = async () => {
     for (;;) {
+      if (aborted) return
       const i = cursor++
       if (i >= items.length) return
-      results[i] = await fn(items[i], i)
+      try {
+        results[i] = await fn(items[i], i)
+      } catch (e) {
+        aborted = true
+        throw e
+      }
     }
   }
 

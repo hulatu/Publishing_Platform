@@ -24,18 +24,10 @@ import { charCount } from '../core/cjk'
 import { getWechatTheme } from '../themes/wechat'
 import { activeBlocks, buildTailHtml } from '../core/tail'
 import type { ConvertOptions, RenderOutput } from './index'
+import { WECHAT_WORD_LIMIT } from './limits'
 
-/**
- * 公众号编辑器的正文上限。
- *
- * 它算的是**字数**，不是 HTML 字符数 —— 后台报错的原话是
- * 「正文不能为空且长度不能超过 20000 字」。
- *
- * 以前这里拿 HTML 字符数去比：一篇 1.1 万字的稿子，因为每个节点都写内联样式，
- * HTML 膨胀到 5.9 万字符，就会被判「294% 超限」并劝你拆篇 —— 纯属误报。
- * HTML 大小只影响粘贴快慢，跟能不能发出去没关系。
- */
-export const WECHAT_WORD_LIMIT = 20000
+/** 常量本体在 ./limits.ts（App 首屏也要读它，不能把它留在大渲染器里）；这里只做再导出，检查脚本的旧 import 路径不用改。 */
+export { WECHAT_WORD_LIMIT }
 
 export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
   const theme = getWechatTheme(opts.wechatThemeId)

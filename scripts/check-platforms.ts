@@ -20,7 +20,7 @@ import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
 import { charCount } from '../src/core/cjk'
 import { collectImages, collectLinks, type Doc } from '../src/core/ir'
-import { convertPlatforms, rewritePlatforms, allPlatforms, platformGroups, type RenderOutput } from '../src/renderers'
+import { convertPlatforms, rewritePlatforms, allPlatforms, platformGroups, loadConvertRenderer, type RenderFn, type RenderOutput } from '../src/renderers'
 import { renderCnBlog, renderBilibili, renderToutiao, renderBaijiahao } from '../src/renderers/cn-blogs'
 import { loadOpenOnCopy, publishUrlOf, saveOpenOnCopy } from '../src/core/publish'
 import { loadHidden, saveHidden, sortByWidth } from '../src/core/platform-visibility'
@@ -36,6 +36,15 @@ function ok(cond: boolean, msg: string) {
 }
 
 const OPTS = { wechatThemeId: 'paper' }
+
+/**
+ * 渲染器现在是动态 import：回归脚本先把 7 个全加载好，下面的循环保持同步写法。
+ * 脚本是 ESM（.mjs），顶层 await 可以直接用。
+ */
+const renderFns = new Map<string, RenderFn>()
+for (const p of convertPlatforms) {
+  renderFns.set(p.id, await loadConvertRenderer(p.id))
+}
 
 /** 手工构造一篇「什么都有」的文章，专门用来撞边界 */
 const NASTY = `---
@@ -90,8 +99,8 @@ for (const id of ['bilibili', 'toutiao', 'baijiahao']) {
   ok(ids.includes(id), `已注册 ${id}`)
 }
 ok(
-  convertPlatforms.every((p) => p.kind === 'convert' && typeof p.render === 'function'),
-  '每项都是 convert 且有 render',
+  convertPlatforms.every((p) => p.kind === 'convert' && typeof p.load === 'function'),
+  '每项都是 convert 且有 load（渲染函数动态 import）',
 )
 
 /* ---------------- 2. 外链分叉 ---------------- */
@@ -221,7 +230,7 @@ for (const file of files) {
   for (const p of convertPlatforms) {
     let out: RenderOutput
     try {
-      out = p.render(doc, OPTS)
+      out = renderFns.get(p.id)!(doc, OPTS)
     } catch (e) {
       crashes++
       console.log(`  ✗ ${file} @ ${p.id}：${(e as Error).message}`)

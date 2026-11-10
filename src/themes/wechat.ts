@@ -83,6 +83,9 @@ function buildHeading(spec: ThemeSpec): HtmlTheme['heading'] {
     color: p.heading,
     'line-height': '1.4',
     'letter-spacing': '0.3px',
+    /* 标题不断「孤字」：两行标题宁可两行差不多长，也别第二行只剩一两个字。
+       微信编辑器可能会剥掉它，剥掉也不影响正文；站内预览渲染的是同一份 HTML。 */
+    'text-wrap': 'balance',
   }
 
   switch (spec.heading) {

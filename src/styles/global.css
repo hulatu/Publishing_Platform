@@ -953,13 +953,15 @@ select {
 
 .nav-item-meta {
   /* 10px 的汉字在 PingFang 下已经挤成一团，10.5 是还能读的下限；
-     配上提到 4.87:1 的 --ink-muted，侧栏这行说明才真的能读。 */
+     配上提到 4.87:1 的 --ink-muted，侧栏这行说明才真的能读。
+     一行截断读不到完整说明，改成最多两行（hover 时 title 属性仍给全文）。 */
   font-size: var(--fs-2xs);
   color: var(--ink-muted);
   line-height: 1.4;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .nav-badge {
@@ -1109,7 +1111,9 @@ select {
 .preview-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 28px 32px;
+  /* 底部 96px：toast 浮在操作条上方约 58px，会盖住预览区最下面几行；
+     多留的内边距让最后一行能滚到 toast 上面去，而不是永远被盖住。 */
+  padding: 20px 28px 96px;
   min-height: 0;
 }
 
@@ -1476,7 +1480,7 @@ select {
   padding: 44px 52px 52px;
   color: #24211e;
   font-size: var(--fs-lg);
-  line-height: 1.92;
+  line-height: 1.85;
   letter-spacing: 0.015em;
   overflow-wrap: break-word;
 }
@@ -1499,6 +1503,8 @@ select {
   color: var(--ink);
   letter-spacing: 0.01em;
   line-height: 1.4;
+  /* 标题不断「孤字」：两行标题宁可两行差不多长，也别第二行只剩一两个字 */
+  text-wrap: balance;
 }
 
 .md-preview h1 {
@@ -1602,6 +1608,23 @@ select {
   display: block;
   margin: 1.4em auto;
   box-shadow: var(--sh-2);
+}
+
+/* 破图占位：图片取不到时，浏览器只剩一个很小的破图图标。
+   加上这个 class（App 里监听 error 事件打上去），破图变成一块
+   灰底虚线框，alt 文字居中显示，一眼能分清是「图坏了」而不是「还在加载」。 */
+.md-preview img.is-broken,
+.rich-preview img.is-broken {
+  min-height: 120px;
+  background: var(--panel-inset);
+  border: 1px dashed var(--line-strong);
+  box-shadow: none;
+  padding: 16px;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--ink-muted);
+  text-align: center;
+  align-content: center;
 }
 
 /* 独立成段的图片：图 + 图注。
@@ -1720,6 +1743,13 @@ select {
 
 .empty-art span:nth-child(3) {
   transform: translate(9px, 6px) rotate(2.5deg);
+  /* 最前面这张是「正在写的稿纸」：三道淡红横线，呼应朱红强调色 */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 16px,
+    rgba(192, 57, 43, 0.22) 16px 17px
+  );
+  background-position: 0 22px;
 }
 
 .empty-art span:nth-child(3)::after {
@@ -2056,11 +2086,13 @@ select {
   align-items: center;
   justify-content: space-between;
   padding: 15px 20px;
-  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   background: var(--panel);
   z-index: 1;
+  /* sticky 头要让人一眼看出是「浮在内容上面的一层」：底边 1px 线 + 一点投影，
+     否则滚动时正文从它下面滑过，看着像上半行被裁掉了。 */
+  box-shadow: 0 1px 0 var(--line), 0 12px 20px -16px rgba(32, 27, 22, 0.35);
 }
 
 .modal-title {
@@ -2071,7 +2103,9 @@ select {
 }
 
 .modal-body {
-  padding: 18px 20px;
+  /* 底部多留 10px：弹窗底栏是 sticky 的，最后一行内容（比如「清空 Key」）
+     滚到底时会被它盖住一半，多留的内边距让它能完整滚上来。 */
+  padding: 18px 20px 28px;
 }
 
 .modal-foot {
@@ -2901,6 +2935,29 @@ select {
   font-size: var(--fs-xs);
   color: var(--accent);
   opacity: 0.8;
+}
+
+/* 空态示例：没生成时先让用户看到「生成后会长这样」。
+   灰底 + 左侧红线，和正文里的引用块一个意思 —— 一眼知道这是示例，不是结果。 */
+.stage-sample {
+  margin-top: 16px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+}
+.stage-sample-label {
+  font-size: var(--fs-2xs);
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.stage-sample-text {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  line-height: 1.7;
 }
 
 /* ---------- 设置：服务商与测试 ---------- */
@@ -4440,6 +4497,27 @@ select {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
+}
+
+/* 封面弹窗的示例：没配 Key 时，先让用户看到「配好后这里会长什么样」 */
+.cover-sample {
+  margin-top: 14px;
+}
+.cover-sample-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  margin-bottom: 8px;
+}
+.cover-sample-card {
+  aspect-ratio: 3 / 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
 }
 
 .cover-card {

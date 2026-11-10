@@ -289,6 +289,20 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
             </div>
           ) : null}
 
+          {/* ---------- 没 Key 时的示例：先让用户看到「配好后这里会长什么样」 ---------- */}
+          {photos.length === 0 && !error && !keyReady && status !== 'loading' ? (
+            <div className="cover-sample">
+              <div className="cover-sample-label">示例 · 配置 Access Key 后，这里会显示 3 张候选封面</div>
+              <div className="cover-grid" aria-hidden>
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="cover-sample-card">
+                    示例封面
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {/* ---------- 3 张候选 ---------- */}
           {photos.length > 0 ? (
             <div className="cover-grid">

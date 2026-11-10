@@ -313,6 +313,7 @@ function CoverCard({ spec, theme, m }: { spec: CardSpec; theme: CardTheme; m: Me
             letterSpacing: 1,
             fontWeight: 700,
             color: theme.ink,
+            textWrap: 'balance',
           }}
         >
           {spec.title}
@@ -375,6 +376,7 @@ function QuoteCard({ spec, theme, m }: { spec: CardSpec; theme: CardTheme; m: Me
             color: theme.ink,
             maxHeight: Math.round(m.contentH * 0.78),
             overflow: 'hidden',
+            textWrap: 'balance',
           }}
         >
           {spec.title}
@@ -440,6 +442,7 @@ function PointsCard({ spec, theme, m }: { spec: CardSpec; theme: CardTheme; m: M
             marginBottom: Math.round(28 * m.s),
             color: theme.ink,
             flexShrink: 0,
+            textWrap: 'balance',
           }}
         >
           {spec.title}

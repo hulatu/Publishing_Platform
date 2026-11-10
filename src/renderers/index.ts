@@ -10,11 +10,6 @@
 
 import type { Doc } from '../core/ir'
 import type { TailConfig } from '../core/tail'
-import { renderSspai } from './sspai'
-import { renderZhihu } from './zhihu'
-import { renderWechat } from './wechat'
-import { renderDouban } from './douban'
-import { renderBilibili, renderToutiao, renderBaijiahao } from './cn-blogs'
 
 export type PlatformKind = 'convert' | 'rewrite' | 'card'
 
@@ -54,6 +49,9 @@ export interface ConvertOptions {
   account?: string
 }
 
+/** 一个平台的渲染函数本体 */
+export type RenderFn = (doc: Doc, opts: ConvertOptions) => RenderOutput
+
 export interface ConvertPlatform {
   id: string
   name: string
@@ -62,7 +60,11 @@ export interface ConvertPlatform {
   hint: string
   /** 硬性限制说明 */
   limits?: string
-  render: (doc: Doc, opts: ConvertOptions) => RenderOutput
+  /**
+   * 渲染函数是动态 import 进来的 —— 侧栏只要元数据（id / 名字 / 说明），
+   * 首屏不该为 7 个平台全买单。调用方用下面的 loadConvertRenderer。
+   */
+  load: () => Promise<RenderFn>
 }
 
 export const convertPlatforms: ConvertPlatform[] = [
@@ -71,7 +73,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     name: '少数派',
     kind: 'convert',
     hint: '原生支持 Markdown，导入即用',
-    render: renderSspai,
+    load: () => import('./sspai').then((m) => m.renderSspai),
   },
   {
     id: 'zhihu',
@@ -79,7 +81,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     kind: 'convert',
     hint: '专栏编辑器支持 .md 导入，富文本为备选',
     limits: '富文本粘贴后字号行距会被知乎归一化',
-    render: renderZhihu,
+    load: () => import('./zhihu').then((m) => m.renderZhihu),
   },
   {
     id: 'wechat',
@@ -87,7 +89,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     kind: 'convert',
     hint: '全 inline style，复制后直接粘进编辑器',
     limits: '正文上限 20000 字（按字数算）',
-    render: renderWechat,
+    load: () => import('./wechat').then((m) => m.renderWechat),
   },
   {
     id: 'douban',
@@ -95,7 +97,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     kind: 'convert',
     hint: '日记支持有限 HTML，保留链接与图片',
     limits: '不支持自定义字体与复杂样式',
-    render: renderDouban,
+    load: () => import('./douban').then((m) => m.renderDouban),
   },
   {
     id: 'bilibili',
@@ -103,7 +105,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     kind: 'convert',
     hint: '富文本粘贴，标题层级与表格保真',
     limits: '代码块退化成普通段落',
-    render: renderBilibili,
+    load: () => import('./cn-blogs').then((m) => m.renderBilibili),
   },
   {
     id: 'toutiao',
@@ -111,7 +113,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     kind: 'convert',
     hint: '富文本粘贴，样式会被归一化',
     limits: '正文外链被清除（已转文末参考）；代码块被清洗',
-    render: renderToutiao,
+    load: () => import('./cn-blogs').then((m) => m.renderToutiao),
   },
   {
     id: 'baijiahao',
@@ -119,7 +121,7 @@ export const convertPlatforms: ConvertPlatform[] = [
     kind: 'convert',
     hint: '只保留段落、加粗、标题、图片',
     limits: '清洗最狠：外链与 <pre> 都会被剥掉',
-    render: renderBaijiahao,
+    load: () => import('./cn-blogs').then((m) => m.renderBaijiahao),
   },
 ]
 
@@ -184,4 +186,25 @@ export const platformGroups: PlatformGroup[] = [
 
 export function getConvertPlatform(id: string): ConvertPlatform | undefined {
   return convertPlatforms.find((p) => p.id === id)
+}
+
+/**
+ * 按需加载某平台的渲染函数，结果按平台缓存 —— 同一个平台切来切去只请求一次。
+ *
+ * 加载失败时把缓存清掉，下次切回来可以重试，别让一次网络抖动把平台永久判死刑。
+ * 调用方在加载期间显示「加载中…」，失败时给一条报错产物（见 App.tsx）。
+ */
+const rendererCache = new Map<string, Promise<RenderFn>>()
+
+export function loadConvertRenderer(id: string): Promise<RenderFn> {
+  const p = getConvertPlatform(id)
+  if (!p) return Promise.reject(new Error(`未知平台：${id}`))
+  const hit = rendererCache.get(id)
+  if (hit) return hit
+  const loading = p.load()
+  rendererCache.set(id, loading)
+  loading.catch(() => {
+    if (rendererCache.get(id) === loading) rendererCache.delete(id)
+  })
+  return loading
 }

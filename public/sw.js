@@ -14,7 +14,9 @@
  * 跨域请求（AI 接口、图片）一律不碰，直接放行。
  */
 
-const VERSION = 'v1'
+// 构建时由 vite.config.ts 的 sw-version 插件替换成 git 短 hash。
+// 手改这里没用 —— 下次构建会被覆盖；版本号变了，缓存名跟着变，旧缓存由 activate 清掉。
+const VERSION = '__APP_VERSION__'
 const SHELL = `shell-${VERSION}`
 const RUNTIME = `runtime-${VERSION}`
 

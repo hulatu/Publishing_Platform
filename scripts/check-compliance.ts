@@ -12,9 +12,12 @@ import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
 import { blocksToText } from '../src/core/ir'
 import { checkText, stripHtml, scopeOf } from '../src/core/compliance'
-import { getConvertPlatform } from '../src/renderers'
+import { loadConvertRenderer } from '../src/renderers'
 
 const files = readdirSync(POSTS).filter((f) => f.endsWith('.md') && !f.startsWith('_'))
+
+/** 渲染器现在是动态 import：先把公众号那份加载好，下面的循环保持同步写法 */
+const renderWechat = await loadConvertRenderer('wechat')
 
 let articlesWithHits = 0
 let totalHits = 0
@@ -26,8 +29,7 @@ for (const file of files) {
   const doc = parseArticle({ source: src, fileName: file })
 
   // 用公众号产物检查（覆盖面最广：正文 + 标题 + 引用都在里面）
-  const p = getConvertPlatform('wechat')
-  const html = p ? p.render(doc, { wechatThemeId: 'paper' }).primary : ''
+  const html = renderWechat(doc, { wechatThemeId: 'paper' }).primary
   const text = html ? stripHtml(html) : blocksToText(doc.blocks)
 
   const hits = checkText(text, scopeOf('wechat'))

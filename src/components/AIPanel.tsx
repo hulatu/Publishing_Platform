@@ -49,6 +49,17 @@ const PLATFORM_NAME: Record<RewriteId, string> = {
   weibo: '微博',
 }
 
+/**
+ * 空态示例：没 Key、没生成时，先让用户看到「生成后会长这样」。
+ * 文案是示例（借跑步长文的题材写了一句），不是真的生成结果。
+ */
+const PLATFORM_SAMPLES: Record<RewriteId, string> = {
+  xiaohongshu: '跑了 3000 公里，我总结了 5 条新手最容易踩的坑，第一个就是别一上来堆跑量。',
+  twitter: '跑了 3000 公里后的一点体会：最难的不是配速，是出门。1/',
+  jike: '跑了 3000 公里之后，我发现跑步最难的不是配速，是出门。',
+  weibo: '跑了 3000 公里，我发现最难的不是配速，是出门。#跑步 #胡拉图说',
+}
+
 export function AIPanel({
   platform,
   ai,
@@ -152,6 +163,10 @@ export function AIPanel({
               {digestReady
                 ? `会用上面 ${digest.digest?.sections.length ?? 0} 条摘要组装，一条对应一个要点。`
                 : '会先按 ## 切节做摘要，再从摘要组装成平台文案。'}
+            </div>
+            <div className="stage-sample">
+              <div className="stage-sample-label">示例 · 生成后会长这样</div>
+              <div className="stage-sample-text">{PLATFORM_SAMPLES[platform]}</div>
             </div>
             <div className="stage-empty-arrow" aria-hidden>
               ↓ 用底部的「生成{PLATFORM_NAME[platform]}文案」

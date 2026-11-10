@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Doc, DocMeta } from './core/ir'
 import { blocksToText, collectImages } from './core/ir'
-import { parseArticle, renderPreviewHtml } from './core/parse'
 import { charCount } from './core/cjk'
 import { splitSections } from './core/sections'
 import { copyByMode, copyPlain, copySync, downloadText, mimeFor } from './core/copy'
@@ -37,10 +36,10 @@ import {
   type PlatformStats,
 } from './core/ledger'
 import { summarizeAll } from './core/review'
-import { allPlatforms, cardPlatform, convertPlatforms, getConvertPlatform, rewritePlatforms, type RenderOutput } from './renderers'
+import { allPlatforms, cardPlatform, convertPlatforms, loadConvertRenderer, rewritePlatforms, type RenderFn, type RenderOutput } from './renderers'
 import { downloadBlob, safeFileName } from './cards/export'
 import { loadHidden, saveHidden, sortByWidth } from './core/platform-visibility'
-import { WECHAT_WORD_LIMIT } from './renderers/wechat'
+import { WECHAT_WORD_LIMIT } from './renderers/limits'
 import { ThemePicker } from './components/ThemePicker'
 import { wechatThemes } from './themes/wechat'
 import { runDigest, runPlatform } from './ai/pipeline'
@@ -130,6 +129,17 @@ function readStoredTheme(): string {
  */
 const COPY_FAILED = '复制失败：剪贴板没被改写，里面还是上一次的内容'
 
+/**
+ * Markdown 解析（含 markdown-it，单文件 125KB min）是动态 import 进来的 ——
+ * 首屏（空状态）不需要它，导入文章时才加载。模块级缓存：整个会话只加载一次。
+ */
+type ParseModule = typeof import('./core/parse')
+let parseModulePromise: Promise<ParseModule> | null = null
+function loadParseModule(): Promise<ParseModule> {
+  parseModulePromise ??= import('./core/parse')
+  return parseModulePromise
+}
+
 export default function App() {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [fileName, setFileName] = useState('')
@@ -202,6 +212,8 @@ export default function App() {
   const [zipping, setZipping] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  /** 已加载的解析模块：load / restoreDraft 里先加载、再 setDoc，所以 previewHtml 的 useMemo 跑到时它一定已经在了 */
+  const parseModRef = useRef<ParseModule | null>(null)
   const { items: toasts, push: toast } = useToasts()
 
   /** 复制后是否自动打开发布页。默认开，用户关掉后记住 */
@@ -265,8 +277,10 @@ export default function App() {
    * AI 面板会显示「N 节」而摘要只有 M 条，看着像坏了，其实是两份东西。
    */
   const load = useCallback(
-    (source: string, name: string) => {
-      const parsed = parseArticle({ source, fileName: name })
+    async (source: string, name: string) => {
+      const mod = await loadParseModule()
+      parseModRef.current = mod
+      const parsed = mod.parseArticle({ source, fileName: name })
       const key = articleKeyOf(parsed)
       const fp = fingerprintOf(parsed, splitSections(parsed).length)
       const saved = readDraft(key)
@@ -306,12 +320,70 @@ export default function App() {
 
   /* ---------------- 渲染 ---------------- */
 
+  /**
+   * 已加载的平台渲染函数：7 个渲染器按平台拆包后，首屏不再包含任何一个。
+   * 只有导入文章后、切到某个转换平台时，才加载它那一份。
+   */
+  const [renderFns, setRenderFns] = useState<Partial<Record<string, RenderFn>>>({})
+  /** 当前平台渲染器加载失败时的原因；有值时 output 会变成一条报错产物 */
+  const [renderLoadError, setRenderLoadError] = useState('')
+
+  useEffect(() => {
+    if (kind !== 'convert' || !doc) return
+    if (renderFns[platform]) return
+    let alive = true
+    setRenderLoadError('')
+    loadConvertRenderer(platform)
+      .then((fn) => {
+        if (!alive) return
+        setRenderFns((prev) => (prev[platform] ? prev : { ...prev, [platform]: fn }))
+      })
+      .catch((e) => {
+        if (!alive) return
+        setRenderLoadError(e instanceof Error ? e.message : String(e))
+      })
+    return () => {
+      alive = false
+    }
+  }, [platform, kind, doc, renderFns])
+
+  /**
+   * 破图占位：预览是 dangerouslySetInnerHTML 插进去的 HTML，React 挂不上 onError。
+   * 用捕获阶段的全局 error 监听（资源加载失败不冒泡，但捕获阶段能到 document），
+   * 给预览里的破图打上 is-broken class，样式见 global.css。
+   */
+  useEffect(() => {
+    const onError = (e: Event) => {
+      const img = e.target as HTMLImageElement
+      if (!(img instanceof HTMLImageElement)) return
+      if (!img.closest('.md-preview, .rich-preview')) return
+      if (img.classList.contains('is-broken')) return
+      img.classList.add('is-broken')
+      // alt 后面补一句「图片取不到」：破图框里显示的 alt 文字就是它
+      img.alt = img.alt ? `${img.alt}（图片取不到）` : '图片取不到'
+    }
+    document.addEventListener('error', onError, true)
+    return () => document.removeEventListener('error', onError, true)
+  }, [])
+
   const output: RenderOutput | null = useMemo(() => {
     if (!doc || kind !== 'convert') return null
-    const p = getConvertPlatform(platform)
-    if (!p) return null
+    const render = renderFns[platform]
+    if (!render) {
+      // 渲染器还在加载：返回 null，外层显示「加载中…」；
+      // 加载失败则给一条报错产物，让提示条把原因说清楚。
+      if (!renderLoadError) return null
+      return {
+        primary: '',
+        text: '',
+        format: 'text',
+        copyMode: 'plain',
+        warnings: [`渲染器加载失败：${renderLoadError}，刷新页面可重试`],
+        stats: [],
+      }
+    }
     try {
-      return p.render(doc, { wechatThemeId: themeId, tail, account })
+      return render(doc, { wechatThemeId: themeId, tail, account })
     } catch (e) {
       return {
         primary: '',
@@ -322,7 +394,7 @@ export default function App() {
         stats: [],
       }
     }
-  }, [doc, platform, themeId, kind, tail, account])
+  }, [doc, platform, themeId, kind, tail, account, renderFns, renderLoadError])
 
   /**
    * 公众号超限判定：按**字数**，和微信编辑器口径一致。
@@ -335,7 +407,7 @@ export default function App() {
   const previewHtml = useMemo(() => {
     if (!doc || kind !== 'convert' || !output || output.format !== 'markdown') return ''
     try {
-      return renderPreviewHtml(doc.rawMd)
+      return parseModRef.current?.renderPreviewHtml(doc.rawMd) ?? ''
     } catch {
       return ''
     }
@@ -512,14 +584,16 @@ export default function App() {
 
   /** 从草稿箱显式打开：这次连 meta 一起还原，用户要的就是「回到当时那一刻」 */
   const restoreDraft = useCallback(
-    (key: string) => {
+    async (key: string) => {
       const d = readDraft(key)
       if (!d) {
         toast('草稿不见了，可能已被清空', 'error')
         setDrafts(listDrafts())
         return
       }
-      const parsed = parseArticle({ source: d.source, fileName: d.fileName })
+      const mod = await loadParseModule()
+      parseModRef.current = mod
+      const parsed = mod.parseArticle({ source: d.source, fileName: d.fileName })
       setDoc({ ...parsed, meta: d.meta })
       setFileName(d.fileName)
       setSourceText(d.source)
@@ -1039,7 +1113,8 @@ export default function App() {
       const slug = safeFileName(doc.meta.slug || doc.meta.title || 'article')
 
       for (const [i, p] of list.entries()) {
-        const out = p.render(doc, { wechatThemeId: themeId, tail, account })
+        const render = await loadConvertRenderer(p.id)
+        const out = render(doc, { wechatThemeId: themeId, tail, account })
         const ext = out.format === 'markdown' ? 'md' : 'html'
         // 平台名放在文件名里，解压后一眼知道哪个文件给哪家
         zip.file(`${String(i + 1).padStart(2, '0')}-${safeFileName(p.name)}-${slug}.${ext}`, out.primary)
@@ -1055,13 +1130,16 @@ export default function App() {
     }
   }, [doc, hidden, themeId, tail, account, toast])
 
-  const doSplitExport = useCallback(() => {
+  const doSplitExport = useCallback(async () => {
     if (!doc) return
     const parts = splitByH2(doc)
-    const p = getConvertPlatform('wechat')
-    if (!p) return
+    const render = await loadConvertRenderer('wechat').catch(() => null)
+    if (!render) {
+      toast('渲染器加载失败，刷新页面可重试', 'error')
+      return
+    }
     parts.forEach((part, i) => {
-      const out = p.render(part, { wechatThemeId: themeId, tail, account })
+      const out = render(part, { wechatThemeId: themeId, tail, account })
       setTimeout(() => {
         downloadText(
           out.primary,
@@ -1374,7 +1452,8 @@ export default function App() {
                 ))}
 
                 <div className="stage" key={`${platform}-${viewMode}`}>
-                  {kind === 'convert' && output ? (
+                  {kind === 'convert' ? (
+                    output ? (
                     viewMode === 'preview' && canPreview ? (
                       output.format === 'html' && output.html ? (
                         <div className="rich-preview" dangerouslySetInnerHTML={{ __html: output.html }} />
@@ -1388,6 +1467,11 @@ export default function App() {
                           <span className="source-note">复制时用的就是这份源码</span>
                         </div>
                         <pre className="code-preview">{output.primary}</pre>
+                      </div>
+                    )
+                    ) : (
+                      <div className="panel-card">
+                        <p>加载中…</p>
                       </div>
                     )
                   ) : kind === 'rewrite' && isRewriteId(platform) ? (
