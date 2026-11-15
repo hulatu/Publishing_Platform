@@ -48,6 +48,7 @@ import { useLedger } from './hooks/useLedger'
 import { useReadiness } from './hooks/useReadiness'
 import { useDraftAutosave } from './hooks/useDraftAutosave'
 import { DEFAULT_SITE_NAME } from './cards/build'
+import { cardThemes } from './cards/themes'
 import { SAMPLE_ARTICLE } from './core/sample'
 
 import { ImportPanel, type ImportPanelHandle } from './components/ImportPanel'
@@ -114,6 +115,7 @@ function kindOf(id: string): Kind {
 
 const THEME_KEY = 'ad.wechat-theme'
 const ACCOUNT_KEY = 'ad.wechat-account'
+const CARD_THEME_KEY = 'ad.card-theme'
 
 /** 公众号账号名，替换文末模板里的 {account} */
 function readStoredAccount(): string {
@@ -129,6 +131,17 @@ function readStoredTheme(): string {
   try {
     const saved = localStorage.getItem(THEME_KEY)
     if (saved && wechatThemes.some((t) => t.id === saved)) return saved
+  } catch {
+    // 隐私模式下 localStorage 会抛异常，忽略即可
+  }
+  return 'paper'
+}
+
+/** 卡片配色也记一下：卡片快照会恢复，配色却每次回到纸白会很怪 */
+function readStoredCardTheme(): string {
+  try {
+    const saved = localStorage.getItem(CARD_THEME_KEY)
+    if (saved && cardThemes.some((t) => t.id === saved)) return saved
   } catch {
     // 隐私模式下 localStorage 会抛异常，忽略即可
   }
@@ -185,7 +198,15 @@ export default function App() {
       // 同上
     }
   }, [])
-  const [cardThemeId, setCardThemeId] = useState('paper')
+  const [cardThemeId, setCardThemeIdRaw] = useState(readStoredCardTheme)
+  const setCardTheme = useCallback((id: string) => {
+    setCardThemeIdRaw(id)
+    try {
+      localStorage.setItem(CARD_THEME_KEY, id)
+    } catch {
+      // 写不进去不影响本次使用
+    }
+  }, [])
   const [siteName, setSiteName] = useState(DEFAULT_SITE_NAME)
 
   const [settingsVersion, setSettingsVersion] = useState(0)
@@ -1307,14 +1328,15 @@ export default function App() {
                       </Suspense>
                     </div>
                   ) : (
-                    <div className="panel-card">
+                    <div className={kind === 'card' ? 'panel-card panel-card-wide' : 'panel-card'}>
                       <Suspense fallback={<p>加载中…</p>}>
                       <CardStudio
                         doc={doc}
+                        articleKey={articleKey}
                         sections={sections}
                         summaries={digest.digest?.sections ?? null}
                         cardThemeId={cardThemeId}
-                        onThemeChange={setCardThemeId}
+                        onThemeChange={setCardTheme}
                         siteName={siteName}
                         onSiteNameChange={setSiteName}
                         onToast={toast}

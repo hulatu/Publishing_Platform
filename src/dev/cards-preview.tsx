@@ -65,6 +65,53 @@ const SPECS: CardSpec[] = [
     themeId: 'paper',
   },
   {
+    id: 'stat',
+    layout: 'stat',
+    title: '三个值得记住的数字',
+    stats: [
+      { value: '98%', label: '初稿里的问题，第二轮才看得出来' },
+      { value: '3.2 倍', label: '拆结构之后改稿速度的提升' },
+      { value: '12 篇', label: '今年的长文产量' },
+    ],
+    kicker: '数据',
+    footer: '胡拉图说',
+    date: '2026.11.03',
+    themeId: 'paper',
+  },
+  {
+    id: 'toc',
+    layout: 'toc',
+    title: '这一篇讲了什么',
+    points: ['先拆素材，再动笔', '每一节只留一个论点', '初稿放一夜再改', '朗读一遍做通顺检查', '最后回头看标题'],
+    kicker: '目录',
+    footer: '胡拉图说',
+    date: '2026.11.03',
+    themeId: 'paper',
+  },
+  {
+    id: 'compare',
+    layout: 'compare',
+    title: '两种写法',
+    leftLabel: '流程驱动',
+    rightLabel: '灵感驱动',
+    points: ['先写结构 | 先写开头', '每节一个论点 | 想到哪写到哪', '第二天改结构 | 边写边改'],
+    kicker: '对照',
+    footer: '胡拉图说',
+    date: '2026.11.03',
+    themeId: 'paper',
+  },
+  {
+    id: 'cta',
+    layout: 'cta',
+    title: '关注「胡拉图说」',
+    subtitle: '不错过每一篇长文',
+    points: ['长按识别 · 关注'],
+    kicker: '关注',
+    footer: '胡拉图说',
+    date: '2026.11.03',
+    themeId: 'paper',
+  },
+  {
     id: 'end',
     layout: 'end',
     title: '写作不是表达，是把想法重新排一次序。',
@@ -176,6 +223,7 @@ function Studio() {
       <div className="panel-card">
         <CardStudio
           doc={doc}
+          articleKey="cards-preview-fixture"
           sections={sections}
           summaries={null}
           cardThemeId={theme}

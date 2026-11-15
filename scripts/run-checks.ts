@@ -33,6 +33,7 @@ const CHECKS = [
   'digest',
   'themes',
   'cards',
+  'cardstore',
   'ledger',
   'compliance',
   'titles',

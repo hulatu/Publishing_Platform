@@ -1,4 +1,5 @@
 import { useEffect, useRef, type MouseEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface Props {
   open: boolean
@@ -32,6 +33,10 @@ function focusableIn(root: HTMLElement): HTMLElement[] {
  * 除了视觉遮罩，这里还负责键盘和读屏用户真正需要的几件事：
  * 焦点移入、Tab 循环、Esc 关闭、背景 inert、关闭后恢复触发按钮。
  * 样式仍由调用方决定，主题墙这类非标准面板通过 shellClass 复用同一套行为。
+ *
+ * 必须 portal 到 body：本组件会把 `.app > .topbar` 和 `.app > .app-body`
+ * 设为 inert，而主题选择器（ThemePicker）就长在 `.app-body` 里 ——
+ * 不 portal 的话，弹层自己成了 inert 祖先的后代，整层点不动、也关不掉。
  */
 export function Modal({
   open,
@@ -131,7 +136,7 @@ export function Modal({
 
   const stop = (event: MouseEvent<HTMLDivElement>) => event.stopPropagation()
 
-  return (
+  return createPortal(
     <div
       className="modal-mask"
       onMouseDown={(event) => {
@@ -153,6 +158,7 @@ export function Modal({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

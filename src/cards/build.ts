@@ -14,7 +14,7 @@ import type { Doc } from '../core/ir'
 import { blocksToText, inlineText } from '../core/ir'
 import type { ArticleSection } from '../core/sections'
 import { charCount, splitSentences, truncateByChars } from '../core/cjk'
-import type { CardLayout, CardSpec } from './types'
+import type { CardLayout, CardSpec, CardStat } from './types'
 
 export const DEFAULT_SITE_NAME = '胡拉图说'
 
@@ -163,12 +163,76 @@ function summaryOf(section: ArticleSection, summaries?: SectionSummary[] | null)
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * 从正文里捞带单位的数字做数据卡。
+ *
+ * 只认「数字 + 单位」这种明确写法（98%、3.2 倍、12 万），不认光秃秃的年份 ——
+ * 把「2026」当成指标是这类自动提炼最典型的翻车方式。
+ */
+const NUMBER_UNIT =
+  /(\d+(?:\.\d+)?\s*(?:%|倍|万|亿|年|个月|小时|分钟|天|周|篇|人|次|元|美元|公里|km|GB|MB|字))/
+
+function pickStats(doc: Doc): CardStat[] {
+  const out: CardStat[] = []
+  const seen = new Set<string>()
+
+  const scan = (text: string) => {
+    if (out.length >= 3) return
+    const hit = NUMBER_UNIT.exec(text)
+    if (!hit) return
+    const value = hit[1].replace(/\s+/g, '')
+    // 年份不是指标：「2025 年」几乎每篇都有，抓进来只会挤掉真正的数据
+    if (/^(?:19|20)\d{2}年$/.test(value)) return
+    if (seen.has(value)) return
+    seen.add(value)
+
+    // 说明取「数字所在的那一个短句」，去掉数字本身；
+    // 整段截 26 字会把前后两件事粘在一起，读起来像半句话
+    const clause = text.split(/[，。；！？,;]/).find((s) => s.includes(hit[0])) ?? text
+    const label = truncateByChars(clause.replace(hit[0], '').replace(/^[、：:。\s]+/, '').trim(), 22)
+    out.push({ value, label: label || '来自本文' })
+  }
+
+  for (const b of doc.blocks) {
+    if (out.length >= 3) break
+    if (b.t === 'p') scan(inlineText(b.inline))
+    else if (b.t === 'heading') scan(inlineText(b.inline))
+    else if (b.t === 'list') {
+      for (const item of b.items) {
+        const text = item
+          .map((x) => (x.t === 'p' ? inlineText(x.inline) : ''))
+          .filter(Boolean)
+          .join(' ')
+        if (text) scan(text)
+      }
+    }
+  }
+
+  return out
+}
+
+/** 目录卡的条目：优先二级标题，不够再用三级标题，最多 6 条 */
+function pickChapters(doc: Doc, sections?: ArticleSection[]): string[] {
+  if (sections && sections.length >= 2) return sections.map((s) => s.heading).filter(Boolean).slice(0, 6)
+
+  const ofLevel = (level: 2 | 3) =>
+    doc.blocks
+      .filter((b) => b.t === 'heading' && b.level === level)
+      .map((b) => (b.t === 'heading' ? inlineText(b.inline).trim() : ''))
+      .filter(Boolean)
+
+  const h2 = ofLevel(2)
+  if (h2.length >= 2) return h2.slice(0, 6)
+  return (h2.length ? h2 : ofLevel(3)).slice(0, 6)
+}
+
 /** 造一张卡（「加一张卡」菜单也用它） */
 export function makeCard(
   doc: Doc,
   layout: CardLayout,
   themeId: string,
   siteName = DEFAULT_SITE_NAME,
+  sections?: ArticleSection[],
 ): CardSpec {
   const date = formatDate(doc.meta.date)
   const kicker = doc.meta.categories[0] ?? doc.meta.tags[0] ?? '随笔'
@@ -207,6 +271,41 @@ export function makeCard(
         layout,
         title: '在这里写一个小节标题',
         subtitle: '再补一两句话说明这一节讲了什么。',
+        ...base,
+      }
+    case 'stat':
+      return {
+        id: `stat-${Date.now()}`,
+        layout,
+        title: '几个值得记住的数字',
+        stats: pickStats(doc),
+        ...base,
+      }
+    case 'toc':
+      return {
+        id: `toc-${Date.now()}`,
+        layout,
+        title: '这一篇讲了什么',
+        points: pickChapters(doc, sections),
+        ...base,
+      }
+    case 'compare':
+      return {
+        id: `compare-${Date.now()}`,
+        layout,
+        title: '两种做法',
+        leftLabel: '做法 A',
+        rightLabel: '做法 B',
+        points: ['先写结构 | 先写开头', '最后统一改字句 | 边写边改'],
+        ...base,
+      }
+    case 'cta':
+      return {
+        id: `cta-${Date.now()}`,
+        layout,
+        title: `关注「${siteName}」`,
+        subtitle: '不错过每一篇长文',
+        points: ['长按识别 · 关注'],
         ...base,
       }
     case 'end':

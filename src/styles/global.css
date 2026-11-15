@@ -1955,6 +1955,12 @@ button.dispatch-step:hover {
   padding: 22px 24px;
 }
 
+/* 生图工作台是两栏（预览 + 编辑），780 的阅读列宽塞不下：
+   预览被压到 300 出头、表单只剩 320，两边都局促。只在配图平台放开到 1180。 */
+.panel-card.panel-card-wide {
+  max-width: 1180px;
+}
+
 /* ---------- 空状态 ---------- */
 
 .empty-state {
@@ -2931,16 +2937,179 @@ button.dispatch-step:hover {
 
 /* ==========================================================================
    卡片工作室
+
+   视觉参照 tw93/kami：预览是「一张纸」，四周留白安静，控件是一组细线小卡片。
+   强调色在本区块内改用油墨蓝，和公众号主题墙的朱红区分开 ——
+   朱红是「操作」，油墨蓝是「版面」。
    ========================================================================== */
 
 .studio {
-  display: flex;
-  gap: 26px;
-  align-items: flex-start;
+  --studio-brand: #1b365d;
+  --studio-brand-soft: #eef2f7;
+  --studio-brand-line: #c9d7e6;
+
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
 }
 
-.studio-canvas {
-  flex-shrink: 0;
+@media (prefers-color-scheme: dark) {
+  .studio {
+    --studio-brand: #8fb0d6;
+    --studio-brand-soft: #1e2631;
+    --studio-brand-line: #2f4055;
+  }
+  /* 深色下强调色是浅蓝，按钮上的白字会糊，换成深字 */
+  .studio .btn-accent,
+  .studio .btn-accent:hover:not(:disabled) {
+    color: #14120f;
+  }
+}
+
+/* 左栏跟着滚动：右栏表单很长，预览与导出按钮不该被滚出视野 */
+.studio-stage {
+  position: sticky;
+  top: 12px;
+  min-width: 0;
+}
+
+.studio-stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.studio-stage-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+}
+
+.studio-stage-meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+.studio-preview {
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  /* Kami 的「平」：一条发丝线代替投影，缩略图不会被阴影撑得发灰 */
+  box-shadow: 0 0 0 1px var(--line-strong);
+  background: #fff;
+  outline: none;
+  /* 三档比例宽度不同，居中之后左右留白对称 */
+  margin: 0 auto;
+}
+
+.studio-preview:focus-visible {
+  box-shadow: 0 0 0 2px var(--studio-brand);
+}
+
+/* 翻页：三个控件一组，说明靠右，不抢主视觉 */
+.studio-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.pager-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.pager-btn:hover:not(:disabled) {
+  background: var(--panel-soft);
+  border-color: var(--line-strong);
+}
+
+.pager-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pager-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  min-width: 52px;
+  text-align: center;
+}
+
+.pager-hint {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+/* 导出面板：安静的小卡片，贴着预览下方 */
+.studio-export {
+  margin-top: 14px;
+  padding: 13px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.studio-export-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.studio-export-title {
+  font-family: var(--font-serif);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.studio-export-spec {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.studio-export .check-row {
+  margin-top: 8px;
+}
+
+.studio-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.studio-export-actions .btn-accent {
+  flex: 1;
+}
+
+.studio-export-note {
+  margin: 9px 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.65;
+  color: var(--ink-muted);
 }
 
 .studio-panel {
@@ -2948,41 +3117,145 @@ button.dispatch-step:hover {
   min-width: 0;
 }
 
-/* 配图导出按钮吸底：面板很长（卡片列表 + 一堆编辑表单），导出按钮在最底下，
-   不吸底首屏看不到，得一直滚到底。sticky 贴在预览滚动区的底部，
-   背景用主区底色盖住下面滚过的内容，顶上加一条线分开 */
-.studio-exportbar {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
-  gap: 8px;
-  margin-top: 16px;
-  padding: 12px 0 4px;
-  border-top: 1px solid var(--line);
-  background: var(--main-bg);
+/* 本区块内用油墨蓝替换朱红：按钮、聚焦环、选中态 */
+.studio .btn-accent {
+  background: var(--studio-brand);
+  border-color: var(--studio-brand);
+  color: #fff;
+  box-shadow: none;
 }
 
-.studio-export-help {
-  margin-top: 14px;
+.studio .btn-accent:hover:not(:disabled) {
+  background: var(--studio-brand);
+  border-color: var(--studio-brand);
+  color: #fff;
+  filter: brightness(1.08);
+  box-shadow: none;
+}
+
+.studio .field-input:focus,
+.studio .field-textarea:focus {
+  border-color: var(--studio-brand);
+  box-shadow: 0 0 0 3px var(--studio-brand-soft);
+}
+
+.studio .segmented button.active {
+  color: var(--studio-brand);
+}
+
+.studio .theme-chip.active {
+  border-color: var(--studio-brand-line);
+  color: var(--studio-brand);
+  background: var(--studio-brand-soft);
+}
+
+.studio .card-item.active {
+  border-color: var(--studio-brand-line);
+  background: var(--studio-brand-soft);
+}
+
+/* 当前卡的编辑区：和上方「整套图设置」拉一条线分开 */
+.studio-editor-head {
+  margin: 20px 0 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.studio-editor-title {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.studio-editor-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+/* 排版分组：细线小卡片，把「字号 / 密度 / 对齐 / 显示」收在一处 */
+.studio-group {
+  margin: 14px 0 12px;
+  padding: 12px 13px 13px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel-soft);
-  overflow: hidden;
 }
 
-.studio-export-help summary {
-  padding: 8px 10px;
-  color: var(--ink-soft);
+.studio-group .field:last-of-type {
+  margin-bottom: 0;
+}
+
+.studio-group-title {
+  margin-bottom: 9px;
   font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+}
+
+.studio-seg {
+  width: 100%;
+}
+
+.studio-seg button {
+  flex: 1;
+  padding: 5px 4px;
+}
+
+.flag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
   cursor: pointer;
 }
 
-.studio-export-help > div {
-  padding: 0 10px 9px;
-  color: var(--ink-muted);
-  font-size: var(--fs-xs);
-  line-height: 1.7;
+.check-inline input {
+  margin: 0;
+  accent-color: var(--studio-brand);
+}
+
+/* 数据卡的指标行：数字窄、说明宽，删掉时按钮不跳行 */
+.stat-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-row .stat-value {
+  width: 78px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+.stat-row .icon-btn {
+  width: 26px;
+  height: 26px;
+  font-size: var(--fs-lg);
+  flex-shrink: 0;
 }
 
 .card-list {
@@ -2990,7 +3263,7 @@ button.dispatch-step:hover {
   flex-direction: column;
   gap: 7px;
   /* 按小节出图后卡片可能有十几张，列表自己滚，别把下面的控件顶出屏幕 */
-  max-height: 268px;
+  max-height: 330px;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 2px;
@@ -5378,7 +5651,12 @@ button.dispatch-step:hover {
 
 @media (max-width: 980px) {
   .studio {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  /* 单列时预览在上、编辑在下，sticky 会把它钉死在屏幕上挡住表单 */
+  .studio-stage {
+    position: static;
   }
   /* 头部的换行挪到 1120 断点里去了（那里给了 .head-title 100% 的 flex-basis） */
 }
