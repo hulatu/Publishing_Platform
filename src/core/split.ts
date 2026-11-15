@@ -35,8 +35,3 @@ export function splitByH2(doc: Doc): Doc[] {
     warnings: [...doc.warnings],
   }))
 }
-
-/** 估算拆成几篇后每篇的标题，用于 UI 预览 */
-export function previewSplitTitles(doc: Doc): string[] {
-  return splitByH2(doc).map((d) => d.meta.title)
-}

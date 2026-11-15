@@ -4,6 +4,11 @@ export type RewriteId = 'xiaohongshu' | 'twitter' | 'jike' | 'weibo'
 
 export const rewriteIds: RewriteId[] = ['xiaohongshu', 'twitter', 'jike', 'weibo']
 
+/** 平台 id 是不是四个改写平台之一。用在「当前平台要不要走 AI」的分叉上 */
+export function isRewriteId(id: string): id is RewriteId {
+  return (rewriteIds as string[]).includes(id)
+}
+
 /* ------------------------------------------------------------------ */
 /* 第一段：章节摘要                                                     */
 /* ------------------------------------------------------------------ */

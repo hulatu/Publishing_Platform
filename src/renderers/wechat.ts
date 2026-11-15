@@ -51,6 +51,7 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
   // 字符数只作为「粘进去要传多大一坨」的参考，不再拿它判超限
   const charTotal = [...html].length
   // 超限判定走字数，和微信编辑器的口径一致
+  const bodyWords = charCount(result.text)
   const words = charCount(text)
   const tailBlocks = opts.tail ? activeBlocks(opts.tail) : 0
 
@@ -81,10 +82,11 @@ export function renderWechat(doc: Doc, opts: ConvertOptions): RenderOutput {
     copyMode: 'rich',
     warnings: [...warnings, ...result.warnings],
     stats: [
+      { label: '正文', value: `${bodyWords} 字` },
       {
-        // 顶栏显示的是正文（不含文末）的字数，这里含文末 —— 文末是跟着一起粘贴的，
-        // 20000 字上限按总数算。标签写明「含文末」，免得同一篇文章两个数字对不上。
-        label: '正文字数（含文末）',
+        // 文末会跟着一起粘贴，20000 字上限按总数算。
+        // 与上面的正文分开展示，避免同一篇文章出现两个含义不明的数字。
+        label: '含文末',
         value: `${words} / ${WECHAT_WORD_LIMIT}（${pct}%）`,
         level: overLimit ? 'error' : pct > 85 ? 'warn' : 'ok',
       },

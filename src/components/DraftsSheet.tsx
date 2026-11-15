@@ -10,7 +10,8 @@
  */
 
 import { useState } from 'react'
-import { draftValue, formatAgo, MAX_DRAFTS, type DraftSnapshot } from '../core/drafts'
+import { draftValue, formatAgo, type DraftSnapshot } from '../core/drafts'
+import { Modal } from './Modal'
 
 interface Props {
   open: boolean
@@ -21,13 +22,6 @@ interface Props {
   onOpen: (key: string) => void
   onDelete: (key: string) => void
   onClearAll: () => void
-}
-
-function sizeOf(drafts: DraftSnapshot[]): string {
-  const bytes = new Blob([JSON.stringify(drafts)]).size
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 export function DraftsSheet({ open, onClose, drafts, currentKey, onOpen, onDelete, onClearAll }: Props) {
@@ -48,14 +42,13 @@ export function DraftsSheet({ open, onClose, drafts, currentKey, onOpen, onDelet
   }
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal drafts-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal open={open} onClose={onClose} label="草稿箱" className="drafts-modal">
         <div className="modal-head">
           <div>
             <div className="modal-title">草稿箱</div>
             <div className="ledger-sub">
               {drafts.length > 0
-                ? `${drafts.length} 篇 · 共 ${sizeOf(drafts)} · 上限 ${MAX_DRAFTS} 篇，超出淘汰最旧的`
+                ? `${drafts.length} 篇 · 自动保存`
                 : '自动保存，关掉页面也不丢'}
             </div>
           </div>
@@ -74,7 +67,6 @@ export function DraftsSheet({ open, onClose, drafts, currentKey, onOpen, onDelet
             drafts.map((d) => {
               const { worth, marks } = draftValue(d)
               const isCurrent = d.key === currentKey
-              const chars = d.source.length
 
               return (
                 <div className={`draft-row ${isCurrent ? 'current' : ''}`} key={d.key}>
@@ -87,10 +79,6 @@ export function DraftsSheet({ open, onClose, drafts, currentKey, onOpen, onDelet
 
                     <div className="draft-meta">
                       <span>{formatAgo(d.updatedAt)}</span>
-                      <span className="draft-dot">·</span>
-                      <span>{d.fileName || '粘贴导入'}</span>
-                      <span className="draft-dot">·</span>
-                      <span>{chars.toLocaleString()} 字符</span>
                     </div>
 
                     {marks.length > 0 ? (
@@ -105,14 +93,15 @@ export function DraftsSheet({ open, onClose, drafts, currentKey, onOpen, onDelet
                   </div>
 
                   <div className="draft-actions">
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => onOpen(d.key)}
-                      disabled={isCurrent}
-                      title={isCurrent ? '已经打开了' : '恢复这篇的正文、摘要与 AI 文案'}
-                    >
-                      {isCurrent ? '已打开' : '打开'}
-                    </button>
+                    {!isCurrent ? (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => onOpen(d.key)}
+                        title="恢复这篇的正文、摘要与 AI 文案"
+                      >
+                        打开
+                      </button>
+                    ) : null}
                     <button
                       className={`btn btn-sm draft-del ${confirming === d.key ? 'danger' : ''}`}
                       onClick={() => handleDelete(d.key)}
@@ -143,11 +132,7 @@ export function DraftsSheet({ open, onClose, drafts, currentKey, onOpen, onDelet
           >
             {confirmClear ? `确定清空 ${drafts.length} 篇` : '清空全部'}
           </button>
-          <button className="btn btn-primary btn-sm" onClick={onClose}>
-            完成
-          </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

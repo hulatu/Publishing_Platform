@@ -54,15 +54,6 @@ export function saveUnsplashKey(key: string): boolean {
   }
 }
 
-export function clearUnsplashKey(): boolean {
-  try {
-    localStorage.removeItem(KEY_STORE)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export function hasUnsplashKey(): boolean {
   return loadUnsplashKey().length > 0
 }
@@ -356,11 +347,6 @@ export async function downloadCoverPhoto(photo: CoverPhoto, fileName: string): P
     throw new UnsplashError('network', '下载回来的不是图片，可能被代理拦截了。')
   }
   downloadBlob(blob, fileName)
-}
-
-/** 复制到剪贴板的图片地址：用 regular 而不是下载地址，贴到别处不会拉 2400px 的大图 */
-export function shareUrlOf(photo: CoverPhoto): string {
-  return photo.regular
 }
 
 /** 署名文案：Unsplash 要求可点击，这里给纯文本版，链接由 UI 另外挂 */

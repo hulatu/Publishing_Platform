@@ -19,11 +19,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ImageRef } from '../core/ir'
 import { mapLimit } from '../core/async'
+import { formatBytes } from '../core/num'
 import { downloadBlob } from '../cards/export'
 import { safeFileName } from '../cards/export'
 import {
   auditImage,
-  fmtBytes,
   imageRule,
   mimeExt,
   summarize,
@@ -35,12 +35,12 @@ import {
   exportRule,
   fetchImage,
   fileNameFor,
-  fmtSize,
   manifestText,
   planSummary,
   transcode,
   type ManifestRow,
 } from '../core/image-export'
+import { Modal } from './Modal'
 
 interface Props {
   open: boolean
@@ -66,7 +66,7 @@ function factLine(row: AuditRow | undefined, hasLocal: boolean): string {
   if (!row) return ''
   const parts: string[] = []
   if (row.width && row.height) parts.push(`${row.width}×${row.height}`)
-  if (typeof row.bytes === 'number') parts.push(fmtBytes(row.bytes))
+  if (typeof row.bytes === 'number') parts.push(formatBytes(row.bytes))
   const ext = mimeExt(row.contentType)
   if (ext) parts.push(ext.toUpperCase())
   if (parts.length === 0 && hasLocal) return '本地图片，没有可探测的地址'
@@ -140,6 +140,8 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
     }
     startAudit()
     return () => {
+      // 作废在跑的那一轮。这里要读的是「关闭那一刻」的值，故意不在外面先存一份
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- 同上
       runId.current++
     }
     // images 是每次渲染新建的数组，按长度 + 首尾地址判断「换了一篇文章」
@@ -304,7 +306,7 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
                     '原样导出，没有重新编码'
                   }
                 >
-                  {fmtSize(outRows[img.src].bytes)}
+                  {formatBytes(outRows[img.src].bytes)}
                   {/* 「已处理」和「未处理」必须分开：动图是没处理，不是处理过 */}
                   {outRows[img.src].done
                     ? ' · 已处理'
@@ -324,8 +326,7 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
   )
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal img-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal open={open} onClose={onClose} label="正文图片" className="img-modal">
         <div className="modal-head">
           <div>
             <div className="modal-title">正文图片</div>
@@ -378,8 +379,7 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
                 <div className="notice notice-warn" style={{ marginTop: 12 }}>
                   <span className="notice-mark">!</span>
                   <span>
-                    {failed} 张没导出来：站点没开跨域、代理也没放行（域名不在{' '}
-                    <code>functions/api/img.ts</code> 的白名单里），或者这张图本身就取不到。
+                    {failed} 张没导出来：图片可能不允许跨域下载，或原图已经失效。
                     点每张下面的「打开原图」另存即可。
                   </span>
                 </div>
@@ -416,10 +416,7 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
               {noProxy ? (
                 <div className="notice notice-info" style={{ marginBottom: 12 }}>
                   <span className="notice-mark">i</span>
-                  <span>
-                    图片代理不可用，只查了「能不能取到」。体积和格式要部署到 Cloudflare Pages
-                    才有（本地 <code>npm run dev</code> 没有 <code>/api/img</code>）。
-                  </span>
+                  <span>当前只能检查图片能否打开；体积、格式和比例暂未检测。</span>
                 </div>
               ) : null}
 
@@ -431,15 +428,15 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
                 grid('audit')
               )}
 
-              <div className="audit-note">{rule.note}</div>
+              <details className="audit-rule-details">
+                <summary>图片处理规则</summary>
+                <div>{rule.note}</div>
+              </details>
             </>
           )}
         </div>
 
         <div className="modal-foot">
-          <button className="btn btn-sm" onClick={onClose}>
-            关闭
-          </button>
           {tab === 'audit' && images.length > 0 ? (
             <button className="btn btn-sm" onClick={startAudit} disabled={auditing}>
               {auditing ? <span className="spinner dark" /> : null}
@@ -453,7 +450,6 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
             </button>
           ) : null}
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

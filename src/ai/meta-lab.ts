@@ -20,7 +20,7 @@ import { charCount, countEmoji, findBlacklisted, truncateByChars } from '../core
 import { shortLabel } from './fallback'
 import { PERSONA } from './prompts'
 import { parseJsonLoose } from './schemas'
-import { describeAIError, resolveProvider } from './provider'
+import { resolveProvider } from './provider'
 import { runJson } from './pipeline'
 import {
   emptyMetaLabState,
@@ -638,9 +638,4 @@ export async function runMetaLab(
 /** 标题角度的中文名，UI 直接用 */
 export function styleLabel(style: TitleStyle): string {
   return titleStyleLabels[style] ?? '陈述'
-}
-
-/** 给错误信息兜底：provider 抛错时给出人话 */
-export function describeMetaLabError(e: unknown): string {
-  return describeAIError(e)
 }

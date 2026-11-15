@@ -10,6 +10,7 @@
  */
 
 import type { Doc } from './ir'
+import { readJson } from './storage'
 
 /**
  * 发布后的数据。全部手填 —— 这 11 个平台没有一家给个人号开数据接口，
@@ -23,8 +24,10 @@ export interface PlatformStats {
 }
 
 export interface PlatformRecord {
-  /** ISO 时间串，展示时再格式化 */
-  at: string
+  /** 真正标记为已发布的时间；仅有 copiedAt 时表示「已复制，待发布」 */
+  at?: string
+  /** 最近一次复制产物的时间 */
+  copiedAt?: string
   /** 发布后的链接，可选 */
   url?: string
   /** 发布后几天的数据，可选 */
@@ -55,21 +58,18 @@ export function articleKeyOf(doc: Doc): string {
 }
 
 function readStore(): Store {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return {}
-    const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as Store
-  } catch {
-    // 隐私模式 / 手改坏了，都当成空台账
-    return {}
-  }
+  return readJson<Store>(KEY)
 }
 
 /** 这篇文章最近一次发布的时间，用于淘汰排序 */
 function lastAt(store: Store, key: string): string {
-  return Object.values(store[key] ?? {}).reduce((m, r) => (r.at > m ? r.at : m), '')
+  return Object.values(store[key] ?? {}).reduce(
+    (m, r) => {
+      const at = r.at ?? r.copiedAt ?? ''
+      return at > m ? at : m
+    },
+    '',
+  )
 }
 
 /**
@@ -134,20 +134,48 @@ export function setRecord(key: string, platformId: string, record: PlatformRecor
   return { ledger: next, persisted: writeStore(store) }
 }
 
-/** 复制成功即标记为已发布；保留原来填过的链接与数据 */
+/** 复制只表示「待发布」，不能直接冒充已经发出去 */
+export function markCopied(key: string, platformId: string): LedgerWrite {
+  const prev = readLedger(key)[platformId]
+  return setRecord(key, platformId, {
+    at: prev?.at,
+    copiedAt: new Date().toISOString(),
+    url: prev?.url,
+    stats: prev?.stats,
+  })
+}
+
+/** 用户确认发布；保留复制时间、链接与数据 */
 export function markPublished(key: string, platformId: string): LedgerWrite {
   const prev = readLedger(key)[platformId]
-  return setRecord(key, platformId, { at: new Date().toISOString(), url: prev?.url, stats: prev?.stats })
+  return setRecord(key, platformId, {
+    at: new Date().toISOString(),
+    copiedAt: prev?.copiedAt,
+    url: prev?.url,
+    stats: prev?.stats,
+  })
 }
 
 export function unmark(key: string, platformId: string): LedgerWrite {
   return setRecord(key, platformId, null)
 }
 
+/** 取消发布，但保留「已复制待发布」状态，避免一次误点把整个过程抹掉 */
+export function unmarkPublished(key: string, platformId: string): LedgerWrite {
+  const prev = readLedger(key)[platformId]
+  if (!prev?.copiedAt) return unmark(key, platformId)
+  return setRecord(key, platformId, {
+    copiedAt: prev.copiedAt,
+    url: prev.url,
+    stats: prev.stats,
+  })
+}
+
 export function setUrl(key: string, platformId: string, url: string): LedgerWrite {
   const prev = readLedger(key)[platformId]
   return setRecord(key, platformId, {
-    at: prev?.at ?? new Date().toISOString(),
+    at: prev?.at,
+    copiedAt: prev?.copiedAt,
     url: url.trim() || undefined,
     // 改链接不能顺手把数据抹掉 —— 用户往往是先填数据、后来才补链接
     stats: prev?.stats,
@@ -168,10 +196,16 @@ export function setStats(key: string, platformId: string, patch: PlatformStats):
   const hasAny = Object.values(merged).some((v) => typeof v === 'number' && Number.isFinite(v))
 
   return setRecord(key, platformId, {
-    at: prev?.at ?? new Date().toISOString(),
+    at: prev?.at,
+    copiedAt: prev?.copiedAt,
     url: prev?.url,
     stats: hasAny ? merged : undefined,
   })
+}
+
+/** 只数真正发布过的平台；只有 copiedAt 的记录不算完成 */
+export function publishedCount(ledger: ArticleLedger): number {
+  return Object.values(ledger).filter((rec) => Boolean(rec.at)).length
 }
 
 export function clearArticle(key: string): LedgerWrite {

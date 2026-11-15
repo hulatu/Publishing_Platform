@@ -11,6 +11,7 @@
  * 3. **格式化的取舍** —— 一万折成万、极小的比率不能显示成 0.0%
  */
 
+import { ok, report } from './harness'
 import {
   formatNum,
   formatRate,
@@ -23,14 +24,6 @@ import {
 import { parseNum } from '../src/core/num'
 import type { ArticleLedger } from '../src/core/ledger'
 
-let failed = 0
-function ok(cond: boolean, msg: string) {
-  if (cond) console.log(`  ✓ ${msg}`)
-  else {
-    failed++
-    console.log(`  ✗ ${msg}`)
-  }
-}
 
 /* ---------------- 1. 单平台算术 ---------------- */
 
@@ -61,11 +54,12 @@ const ledger: ArticleLedger = {
   xiaohongshu: { at: '2026-10-01T00:00:00Z', stats: { read: 8700, like: 640, comment: 88, fav: 410 } },
   douban: { at: '2026-10-01T00:00:00Z' },
   jike: { at: '2026-10-01T00:00:00Z', stats: { read: 0, like: 3 } },
+  weibo: { copiedAt: '2026-10-02T00:00:00Z', stats: { read: 999, like: 99 } },
 }
 
 const s = summarizeArticle('k', ledger, '一篇文章')
 ok(s.title === '一篇文章', '标题用传入的')
-ok(s.published === 5, `已发布 ${s.published} 个平台`)
+ok(s.published === 5, `已发布 ${s.published} 个平台（已复制待发布不算）`)
 ok(s.filled === 4, `填过数字的 ${s.filled} 个平台（豆瓣没填，jike 填了 0 也算）`)
 ok(s.read === 3820 + 12600 + 8700, `总阅读 ${s.read}（不含没填的平台）`)
 ok(s.interaction === 265 + 274 + 1138 + 3, `总互动 ${s.interaction}`)
@@ -147,8 +141,4 @@ ok(formatRate(1) === '100.0%', '100% 正常显示')
 
 /* ---------------- 汇总 ---------------- */
 
-if (failed > 0) {
-  console.log(`\n✗ ${failed} 项失败`)
-  process.exit(1)
-}
-console.log('\n✓ 复盘聚合全部通过')
+process.exit(report('复盘聚合'))

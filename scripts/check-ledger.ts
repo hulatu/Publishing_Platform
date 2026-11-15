@@ -1,13 +1,17 @@
 /** 台账 key 锁定验证：改标题后记录不能丢 */
+import { ok, report } from './harness'
 import {
   articleKeyOf,
   clearArticle,
+  markCopied,
   markPublished,
+  publishedCount,
   readAllLedgers,
   readLedger,
   setStats,
   setUrl,
   unmark,
+  unmarkPublished,
 } from '../src/core/ledger'
 
 const mem = new Map<string, string>()
@@ -25,25 +29,34 @@ let quota = Infinity
   length: 0,
 } as Storage
 
-let failed = 0
-function ok(cond: boolean, msg: string) {
-  if (cond) console.log(`  ✓ ${msg}`)
-  else {
-    failed++
-    console.log(`  ✗ ${msg}`)
-  }
-}
 
 const docA = { meta: { slug: 'gym', title: '卖掉了我在宿舍的健身器材' } } as never
 const key = articleKeyOf(docA)
 ok(key === 'gym', `有 slug 时用 slug 做 key（${key}）`)
+let led = readLedger(key)
+
+// 复制 ≠ 发布：只复制时记录 copiedAt，不增加已发布数量
+markCopied(key, 'wechat')
+led = readLedger(key)
+ok(Boolean(led.wechat?.copiedAt) && !led.wechat?.at, '复制只记为待发布')
+ok(publishedCount(led) === 0, '待发布不计入完成数')
 
 // 导入 → 标记已发 → 填链接
 markPublished(key, 'wechat')
 setUrl(key, 'wechat', 'https://mp.weixin.qq.com/s/abc')
-let led = readLedger(key)
+led = readLedger(key)
 ok(!!led.wechat?.at, '标记已发写入时间')
+ok(Boolean(led.wechat?.copiedAt), '确认发布后保留复制时间')
+ok(publishedCount(led) === 1, '确认发布后才计入完成数')
 ok(led.wechat?.url === 'https://mp.weixin.qq.com/s/abc', '链接写进去了')
+
+// 取消发布时回到「已复制待发布」，不把过程一起抹掉
+unmarkPublished(key, 'wechat')
+led = readLedger(key)
+ok(!led.wechat?.at && Boolean(led.wechat?.copiedAt), '取消发布后保留待发布状态')
+
+// 再确认发布，后面继续验证链接与数据
+markPublished(key, 'wechat')
 
 // 用户在编辑器里改了标题 —— key 是导入时锁的，不该变
 const renamed = { meta: { slug: 'gym', title: '卖健身器材这件事我想了很久' } } as never
@@ -132,5 +145,4 @@ ok(!readAllLedgers().old, '被淘汰的正是最久没动过的那篇')
 
 quota = Infinity
 
-console.log(failed === 0 ? '\n✓ 台账层全部通过' : `\n✗ ${failed} 项失败`)
-process.exit(failed === 0 ? 0 : 1)
+process.exit(report('台账层'))

@@ -34,6 +34,7 @@ import {
 import { resolveProvider } from '../ai/provider'
 import { safeFileName } from '../cards/export'
 import { copyPlain } from '../core/copy'
+import { Modal } from './Modal'
 
 interface Props {
   open: boolean
@@ -64,6 +65,8 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
   const lastDoc = useRef<Doc | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // 每次打开都重算：用户可能刚在设置里换了 Key
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- open 只用来触发重算
   const provider = useMemo(() => resolveProvider().provider, [open])
 
   const selected = photos.find((p) => p.id === selectedId) ?? null
@@ -139,7 +142,6 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
       }
     }
     // runSearch 依赖的都是 ref/state，故意不列进依赖，避免每次输入都触发
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, doc])
 
   if (!open || !doc) return null
@@ -200,28 +202,30 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
   const chips = [...new Set([...suggested, ...locals])].slice(0, 4)
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal modal-cover" onClick={(e) => e.stopPropagation()}>
+    <Modal open={open} onClose={onClose} label="封面图 · Unsplash" className="modal-cover">
         <div className="modal-head">
           <span className="modal-title">封面图 · Unsplash</span>
-          <button className="icon-btn" onClick={onClose}>
+          <button className="icon-btn" onClick={onClose} aria-label="关闭">
             ×
           </button>
         </div>
 
         <div className="modal-body">
           {!keyReady ? (
-            <div className="notice notice-warn">
-              <span className="notice-mark">!</span>
-              <span>
-                还没填 Unsplash Access Key。去{' '}
-                <button className="link-btn" onClick={onOpenSettings}>
-                  设置 → Unsplash 封面图
-                </button>{' '}
-                填一个（免费，注册后 1 分钟就能拿到）。Key 只存在这台浏览器里。
-              </span>
+            <div className="cover-setup">
+              <div className="cover-setup-copy">
+                <div className="cover-setup-title">配置 Unsplash 后选择封面</div>
+                <p>按文章搜索 3 张图片，下载或复制地址。</p>
+                <button className="btn btn-primary" onClick={onOpenSettings}>
+                  配置 Unsplash Key
+                </button>
+              </div>
+              <div className="cover-setup-preview" aria-hidden>
+                示例封面
+              </div>
             </div>
-          ) : null}
+          ) : (
+            <>
 
           {/* ---------- 搜索行 ---------- */}
           <div className="cover-search">
@@ -234,12 +238,11 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
               }}
               placeholder="英文关键词更容易命中，比如 laptop desk"
               spellCheck={false}
-              disabled={!keyReady}
             />
             <button
               className="btn btn-sm btn-primary"
               onClick={() => void runSearch(query, 1)}
-              disabled={!keyReady || status === 'loading' || !query.trim()}
+              disabled={status === 'loading' || !query.trim()}
             >
               {status === 'loading' ? <span className="spinner" /> : null}
               {status === 'loading' ? '搜索中' : '找 3 张'}
@@ -266,7 +269,6 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
                       setQuery(c)
                       void runSearch(c, 1)
                     }}
-                    disabled={!keyReady}
                   >
                     {c}
                   </button>
@@ -286,20 +288,6 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
             <div className={`notice ${error.kind === 'rate' ? 'notice-warn' : 'notice-error'}`}>
               <span className="notice-mark">{error.kind === 'rate' ? '!' : '×'}</span>
               <span>{error.message}</span>
-            </div>
-          ) : null}
-
-          {/* ---------- 没 Key 时的示例：先让用户看到「配好后这里会长什么样」 ---------- */}
-          {photos.length === 0 && !error && !keyReady && status !== 'loading' ? (
-            <div className="cover-sample">
-              <div className="cover-sample-label">示例 · 配置 Access Key 后，这里会显示 3 张候选封面</div>
-              <div className="cover-grid" aria-hidden>
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="cover-sample-card">
-                    示例封面
-                  </div>
-                ))}
-              </div>
             </div>
           ) : null}
 
@@ -375,26 +363,22 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
           {status === 'idle' && keyReady ? (
             <div className="stage-empty">填个词，或者直接用文章标签搜一下。</div>
           ) : null}
+            </>
+          )}
         </div>
 
-        <div className="modal-foot">
-          <span className="cover-quota">
-            {remaining === null
-              ? keyReady
-                ? '额度：未知'
-                : ''
-              : `本小时还剩 ${remaining} 次（demo Key 上限 50）`}
-          </span>
-          <button className="btn" onClick={onClose}>
-            关闭
-          </button>
-          {hasMore ? (
-            <button className="btn" onClick={nextBatch} disabled={status === 'loading'}>
-              换一批
-            </button>
-          ) : null}
-        </div>
-      </div>
-    </div>
+        {keyReady ? (
+          <div className="modal-foot">
+            <span className="cover-quota">
+              {remaining === null ? '额度：未知' : `本小时还剩 ${remaining} 次（demo Key 上限 50）`}
+            </span>
+            {hasMore ? (
+              <button className="btn" onClick={nextBatch} disabled={status === 'loading'}>
+                换一批
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+    </Modal>
   )
 }

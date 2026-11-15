@@ -16,6 +16,25 @@
 /sw.js
   Cache-Control: public, max-age=0, must-revalidate
 
+# CSP —— 先只上报，不拦截。
+#
+# 这条挡的不是「我们自己写坏了」，而是「正文里夹了一段脚本」：
+# 预览是把作者 Markdown 里的 HTML 插进页面执行的，而 API Key、草稿、台账
+# 都在同源 localStorage 里。允许列表（core/sanitize-preview.ts）是第一道，
+# 这里是第二道 —— 两道都要，因为允许列表哪天漏一个标签就又开了口子。
+#
+# 为什么是 Report-Only：script-src 一旦写窄，云服务商 SDK（从 jsDelivr 动态
+# import）、各家的接口地址、图片代理都会被牵动，拦错了表现是「生成按钮没反应」，
+# 很难一眼归因。所以先跑一周，在 devtools 里看有没有 violation，再改成
+# Content-Security-Policy 正式生效。
+#
+# 各条的必要性：
+# - script-src 放行 cdn.jsdelivr.net：云服务模式从那里拉 SDK
+# - style-src 必须 'unsafe-inline'：公众号产物整篇都是内联样式，预览要能显示
+# - img-src 放行 https: / data: / blob:：正文外链图、内联图标、html-to-image 的中间产物
+# - connect-src 放行 https: 与 localhost：用户自带的接口地址可能是任意域名或本地模型
+# - frame-ancestors / base-uri / object-src / form-action 全部收紧，这四项没有放行理由
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' https: blob:; font-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'none'

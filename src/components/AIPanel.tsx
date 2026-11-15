@@ -78,7 +78,6 @@ export function AIPanel({
 }: Props) {
   const result = ai.result
   const running = ai.status === 'running'
-  const digestReady = Boolean(digest.digest)
   const elapsed = useElapsed(running)
 
   return (
@@ -87,10 +86,9 @@ export function AIPanel({
       {!providerReady ? (
         <div className="connect-banner">
           <div className="connect-banner-text">
-            <div className="connect-banner-title">还没有接入大模型</div>
+            <div className="connect-banner-title">当前使用本地模式</div>
             <div className="connect-banner-sub">
-              填入自己的 API Key 即可获得 AI 加持。Key 只存在这台浏览器里，请求直接发往你选的服务商，
-              不经过任何中转。没有 Key 时可以用本地抽取，结构一样，但措辞会生硬。
+              填入 API Key 可启用 AI；没有 Key 时会本地抽取，结构一样，但措辞会更生硬。
             </div>
           </div>
           <button className="btn btn-sm btn-primary" onClick={onOpenSettings}>
@@ -111,9 +109,7 @@ export function AIPanel({
             ))}
           </span>
         </div>
-        <span className="ai-toolbar-model">
-          {providerReady ? providerLabel || '已配置模型' : '未配置模型'}
-        </span>
+        {providerReady ? <span className="ai-toolbar-model">{providerLabel || '已配置模型'}</span> : null}
       </div>
 
       {/* ---------- 第一段：逐节摘要 ---------- */}
@@ -158,18 +154,9 @@ export function AIPanel({
         {/* 还没有生成：不再放第二个主按钮，主按钮统一在底部操作条 */}
         {!running && !result ? (
           <div className="stage-empty">
-            <div className="stage-empty-title">还没有{PLATFORM_NAME[platform]}文案</div>
-            <div className="stage-empty-hint">
-              {digestReady
-                ? `会用上面 ${digest.digest?.sections.length ?? 0} 条摘要组装，一条对应一个要点。`
-                : '会先按 ## 切节做摘要，再从摘要组装成平台文案。'}
-            </div>
             <div className="stage-sample">
               <div className="stage-sample-label">示例 · 生成后会长这样</div>
               <div className="stage-sample-text">{PLATFORM_SAMPLES[platform]}</div>
-            </div>
-            <div className="stage-empty-arrow" aria-hidden>
-              ↓ 用底部的「生成{PLATFORM_NAME[platform]}文案」
             </div>
           </div>
         ) : null}
@@ -205,7 +192,7 @@ export function AIPanel({
                   <span className="ai-result-title">标题</span>
                   <LenBadge value={charCount(result.xhs.title)} limit={LIMITS.xhsTitle} unit="字" />
                 </div>
-                <div className="ai-result-body" style={{ fontSize: 15, fontWeight: 600 }}>
+                <div className="ai-result-body" style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>
                   {result.xhs.title}
                 </div>
 
@@ -258,7 +245,7 @@ export function AIPanel({
                       </span>
                       <LenBadge value={weightedLength(t)} limit={LIMITS.twitterWeighted} unit="加权" />
                     </div>
-                    <div style={{ fontSize: 13.5, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{t}</div>
+                    <div style={{ fontSize: 'var(--fs-md)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{t}</div>
                     <div style={{ marginTop: 8 }}>
                       <button
                         className="btn btn-sm"

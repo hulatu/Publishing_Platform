@@ -20,6 +20,8 @@
  * 画进去不会污染。取 blob 这一步本身可以走同源代理，所以整条链路都不依赖图床配置。
  */
 
+import { formatBytes } from './num'
+
 /* ------------------------------------------------------------------ */
 /* 平台规则                                                            */
 /* ------------------------------------------------------------------ */
@@ -169,7 +171,7 @@ export function planExport(facts: SourceFacts, rule: ExportRule): ExportStep[] {
     if (rule.maxBytes > 0 && typeof facts.bytes === 'number' && facts.bytes > rule.maxBytes) {
       steps.push({
         kind: 'skip',
-        text: `动图 ${fmtSize(facts.bytes)}，超过 ${fmtSize(rule.maxBytes)}，但重编码会丢动画 —— 原样导出，请手动处理`,
+        text: `动图 ${formatBytes(facts.bytes)}，超过 ${formatBytes(rule.maxBytes)}，但重编码会丢动画 —— 原样导出，请手动处理`,
       })
     }
     return steps
@@ -209,16 +211,10 @@ export function planExport(facts: SourceFacts, rule: ExportRule): ExportStep[] {
   }
 
   if (rule.maxBytes > 0 && typeof facts.bytes === 'number' && facts.bytes > rule.maxBytes) {
-    steps.push({ kind: 'compress', text: `压到 ${fmtSize(rule.maxBytes)} 以内（原 ${fmtSize(facts.bytes)}）` })
+    steps.push({ kind: 'compress', text: `压到 ${formatBytes(rule.maxBytes)} 以内（原 ${formatBytes(facts.bytes)}）` })
   }
 
   return steps
-}
-
-export function fmtSize(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
 /* ------------------------------------------------------------------ */
@@ -428,9 +424,9 @@ export async function transcode(blob: Blob, rule: ExportRule, facts: SourceFacts
         guard++
       }
       if (out.size <= rule.maxBytes) {
-        done.push(`${fmtSize(before)} → ${fmtSize(out.size)}`)
+        done.push(`${formatBytes(before)} → ${formatBytes(out.size)}`)
       } else {
-        skipped.push(`压到 ${fmtSize(rule.maxBytes)} 以内没成功，最后是 ${fmtSize(out.size)}`)
+        skipped.push(`压到 ${formatBytes(rule.maxBytes)} 以内没成功，最后是 ${formatBytes(out.size)}`)
       }
     }
 
@@ -503,7 +499,7 @@ export function manifestText(rows: ManifestRow[], platformLabel: string, when: s
   const body: string[] = []
   for (const r of rows) {
     const size = r.width && r.height ? `${r.width}×${r.height}  ` : ''
-    body.push(`${r.name}  ${size}${fmtSize(r.bytes)}`)
+    body.push(`${r.name}  ${size}${formatBytes(r.bytes)}`)
     body.push(`    原文说明：${r.alt || '（无）'}`)
     body.push(`    原图地址：${r.src}`)
     if (r.done.length > 0) body.push(`    已处理：${r.done.join('；')}`)
@@ -520,7 +516,7 @@ export function planSummary(rule: ExportRule): string {
   if (rule.maxEdge > 0) parts.push(`长边超过 ${rule.maxEdge} 的缩到 ${rule.maxEdge}`)
   if (rule.ratio) parts.push(`不是 ${rule.ratio[0]}:${rule.ratio[1]} 的按中心裁`)
   if (rule.flatten) parts.push('有透明底的铺白')
-  if (rule.maxBytes > 0) parts.push(`超过 ${fmtSize(rule.maxBytes)} 的压到这个数以内`)
+  if (rule.maxBytes > 0) parts.push(`超过 ${formatBytes(rule.maxBytes)} 的压到这个数以内`)
   if (parts.length === 0) return '原样导出，不做任何处理。'
   return `${parts.join('，')}。动图（GIF）原样保留。`
 }

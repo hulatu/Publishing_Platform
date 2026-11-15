@@ -16,6 +16,7 @@
  */
 
 import type { HtmlTheme, StyleMap } from './html-inline'
+import { escapeHtml } from './escape'
 
 export interface TailHistoryItem {
   title: string
@@ -119,10 +120,6 @@ function paletteOf(theme: HtmlTheme): { accent: string; ink: string; muted: stri
 /* 生成 HTML                                                           */
 /* ------------------------------------------------------------------ */
 
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
-
 function attr(map: StyleMap): string {
   const body = Object.entries(map)
     .filter(([, v]) => v)
@@ -178,14 +175,14 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
               color: p.accent,
               'letter-spacing': '1.5px',
               'margin-bottom': '6px',
-            })}>${esc(cfg.follow.title.trim())}</section>`
+            })}>${escapeHtml(cfg.follow.title.trim())}</section>`
           : '') +
         `<section${attr({
           'font-size': '14px',
           'line-height': '1.85',
           color: p.ink,
           'letter-spacing': '0.3px',
-        })}>${esc(applyVars(cfg.follow.text, account))}</section>` +
+        })}>${escapeHtml(applyVars(cfg.follow.text, account))}</section>` +
         `</section>`,
     )
     texts.push(
@@ -208,7 +205,7 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
               'line-height': '1.9',
               color: p.muted,
               'letter-spacing': '0.2px',
-            })}>${i + 1}. ${esc(item.title.trim())}</section>`,
+            })}>${i + 1}. ${escapeHtml(item.title.trim())}</section>`,
         )
         .join('')
       blocks.push(
@@ -220,7 +217,7 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
                 color: p.ink,
                 'letter-spacing': '1.5px',
                 'margin-bottom': '8px',
-              })}>${esc(cfg.history.title.trim())}</section>`
+              })}>${escapeHtml(cfg.history.title.trim())}</section>`
             : '') +
           rows +
           `</section>`,
@@ -243,7 +240,7 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
         'line-height': '1.8',
         color: p.muted,
         'letter-spacing': '0.2px',
-      })}>${esc(applyVars(cfg.copyright.text, account))}</section>`,
+      })}>${escapeHtml(applyVars(cfg.copyright.text, account))}</section>`,
     )
     texts.push(applyVars(cfg.copyright.text, account))
   }

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { applyPreconnect, byokConfigured, loadByok } from './ai/provider'
 import { isCloudConfigured } from './cloud/config'
 import { hasUnsplashKey } from './core/unsplash'
@@ -20,7 +21,10 @@ if (!root) throw new Error('找不到 #root 挂载点')
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    {/* 兜住整棵树的渲染异常：数据都在 localStorage 里，白屏等于让用户以为丢了 */}
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 )
 

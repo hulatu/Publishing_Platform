@@ -14,12 +14,12 @@ import {
   exportRule,
   extOfBlob,
   fileNameFor,
-  fmtSize,
   manifestText,
   planExport,
   planSummary,
   type ExportStep,
 } from '../src/core/image-export'
+import { formatBytes } from '../src/core/num'
 
 let fail = 0
 const check = (cond: boolean, msg: string) => {
@@ -201,9 +201,9 @@ check(planSummary(XHS).includes('3:4'), '小红书摘要提到裁切比例')
 
 /* ------------------------------------------------------------------ */
 console.log('\n体积格式化')
-check(fmtSize(900) === '900 B', '小于 1 KB 用 B')
-check(fmtSize(400 * 1024) === '400 KB', 'KB 取整')
-check(fmtSize(3 * MB) === '3.0 MB', 'MB 保留一位小数')
+check(formatBytes(900) === '900 B', '小于 1 KB 用 B')
+check(formatBytes(400 * 1024) === '400 KB', 'KB 取整')
+check(formatBytes(3 * MB) === '3.0 MB', 'MB 保留一位小数')
 
 console.log('')
 console.log(fail === 0 ? '图片导出判定全部通过' : `${fail} 项失败`)

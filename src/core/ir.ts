@@ -10,6 +10,8 @@
  * 4. heading.level 只允许 2/3/4 —— H1 统一降为 H2，正文 H1 不能去抢公众号/知乎的标题位。
  */
 
+import { decodeEntities } from './sanitize'
+
 export type Inline =
   | { t: 'text'; v: string }
   | { t: 'strong'; c: Inline[] }
@@ -213,6 +215,40 @@ export interface LinkRef {
   text: string
 }
 
+/**
+ * 手写 HTML 里的 `<a href>`。
+ *
+ * 原文写成 `<a href="…">文字</a>` 时，markdown-it 只当它是 html_inline，原样塞进 IR 的
+ * `html` 节点 —— 走不到 link 节点，于是「外链抽到文末参考链接」这条规则被整条绕过：
+ * 公众号粘进去链接失效，头条和百家号会把标签连文字一起抹掉。
+ *
+ * 解析入口在这里统一，`collectLinks` 与 HTML 出口共用同一份正则；
+ * 各写一份的话，改了一处忘了另一处，链接清单和正文就会对不上。
+ */
+const ANCHOR_PAIR = /<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi
+const HREF_ATTR = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i
+
+export function anchorHref(attrs: string): string {
+  const m = HREF_ATTR.exec(attrs)
+  return (m?.[1] ?? m?.[2] ?? m?.[3] ?? '').trim()
+}
+
+/**
+ * 把片段里每个完整的 `<a …>…</a>` 交给 fn，fn 的返回值替换掉原标签。
+ *
+ * `label` 是去掉内部标签、还原实体后的纯文字 —— 参考链接区用的是它。
+ * 只有 `<a href>` 没有闭标签的半个链接不算，免得把半截 HTML 当成整条链接。
+ */
+export function mapAnchors(
+  html: string,
+  fn: (href: string, label: string, inner: string) => string,
+): string {
+  return html.replace(ANCHOR_PAIR, (_m, attrs: string, inner: string) => {
+    const label = decodeEntities(inner.replace(/<[^>]+>/g, '')).trim()
+    return fn(anchorHref(attrs), label, inner)
+  })
+}
+
 /** 收集全文所有外链（去重，保持出现顺序） */
 export function collectLinks(blocks: Block[]): LinkRef[] {
   const seen = new Set<string>()
@@ -225,8 +261,18 @@ export function collectLinks(blocks: Block[]): LinkRef[] {
       }
     })
   }
+  const considerHtml = (raw: string) => {
+    mapAnchors(raw, (href, label) => {
+      if (href && !href.startsWith('#') && !seen.has(href)) {
+        seen.add(href)
+        out.push({ href, text: label || href })
+      }
+      return ''
+    })
+  }
   walkBlocks(blocks, (b) => {
     if (b.t === 'p' || b.t === 'heading') consider(b.inline)
+    else if (b.t === 'html') considerHtml(b.raw)
     else if (b.t === 'table') {
       for (const cell of b.head) consider(cell)
       for (const row of b.rows) for (const cell of row) consider(cell)

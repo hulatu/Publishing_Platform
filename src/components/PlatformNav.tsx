@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { cardPlatform, convertPlatforms, rewritePlatforms } from '../renderers'
 import { sortByWidth } from '../core/platform-visibility'
+import type { ArticleLedger } from '../core/ledger'
 
 type JobStatus = 'idle' | 'running' | 'done' | 'error'
 
@@ -10,11 +11,13 @@ interface Props {
   /** 每个改写平台各自的状态，切换 tab 不丢 */
   platformStatus: Record<string, JobStatus>
   /** 发布台账：已发过的平台 id → 记录 */
-  published: Record<string, { at: string }>
+  published: ArticleLedger
   /** 被隐藏的平台 id；只影响显示 */
   hidden: Set<string>
   /** 打开「显示哪些平台」面板 */
   onOpenFilter: () => void
+  /** 打开 ⌘K 快速切换 */
+  onQuickSwitch: () => void
 }
 
 /** 单个汉字做「图标」：比一排灰色徽章好扫，也不用引图标库 */
@@ -62,46 +65,63 @@ function saveCollapsed(set: Set<string>): void {
 
 /* ------------------------------------------------------------------ */
 
+/** 侧栏状态点对读屏的说法 */
+const DOT_LABEL: Record<'ok' | 'warn' | 'error' | 'idle', string> = {
+  ok: '文案已生成',
+  warn: '正在生成',
+  error: '生成失败',
+  idle: '',
+}
+
 function NavItem({
   id,
   name,
   hint,
-  badge,
   active,
   onSelect,
   dot,
   published,
+  prepared,
 }: {
   id: string
   name: string
   hint: string
-  badge: string
   active: boolean
   onSelect: (id: string) => void
   dot?: 'ok' | 'warn' | 'error' | 'idle'
   /** 已发过：名字后面挂个勾，扫一眼就知道还剩几个平台 */
   published?: boolean
+  /** 已复制但还没确认真发布 */
+  prepared?: boolean
 }) {
   return (
     <button
-      className={`nav-item ${active ? 'active' : ''} ${published ? 'published' : ''}`}
+      className={`nav-item ${active ? 'active' : ''} ${published ? 'published' : ''} ${prepared ? 'prepared' : ''}`}
       onClick={() => onSelect(id)}
       title={published ? `${hint} · 已发布` : hint}
+      /* 读屏用户看不到 .active 这个 class，只能靠 aria-current 知道自己在哪家 */
+      aria-current={active ? 'page' : undefined}
     >
       <span className="nav-mark" aria-hidden>
         {MONOGRAM[id] ?? '·'}
       </span>
       <span className="nav-item-body">
         <span className="nav-item-name">{name}</span>
-        <span className="nav-item-meta">{hint}</span>
       </span>
       {published ? (
-        <span className="nav-check" aria-label="已发布">
+        // role="img" + label：符号本身没有语义，直接把意思给读屏
+        <span className="nav-check" role="img" aria-label="已发布">
           ✓
         </span>
       ) : null}
-      {dot && dot !== 'idle' ? <span className={`dot dot-${dot}`} /> : null}
-      <span className="nav-badge">{badge}</span>
+      {prepared ? (
+        <span className="nav-prepared" role="img" aria-label="已复制，待发布">
+          待发
+        </span>
+      ) : null}
+      {dot && dot !== 'idle' ? (
+        <span className={`dot dot-${dot}`} role="img" aria-label={DOT_LABEL[dot]} />
+      ) : null}
     </button>
   )
 }
@@ -109,8 +129,8 @@ function NavItem({
 /**
  * 分组标题可折叠。
  *
- * 侧栏 16 个平台常驻要 705px 高 —— 13 寸笔记本（视口 ~800）里导入区一撑开就得滚，
- * 而真正在用的通常只有一两个平台。折起来之后剩下的组还在原位，不用滚。
+ * 11 个平台全部平铺仍会挤占主操作空间；每一行保持单行，
+ * 平台说明由主标题区域统一展示，侧栏只负责选择。
  *
  * 收起时标题右侧显示「组里几个」，如果当前平台正好在这个组里，就改显示它的名字
  * （否则折叠后看不出自己在哪一组）。
@@ -161,6 +181,7 @@ export function PlatformNav({
   published,
   hidden,
   onOpenFilter,
+  onQuickSwitch,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
 
@@ -187,10 +208,6 @@ export function PlatformNav({
   const rewriteList = sortByWidth(rewritePlatforms.filter((p) => !hidden.has(p.id)))
   const showCards = !hidden.has(cardPlatform.id)
 
-  // 分母只算「列表里看得见的」，否则隐藏两个平台后「已发 3/11」会永远凑不满
-  const visibleIds = new Set([...convertList, ...rewriteList].map((p) => p.id))
-  const total = visibleIds.size
-  const done = Object.keys(published).filter((id) => visibleIds.has(id)).length
   const hiddenCount = hidden.size
 
   const activeIn = (list: { id: string; name: string }[]) =>
@@ -201,9 +218,14 @@ export function PlatformNav({
       <div className="side-title">
         <span>发布到</span>
         <span className="side-title-right">
-          <span className={`count ${done === total && total > 0 ? 'all-done' : ''}`}>
-            {done > 0 ? `已发 ${done}/${total}` : total}
-          </span>
+          <button
+            className="nav-kbd"
+            onClick={onQuickSwitch}
+            title="快速切换平台（⌘K）"
+            aria-label="快速切换平台"
+          >
+            ⌘K
+          </button>
           <button
             className={`nav-filter-btn ${hiddenCount > 0 ? 'has-hidden' : ''}`}
             onClick={onOpenFilter}
@@ -217,7 +239,7 @@ export function PlatformNav({
 
       {convertList.length > 0 ? (
         <NavGroup
-          label="格式转换 · 无需 AI"
+          label="直接转换"
           count={convertList.length}
           collapsed={collapsed.has('convert')}
           onToggle={() => toggle('convert')}
@@ -229,10 +251,10 @@ export function PlatformNav({
               id={p.id}
               name={p.name}
               hint={p.hint}
-              badge="转换"
               active={active === p.id}
               onSelect={onSelect}
-              published={Boolean(published[p.id])}
+              published={Boolean(published[p.id]?.at)}
+              prepared={!published[p.id]?.at && Boolean(published[p.id]?.copiedAt)}
             />
           ))}
         </NavGroup>
@@ -240,7 +262,7 @@ export function PlatformNav({
 
       {rewriteList.length > 0 ? (
         <NavGroup
-          label="内容改写 · 需要大模型"
+          label="AI 改写"
           count={rewriteList.length}
           collapsed={collapsed.has('rewrite')}
           onToggle={() => toggle('rewrite')}
@@ -252,11 +274,11 @@ export function PlatformNav({
               id={p.id}
               name={p.name}
               hint={p.hint}
-              badge="AI"
               active={active === p.id}
               onSelect={onSelect}
               dot={dotOf(p.id)}
-              published={Boolean(published[p.id])}
+              published={Boolean(published[p.id]?.at)}
+              prepared={!published[p.id]?.at && Boolean(published[p.id]?.copiedAt)}
             />
           ))}
         </NavGroup>
@@ -274,7 +296,6 @@ export function PlatformNav({
             id={cardPlatform.id}
             name={cardPlatform.name}
             hint={cardPlatform.hint}
-            badge="出图"
             active={active === cardPlatform.id}
             onSelect={onSelect}
           />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Doc } from '../core/ir'
 import type { ArticleSection } from '../core/sections'
 import { buildCards, DEFAULT_SITE_NAME, makeCard, type SectionSummary } from '../cards/build'
@@ -64,6 +64,8 @@ export function CardStudio({
   const [cards, setCards] = useState<CardSpec[]>(() =>
     renumber(buildCards({ doc, themeId: cardThemeId, siteName, sections, summaries })),
   )
+  /** 表单字段 id 前缀：读屏靠 htmlFor 找到输入框 */
+  const fid = useId()
   const [selectedId, setSelectedId] = useState('cover')
   const [exporting, setExporting] = useState(false)
   const [progress, setProgress] = useState('')
@@ -240,7 +242,14 @@ export function CardStudio({
             {selected ? <CardRenderer spec={selected} theme={theme} format={format} /> : null}
           </div>
         </div>
-        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>
+        <div
+          style={{
+            marginTop: 10,
+            fontSize: 'var(--fs-xs)',
+            color: 'var(--ink-muted)',
+            textAlign: 'center',
+          }}
+        >
           {fmt.w * 2} × {fmt.h * 2} · {fmt.hint}
         </div>
       </div>
@@ -348,7 +357,7 @@ export function CardStudio({
 
         {/* 尺寸 */}
         <div className="field">
-          <label className="field-label">导出尺寸</label>
+          <span className="field-label">导出尺寸</span>
           <div className="segmented fmt-switch">
             {CARD_FORMATS.map((f) => (
               <button
@@ -369,7 +378,7 @@ export function CardStudio({
 
         {/* 配色 */}
         <div className="field">
-          <label className="field-label">配色</label>
+          <span className="field-label">配色</span>
           <div className="theme-row">
             {cardThemes.map((t) => (
               <button
@@ -389,8 +398,11 @@ export function CardStudio({
         </div>
 
         <div className="field">
-          <label className="field-label">署名（卡片底部）</label>
+          <label className="field-label" htmlFor={`${fid}-site`}>
+            署名（卡片底部）
+          </label>
           <input
+            id={`${fid}-site`}
             className="field-input"
             value={siteName}
             onChange={(e) => onSiteNameChange(e.target.value)}
@@ -402,7 +414,7 @@ export function CardStudio({
         {selected ? (
           <>
             <div className="field">
-              <label className="field-label">
+              <label className="field-label" htmlFor={`${fid}-title`}>
                 主文字
                 {selected.layout === 'cover'
                   ? '（标题）'
@@ -413,6 +425,7 @@ export function CardStudio({
                       : ''}
               </label>
               <textarea
+                id={`${fid}-title`}
                 className="field-textarea"
                 value={selected.title}
                 onChange={(e) => patch(selected.id, { title: e.target.value })}
@@ -421,8 +434,11 @@ export function CardStudio({
 
             {selected.layout === 'points' ? (
               <div className="field">
-                <label className="field-label">要点（每行一条，最多 5 条生效）</label>
+                <label className="field-label" htmlFor={`${fid}-points`}>
+                  要点（每行一条，最多 5 条生效）
+                </label>
                 <textarea
+                  id={`${fid}-points`}
                   className="field-textarea"
                   style={{ minHeight: 110 }}
                   value={(selected.points ?? []).join('\n')}
@@ -435,10 +451,11 @@ export function CardStudio({
               </div>
             ) : (
               <div className="field">
-                <label className="field-label">
+                <label className="field-label" htmlFor={`${fid}-subtitle`}>
                   {selected.layout === 'section' ? '本节内容（摘要）' : '副文字'}
                 </label>
                 <textarea
+                  id={`${fid}-subtitle`}
                   className="field-textarea"
                   style={selected.layout === 'section' ? { minHeight: 96 } : undefined}
                   value={selected.subtitle ?? ''}
@@ -454,8 +471,11 @@ export function CardStudio({
 
             {selected.layout !== 'end' ? (
               <div className="field">
-                <label className="field-label">左上角小标签</label>
+                <label className="field-label" htmlFor={`${fid}-kicker`}>
+                  左上角小标签
+                </label>
                 <input
+                  id={`${fid}-kicker`}
                   className="field-input"
                   value={selected.kicker ?? ''}
                   onChange={(e) => patch(selected.id, { kicker: e.target.value })}
@@ -465,8 +485,11 @@ export function CardStudio({
             ) : null}
 
             <div className="field">
-              <label className="field-label">底部日期</label>
+              <label className="field-label" htmlFor={`${fid}-date`}>
+                底部日期
+              </label>
               <input
+                id={`${fid}-date`}
                 className="field-input"
                 value={selected.date ?? ''}
                 onChange={(e) => patch(selected.id, { date: e.target.value })}
@@ -490,14 +513,14 @@ export function CardStudio({
           </button>
         </div>
 
-        <div className="notice notice-info" style={{ marginTop: 14 }}>
-          <span className="notice-mark">i</span>
-          <span>
+        <details className="studio-export-help">
+          <summary>导出说明</summary>
+          <div>
             导出的文件名带两位编号（<b>01-标题-封面.png</b>），按名称排序就是卡片顺序，
             多选上传不用自己排。卡片是纯 CSS 渲染，不引用文章配图 —— 这样导出不会因为外链图跨域而失败。
             导出用的是系统字体，在 macOS 上最准；换到 Windows 会回退到微软雅黑，长标题的换行位置可能略有偏移。
-          </span>
-        </div>
+          </div>
+        </details>
       </div>
 
       {/* ---------- 离屏渲染层：导出用 ---------- */}

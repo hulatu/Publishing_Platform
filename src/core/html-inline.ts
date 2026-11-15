@@ -16,7 +16,8 @@
  */
 
 import type { Align, Block, ImageRef, Inline, LinkRef } from './ir'
-import { collectImages, collectLinks, imageCaption, inlineText } from './ir'
+import { collectImages, collectLinks, imageCaption, inlineText, mapAnchors } from './ir'
+import { escapeHtml } from './escape'
 import { blocksToText } from './ir'
 
 export type StyleMap = Record<string, string>
@@ -69,14 +70,6 @@ export interface HtmlTheme {
 /* ------------------------------------------------------------------ */
 /* 工具                                                                */
 /* ------------------------------------------------------------------ */
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
 
 function attr(map: StyleMap): string {
   const body = Object.entries(map)
@@ -163,13 +156,7 @@ function renderInline(nodes: Inline[], ctx: Ctx): string {
           break
         }
         // 公众号：正文只留文字 + 编号上标，URL 收到文末
-        let idx = ctx.refIndex.get(n.href)
-        if (idx === undefined) {
-          ctx.refs.push({ href: n.href, text: inlineText(n.c) || n.href })
-          idx = ctx.refs.length
-          ctx.refIndex.set(n.href, idx)
-        }
-        out += `${inner}<span${attr(theme.linkMark)}>[${idx}]</span>`
+        out += `${inner}${refMark(refNumber(n.href, inlineText(n.c), ctx), ctx)}`
         break
       }
 
@@ -191,12 +178,44 @@ function renderInline(nodes: Inline[], ctx: Ctx): string {
       }
 
       case 'html':
-        out += n.raw
+        out += ctx.opts.linkMode === 'inline' ? n.raw : htmlWithRefs(n.raw, ctx)
         break
     }
   }
 
   return out
+}
+
+/** 记一个文末参考链接，返回编号（同一个 URL 复用同一号） */
+function refNumber(href: string, text: string, ctx: Ctx): number {
+  const known = ctx.refIndex.get(href)
+  if (known !== undefined) return known
+  ctx.refs.push({ href, text: text || href })
+  const idx = ctx.refs.length
+  ctx.refIndex.set(href, idx)
+  return idx
+}
+
+function refMark(idx: number, ctx: Ctx): string {
+  return `<span${attr(ctx.theme.linkMark)}>[${idx}]</span>`
+}
+
+/**
+ * refs 模式下的 HTML 片段：手写的 `<a href>` 也收进文末参考链接。
+ *
+ * 原样输出的话这条链接绕开了「外链抽到文末」：公众号粘贴后链接失效，
+ * 头条/百家号会把整个标签连文字一起抹掉。处理方式和 Markdown 链接完全一致。
+ *
+ * 落单的开/闭标签一并去掉 —— `<a href>` 和 `</a>` 是分开的 token，
+ * 跨节点的那半个标签留在正文里只会变成可见的空链接。
+ */
+function htmlWithRefs(raw: string, ctx: Ctx): string {
+  const html = mapAnchors(raw, (href, label, inner) => {
+    // 页内锚点（`#fn1`）没有 URL 可收，留文字就够了
+    if (!href || href.startsWith('#')) return inner
+    return `${inner}${refMark(refNumber(href, label, ctx), ctx)}`
+  })
+  return html.replace(/<\/?a\b[^>]*>/gi, '')
 }
 
 /* ------------------------------------------------------------------ */
@@ -402,7 +421,7 @@ function renderBlocks(blocks: Block[], ctx: Ctx): string {
             : `<section${attr(theme.hr)}></section>`
         break
       case 'html':
-        out += b.raw
+        out += ctx.opts.linkMode === 'inline' ? b.raw : htmlWithRefs(b.raw, ctx)
         break
       case 'fn':
         // 脚注统一在文末渲染，这里跳过

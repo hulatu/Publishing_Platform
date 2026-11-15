@@ -23,6 +23,7 @@ import {
   rateOf,
   type ArticleSummary,
 } from '../core/review'
+import { Modal } from './Modal'
 
 interface Props {
   open: boolean
@@ -86,7 +87,7 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
   const [tab, setTab] = useState<'article' | 'all'>('article')
   if (!open) return null
 
-  const published = Object.entries(ledger).filter(([, rec]) => Boolean(rec))
+  const published = Object.entries(ledger).filter(([, rec]) => Boolean(rec.at))
   const pending = ALL.length - published.length
 
   // 全篇汇总
@@ -95,8 +96,7 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
   const filledCount = published.filter(([, r]) => hasStats(r.stats)).length
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal review-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal open={open} onClose={onClose} label="复盘" className="review-modal">
         <div className="modal-head">
           <div>
             <div className="modal-title">复盘</div>
@@ -130,26 +130,30 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
                 </div>
               ) : (
                 <>
-                  <div className="rev-total">
-                    <div className="rev-total-item">
-                      <span className="rev-total-label">总阅读</span>
-                      <b>{formatNum(totalRead)}</b>
+                  {filledCount === 0 ? (
+                    <div className="field-hint review-zero-hint">填写第一个平台的数据后显示汇总。</div>
+                  ) : (
+                    <div className="rev-total">
+                      <div className="rev-total-item">
+                        <span className="rev-total-label">总阅读</span>
+                        <b>{formatNum(totalRead)}</b>
+                      </div>
+                      <div className="rev-total-item">
+                        <span className="rev-total-label">总互动</span>
+                        <b>{formatNum(totalInteraction)}</b>
+                      </div>
+                      <div className="rev-total-item">
+                        <span className="rev-total-label">互动率</span>
+                        <b>{formatRate(totalRead > 0 ? totalInteraction / totalRead : null)}</b>
+                      </div>
+                      <div className="rev-total-item">
+                        <span className="rev-total-label">已填</span>
+                        <b>
+                          {filledCount}/{published.length}
+                        </b>
+                      </div>
                     </div>
-                    <div className="rev-total-item">
-                      <span className="rev-total-label">总互动</span>
-                      <b>{formatNum(totalInteraction)}</b>
-                    </div>
-                    <div className="rev-total-item">
-                      <span className="rev-total-label">互动率</span>
-                      <b>{formatRate(totalRead > 0 ? totalInteraction / totalRead : null)}</b>
-                    </div>
-                    <div className="rev-total-item">
-                      <span className="rev-total-label">已填</span>
-                      <b>
-                        {filledCount}/{published.length}
-                      </b>
-                    </div>
-                  </div>
+                  )}
 
                   {published.map(([id, rec]) => {
                     const rate = rateOf(rec.stats)
@@ -157,10 +161,10 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
                       <div className="rev-row" key={id}>
                         <div className="rev-row-head">
                           <span className="rev-name">{NAME[id] ?? id}</span>
-                          <span className="rev-at">{formatAt(rec.at)}</span>
-                          <span className={`rev-rate ${rate === null ? 'empty' : ''}`}>
-                            互动率 {formatRate(rate)}
-                          </span>
+                          <span className="rev-at">{formatAt(rec.at ?? '')}</span>
+                          {rate !== null ? (
+                            <span className="rev-rate">互动率 {formatRate(rate)}</span>
+                          ) : null}
                         </div>
                         <div className="rev-fields">
                           <NumField
@@ -197,14 +201,6 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
               ) : null}
             </div>
 
-            <div className="modal-foot">
-              <span className="muted" style={{ fontSize: 11 }}>
-                数据全部存在本机浏览器，不会上传
-              </span>
-              <button className="btn btn-primary btn-sm" onClick={onClose}>
-                完成
-              </button>
-            </div>
           </>
         ) : (
           <>
@@ -270,16 +266,12 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
             </div>
 
             <div className="modal-foot">
-              <span className="muted" style={{ fontSize: 11 }}>
+              <span className="muted field-hint-inline">
                 一篇填了多个平台时，阅读按平台累加
               </span>
-              <button className="btn btn-primary btn-sm" onClick={onClose}>
-                完成
-              </button>
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   )
 }

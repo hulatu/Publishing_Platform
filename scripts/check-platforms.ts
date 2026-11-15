@@ -14,6 +14,7 @@
  * 另外还扫 109 篇真实文章跑一遍，防止某个平台的渲染器在长文上崩。
  */
 
+import { ok, report, addFailures } from './harness'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { POSTS } from './posts-dir'
@@ -26,14 +27,6 @@ import { loadOpenOnCopy, publishUrlOf, saveOpenOnCopy } from '../src/core/publis
 import { loadHidden, saveHidden, sortByWidth } from '../src/core/platform-visibility'
 import { weightedLength } from '../src/core/cjk'
 
-let failed = 0
-function ok(cond: boolean, msg: string) {
-  if (cond) console.log(`  ✓ ${msg}`)
-  else {
-    failed++
-    console.log(`  ✗ ${msg}`)
-  }
-}
 
 const OPTS = { wechatThemeId: 'paper' }
 
@@ -433,10 +426,6 @@ ok(!threw2 && saved2 === false, '本地存储不可写时返回 false 而不是�
 
 if (crashes + empty + leakA + unbalanced > 0) {
   console.log(`\n✗ 扫描发现 ${crashes + empty + leakA + unbalanced} 处问题`)
-  process.exit(1)
+  addFailures(crashes + empty + leakA + unbalanced)
 }
-if (failed > 0) {
-  console.log(`\n✗ ${failed} 项失败`)
-  process.exit(1)
-}
-console.log('\n✓ 全部平台渲染通过')
+process.exit(report('全部平台渲染'))

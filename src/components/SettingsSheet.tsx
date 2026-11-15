@@ -5,7 +5,7 @@
  * 使用者选择的服务商。所以任何人打开这个网页，填自己的 Key 就能用 AI。
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isCloudConfigured } from '../cloud/config'
 import {
   PROVIDER_PRESETS,
@@ -15,14 +15,19 @@ import {
   fetchCloudModels,
   loadByok,
   loadCloudModel,
+  loadRememberKey,
   pingByok,
   presetById,
   saveByok,
   saveCloudModel,
+  saveRememberKey,
   type ByokSettings,
   type PingResult,
 } from '../ai/provider'
+import { backupFileName, backupText, collectBackup, describeBackup, restoreBackup } from '../core/backup'
+import { downloadText } from '../core/copy'
 import { loadUnsplashKey, saveUnsplashKey } from '../core/unsplash'
+import { Modal } from './Modal'
 
 interface Props {
   open: boolean
@@ -39,18 +44,31 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
   const [pinging, setPinging] = useState(false)
   const [ping, setPing] = useState<PingResult | null>(null)
   const [showKey, setShowKey] = useState(false)
+  /** 关掉时不写 localStorage，只写 sessionStorage：公用电脑上更稳妥 */
+  const [rememberKey, setRememberKey] = useState(true)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   /** Unsplash 的 Access Key：和 AI Key 一样只存本机，但两者用途不同，各存各的 */
   const [unsplashKey, setUnsplashKey] = useState('')
   const [showUnsplash, setShowUnsplash] = useState(false)
+  /** 本地数据：打开面板时算一次，别每次渲染都去遍历 localStorage */
+  const [dataSummary, setDataSummary] = useState('')
+  /** 导出 / 导入的结果提示。成功和失败都要说出来，尤其「有几项没写进去」 */
+  const [dataNote, setDataNote] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
+  const importRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
-    setByok(loadByok())
+    const stored = loadByok()
+    setByok(stored)
+    setAdvancedOpen(stored.presetId === 'custom')
     setCloudModel(loadCloudModel())
     setUnsplashKey(loadUnsplashKey())
     setPing(null)
     setShowKey(false)
     setShowUnsplash(false)
+    setRememberKey(loadRememberKey())
+    setDataNote(null)
+    setDataSummary(describeBackup(collectBackup()))
   }, [open])
 
   useEffect(() => {
@@ -72,6 +90,11 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
 
   const preset = presetById(byok.presetId)
   const ready = byokConfigured(byok)
+  const endpointId = 'settings-endpoint'
+  const apiKeyId = 'settings-api-key'
+  const modelId = 'settings-model'
+  const unsplashKeyId = 'settings-unsplash-key'
+  const cloudModelId = 'settings-cloud-model'
 
   const applyPreset = (id: string) => {
     const p = presetById(id)
@@ -83,6 +106,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
       model: p.model || prev.model,
       jsonMode: p.jsonMode,
     }))
+    setAdvancedOpen(id === 'custom')
     setPing(null)
   }
 
@@ -98,6 +122,8 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
   }
 
   const save = () => {
+    // 先落偏好再落 Key：saveByok 要根据「记不记住」决定写哪个 storage
+    saveRememberKey(rememberKey)
     // 写盘可能失败（隐私模式 / 配额满）。失败要说出来，不能假装存好了
     const stored = saveByok(byok)
     saveCloudModel(cloudModel)
@@ -114,26 +140,45 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
     onClose()
   }
 
+  const exportLocal = () => {
+    const snapshot = collectBackup()
+    downloadText(backupText(), backupFileName(), 'application/json')
+    setDataNote({ text: `已导出 ${describeBackup(snapshot)}。文件里含 API Key，别分享出去。`, kind: 'ok' })
+  }
+
+  const importLocal = async (file: File) => {
+    // 读不出来（文件被占用、不是文本）也要给一句话，而不是静默什么都不发生
+    const text = await file.text().catch(() => '')
+    const result = restoreBackup(text)
+    if (result.error) {
+      setDataNote({ text: result.error, kind: 'err' })
+      return
+    }
+    if (result.keys === 0) {
+      setDataNote({ text: '这个备份里没有可恢复的项', kind: 'err' })
+      return
+    }
+    const failed = result.failed ? `，另有 ${result.failed} 项没写进去（浏览器存储已满）` : ''
+    setDataNote({
+      text: `已恢复 ${result.keys} 项${failed}。刷新页面后生效。`,
+      kind: result.failed ? 'err' : 'ok',
+    })
+    setDataSummary(describeBackup(collectBackup()))
+  }
+
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <Modal open={open} onClose={onClose} label="设置">
         <div className="modal-head">
           {/* 标题只写「设置」：这个弹窗不只管大模型，下面还有 Unsplash 封面图 Key。
               写「接入大模型」会让人以为它只管 Key，找封面设置时想不到来这里 */}
           <span className="modal-title">设置</span>
-          <button className="icon-btn" onClick={onClose}>
+          <button className="icon-btn" onClick={onClose} aria-label="关闭">
             ×
           </button>
         </div>
 
         <div className="modal-body">
-          <div className="notice notice-info">
-            <span className="notice-mark">i</span>
-            <span>
-              这个工具没有服务器。Key 只保存在<b>这台浏览器</b>的 localStorage 里，
-              请求从浏览器直接发往你选的服务商，不经过任何中转。
-            </span>
-          </div>
+          <p className="settings-privacy">Key 只保存在这台浏览器，不经过本工具的服务器。</p>
 
           {/* ---------- 服务商 ---------- */}
           <div className="side-title" style={{ marginTop: 18, marginBottom: 10 }}>
@@ -153,26 +198,8 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
             ))}
           </div>
 
-          {preset?.note ? <div className="preset-note">{preset.note}</div> : null}
-
-          {/* ---------- 三项 ---------- */}
           <div className="field" style={{ marginTop: 14 }}>
-            <label className="field-label">接口地址</label>
-            <input
-              className="field-input"
-              value={byok.endpoint}
-              onChange={(e) => {
-                setByok({ ...byok, endpoint: e.target.value, presetId: 'custom' })
-                setPing(null)
-              }}
-              placeholder="https://api.deepseek.com/v1"
-              spellCheck={false}
-            />
-            <div className="field-hint">要以 /v1 结尾（或该服务文档给出的兼容地址）</div>
-          </div>
-
-          <div className="field">
-            <label className="field-label">
+            <label className="field-label" htmlFor={apiKeyId}>
               API Key
               {preset?.consoleUrl ? (
                 <a className="link-btn" href={preset.consoleUrl} target="_blank" rel="noreferrer">
@@ -182,6 +209,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
             </label>
             <div className="key-row">
               <input
+                id={apiKeyId}
                 className="field-input"
                 type={showKey ? 'text' : 'password'}
                 value={byok.apiKey}
@@ -197,44 +225,26 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
                 {showKey ? '隐藏' : '显示'}
               </button>
             </div>
+            <label className="check-row" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={rememberKey}
+                onChange={(e) => setRememberKey(e.target.checked)}
+              />
+              <span>在这台设备上记住 Key</span>
+            </label>
+            <div className="field-hint">
+              {rememberKey
+                ? '关掉浏览器再打开也不用重填。公用电脑上建议取消勾选。'
+                : '只存在本次会话：关掉这个标签页就要重新填。'}
+            </div>
           </div>
-
-          <div className="field">
-            <label className="field-label">模型名</label>
-            <input
-              className="field-input"
-              value={byok.model}
-              onChange={(e) => {
-                setByok({ ...byok, model: e.target.value })
-                setPing(null)
-              }}
-              placeholder="deepseek-chat"
-              spellCheck={false}
-              list="model-suggestions"
-            />
-            <datalist id="model-suggestions">
-              {preset?.models.map((m) => <option key={m} value={m} />)}
-            </datalist>
-            {preset?.models.length ? (
-              <div className="field-hint">常用：{preset.models.join(' / ')}</div>
-            ) : null}
-          </div>
-
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={byok.jsonMode}
-              onChange={(e) => setByok({ ...byok, jsonMode: e.target.checked })}
-            />
-            支持 response_format: json_object（输出更稳；不支持就取消勾选）
-          </label>
 
           {/* ---------- 测试 ---------- */}
           <div className="ping-row">
             <button className="btn btn-sm btn-primary" onClick={runPing} disabled={pinging || !ready}>
               {pinging ? '测试中…' : '测试连接'}
             </button>
-            {!ready ? <span className="muted" style={{ fontSize: 12 }}>三项都填好才能测</span> : null}
           </div>
 
           {ping ? (
@@ -244,13 +254,73 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
             </div>
           ) : null}
 
+          <details
+            className="settings-advanced"
+            open={advancedOpen}
+            onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+          >
+            <summary>
+              <span>高级设置</span>
+              <span>接口地址 / 模型名 / JSON 模式</span>
+            </summary>
+            <div className="settings-advanced-body">
+              <div className="field">
+                <label className="field-label" htmlFor={endpointId}>
+                  接口地址
+                </label>
+                <input
+                  id={endpointId}
+                  className="field-input"
+                  value={byok.endpoint}
+                  onChange={(e) => {
+                    setByok({ ...byok, endpoint: e.target.value, presetId: 'custom' })
+                    setPing(null)
+                  }}
+                  placeholder="https://api.deepseek.com/v1"
+                  spellCheck={false}
+                />
+                <div className="field-hint">要以 /v1 结尾（或服务文档给出的兼容地址）</div>
+              </div>
+
+              <div className="field">
+                <label className="field-label" htmlFor={modelId}>
+                  模型名
+                </label>
+                <input
+                  id={modelId}
+                  className="field-input"
+                  value={byok.model}
+                  onChange={(e) => {
+                    setByok({ ...byok, model: e.target.value })
+                    setPing(null)
+                  }}
+                  placeholder="deepseek-chat"
+                  spellCheck={false}
+                  list="model-suggestions"
+                />
+                <datalist id="model-suggestions">
+                  {preset?.models.map((m) => <option key={m} value={m} />)}
+                </datalist>
+              </div>
+
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={byok.jsonMode}
+                  onChange={(e) => setByok({ ...byok, jsonMode: e.target.checked })}
+                />
+                支持 response_format: json_object
+              </label>
+            </div>
+          </details>
+
           {/* ---------- 云服务（可选） ---------- */}
           {isCloudConfigured() ? (
             <>
               <div className="side-title" style={{ marginTop: 24, marginBottom: 10 }}>
                 <span>WorkBuddy 云服务（免密钥）</span>
               </div>
-              {loadingModels ? <div className="muted" style={{ fontSize: 12 }}>正在拉取模型…</div> : null}
+              {loadingModels ? <div className="muted field-hint">正在拉取模型…</div> : null}
               {modelError ? (
                 <div className="notice notice-warn">
                   <span className="notice-mark">!</span>
@@ -259,8 +329,15 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
               ) : null}
               {cloudModels.length > 0 ? (
                 <div className="field">
-                  <label className="field-label">使用的模型</label>
-                  <select className="field-input" value={cloudModel} onChange={(e) => setCloudModel(e.target.value)}>
+                  <label className="field-label" htmlFor={cloudModelId}>
+                    使用的模型
+                  </label>
+                  <select
+                    id={cloudModelId}
+                    className="field-input"
+                    value={cloudModel}
+                    onChange={(e) => setCloudModel(e.target.value)}
+                  >
                     <option value="">不使用云服务</option>
                     {cloudModels.map((m) => (
                       <option key={m.id} value={m.id}>
@@ -275,38 +352,78 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
           ) : null}
 
           {/* ---------- Unsplash（可选） ---------- */}
-          <div className="side-title" style={{ marginTop: 24, marginBottom: 10 }}>
-            <span>Unsplash 封面图（可选）</span>
-            <span className="count">{unsplashKey.trim() ? '已配置' : '未配置'}</span>
-          </div>
+          <details className="settings-unsplash">
+            <summary>
+              <span>Unsplash 封面图</span>
+              <span className="count">{unsplashKey.trim() ? '已配置' : '未配置'}</span>
+            </summary>
+            <div className="settings-unsplash-body">
+              <div className="field-hint" style={{ marginBottom: 8 }}>
+                按文章搜索封面图。免费申请后复制 <b>Access Key</b>（不是 Secret Key）。
+              </div>
+              <label className="field-label" htmlFor={unsplashKeyId}>
+                Access Key
+              </label>
+              <div className="key-row">
+                <input
+                  id={unsplashKeyId}
+                  className="field-input"
+                  type={showUnsplash ? 'text' : 'password'}
+                  value={unsplashKey}
+                  onChange={(e) => setUnsplashKey(e.target.value)}
+                  placeholder="Access Key"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button className="btn btn-sm" onClick={() => setShowUnsplash((v) => !v)}>
+                  {showUnsplash ? '隐藏' : '显示'}
+                </button>
+              </div>
+            </div>
+          </details>
 
-          <div className="field-hint" style={{ marginBottom: 8 }}>
-            只给「封面」面板用：按文章搜 3 张照片挑一张。免费申请 ——{' '}
-            <a
-              className="link-btn"
-              href="https://unsplash.com/oauth/applications"
-              target="_blank"
-              rel="noreferrer"
-            >
-              新建应用
-            </a>{' '}
-            后复制 <b>Access Key</b>（不是 Secret Key）。demo 应用每小时 50 次。
-          </div>
-
-          <div className="key-row">
-            <input
-              className="field-input"
-              type={showUnsplash ? 'text' : 'password'}
-              value={unsplashKey}
-              onChange={(e) => setUnsplashKey(e.target.value)}
-              placeholder="Access Key"
-              spellCheck={false}
-              autoComplete="off"
-            />
-            <button className="btn btn-sm" onClick={() => setShowUnsplash((v) => !v)}>
-              {showUnsplash ? '隐藏' : '显示'}
-            </button>
-          </div>
+          {/* ---------- 本地数据（备份 / 恢复） ----------
+              这个工具没有后端，草稿和台账丢了就是丢了，所以必须有个出口。 */}
+          <details className="settings-data">
+            <summary>
+              <span>本地数据</span>
+              <span>{dataSummary}</span>
+            </summary>
+            <div className="settings-data-body">
+              <div className="field-hint" style={{ marginBottom: 10 }}>
+                草稿、发布台账、文末模板、Key 都只存在这台浏览器里。换电脑、清缓存之前先导出一份。
+              </div>
+              <div className="settings-data-actions">
+                <button className="btn btn-sm" onClick={exportLocal} disabled={!dataSummary}>
+                  导出备份
+                </button>
+                <button className="btn btn-sm" onClick={() => importRef.current?.click()}>
+                  从备份恢复
+                </button>
+                <input
+                  ref={importRef}
+                  type="file"
+                  accept=".json,application/json"
+                  hidden
+                  aria-label="选择备份文件"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    // 清空 value：同一个文件连选两次也要能触发 change
+                    e.target.value = ''
+                    if (file) void importLocal(file)
+                  }}
+                />
+              </div>
+              {dataNote ? (
+                <div className={`notice ${dataNote.kind === 'err' ? 'notice-warn' : 'notice-info'}`} style={{ marginTop: 10 }}>
+                  <span className="notice-mark" aria-hidden>
+                    {dataNote.kind === 'err' ? '!' : '·'}
+                  </span>
+                  <span>{dataNote.text}</span>
+                </div>
+              ) : null}
+            </div>
+          </details>
 
           {/* 这里不提供图床设置：图片归作者自己的图床管，这个工具只读 md 里的链接 */}
           <div style={{ marginTop: 18 }}>
@@ -328,14 +445,10 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
         </div>
 
         <div className="modal-foot">
-          <button className="btn" onClick={onClose}>
-            取消
-          </button>
           <button className="btn btn-primary" onClick={save}>
             保存
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

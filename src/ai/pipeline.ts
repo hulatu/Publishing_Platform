@@ -19,7 +19,7 @@ import {
 } from './prompts'
 import { parseAIJson, parseDigestJson, repairDigest, repairSet, validateDigest, validatePlatform } from './schemas'
 import { completeWithRetry, describeAIError, resolveProvider, type AIProvider } from './provider'
-import { buildAllFromDigest, buildPlatformFromDigest, fillMissingDigest, localDigest } from './fallback'
+import { buildPlatformFromDigest, fillMissingDigest, localDigest } from './fallback'
 import {
   emptyAIState,
   emptyDigestState,
@@ -312,38 +312,4 @@ export async function runPlatform(
     },
     notes: [...notes, ...run.notes],
   }
-}
-
-/* ------------------------------------------------------------------ */
-/* 兼容：一次跑完四平台（旧入口）                                        */
-/* ------------------------------------------------------------------ */
-
-export async function runAllPlatforms(
-  doc: Doc,
-  sections: ArticleSection[],
-  tone: RewriteTone,
-  signal?: AbortSignal,
-  cb?: PipelineCallbacks,
-): Promise<{ digest: DigestState; states: Record<RewriteId, AIState>; notes: string[] }> {
-  const notes: string[] = []
-  const digestOutcome = await runDigest(doc, sections, tone, signal, cb)
-  notes.push(...digestOutcome.notes)
-
-  const digest = digestOutcome.state.digest ?? localDigest(sections)
-  const states = {} as Record<RewriteId, AIState>
-
-  const ids: RewriteId[] = ['xiaohongshu', 'twitter', 'jike', 'weibo']
-  for (const id of ids) {
-    if (signal?.aborted) break
-    const outcome = await runPlatform(id, doc, digest, tone, signal, cb)
-    states[id] = outcome.state
-    notes.push(...outcome.notes)
-  }
-
-  return { digest: digestOutcome.state, states, notes }
-}
-
-/** 没有摘要时的整篇兜底（导出用） */
-export function fallbackAll(doc: Doc, sections: ArticleSection[]): AIResultSet {
-  return buildAllFromDigest(localDigest(sections), doc)
 }

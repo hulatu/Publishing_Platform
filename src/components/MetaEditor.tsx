@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { DocMeta } from '../core/ir'
 
 interface Props {
   meta: DocMeta
   onChange: (patch: Partial<DocMeta>) => void
+  /** 嵌在文章导入区里时不再单独形成一个带分隔线的侧栏区块 */
+  embedded?: boolean
+  /** 主区域发布轨道发出的展开信号 */
+  openSignal?: number
 }
 
 function toText(arr: string[]): string {
@@ -17,24 +21,33 @@ function fromText(text: string): string[] {
     .filter(Boolean)
 }
 
-export function MetaEditor({ meta, onChange }: Props) {
+export function MetaEditor({ meta, onChange, embedded = false, openSignal = 0 }: Props) {
   /** 默认收起：标题在主区顶部已经能看到，侧栏空间优先给平台导航 */
   const [open, setOpen] = useState(false)
+  /** 字段 id：读屏靠 label 的 htmlFor 找到对应输入框，光有视觉标签等于没标签 */
+  const fid = useId()
+
+  useEffect(() => {
+    if (openSignal > 0) setOpen(true)
+  }, [openSignal])
 
   return (
-    <div className="side-section">
+    <div className={embedded ? 'meta-embed' : 'side-section'}>
       <button className="side-collapse" onClick={() => setOpen((v) => !v)}>
         <span className={`caret ${open ? 'open' : ''}`}>▶</span>
         <span className="side-collapse-title">文章信息</span>
-        <span className="side-collapse-value">{meta.title || '未命名'}</span>
+        {embedded ? null : <span className="side-collapse-value">{meta.title || '未命名'}</span>}
         <span className="side-collapse-action">{open ? '收起' : '编辑'}</span>
       </button>
 
       {open ? (
         <div className="side-collapse-body">
           <div className="field">
-            <label className="field-label">标题</label>
+            <label className="field-label" htmlFor={`${fid}-title`}>
+              标题
+            </label>
             <input
+              id={`${fid}-title`}
               className="field-input"
               value={meta.title}
               onChange={(e) => onChange({ title: e.target.value })}
@@ -44,8 +57,11 @@ export function MetaEditor({ meta, onChange }: Props) {
 
           <div className="field-row">
             <div className="field">
-              <label className="field-label">分类</label>
+              <label className="field-label" htmlFor={`${fid}-categories`}>
+                分类
+              </label>
               <input
+                id={`${fid}-categories`}
                 className="field-input"
                 value={toText(meta.categories)}
                 onChange={(e) => onChange({ categories: fromText(e.target.value) })}
@@ -53,8 +69,11 @@ export function MetaEditor({ meta, onChange }: Props) {
               />
             </div>
             <div className="field">
-              <label className="field-label">标签</label>
+              <label className="field-label" htmlFor={`${fid}-tags`}>
+                标签
+              </label>
               <input
+                id={`${fid}-tags`}
                 className="field-input"
                 value={toText(meta.tags)}
                 onChange={(e) => onChange({ tags: fromText(e.target.value) })}
@@ -74,8 +93,11 @@ export function MetaEditor({ meta, onChange }: Props) {
           ) : null}
 
           <div className="field">
-            <label className="field-label">摘要</label>
+            <label className="field-label" htmlFor={`${fid}-summary`}>
+              摘要
+            </label>
             <textarea
+              id={`${fid}-summary`}
               className="field-textarea"
               value={meta.summary}
               onChange={(e) => onChange({ summary: e.target.value })}

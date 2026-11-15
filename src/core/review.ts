@@ -62,6 +62,7 @@ export function summarizeArticle(key: string, ledger: ArticleLedger, title?: str
   let top: ArticleSummary['top'] = null
 
   for (const [platformId, rec] of Object.entries(ledger)) {
+    if (!rec.at) continue
     if (!hasStats(rec.stats)) continue
     filled++
     const r = rec.stats?.read ?? 0
@@ -75,7 +76,7 @@ export function summarizeArticle(key: string, ledger: ArticleLedger, title?: str
   return {
     key,
     title: title?.trim() || key,
-    published: Object.keys(ledger).length,
+    published: Object.values(ledger).filter((rec) => Boolean(rec.at)).length,
     filled,
     read,
     like,

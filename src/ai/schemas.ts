@@ -321,20 +321,7 @@ function validateWeibo(data: AIResultSet, errors: string[]): void {
   }
 }
 
-/** 逐项校验，返回人可读的错误列表；空数组表示通过 */
-export function validateSet(data: AIResultSet): string[] {
-  const errors: string[] = []
-  if (!data.xhs && !data.twitter && !data.jike && !data.weibo) {
-    return ['四个平台的内容全部缺失，请重新输出完整 JSON']
-  }
-  validateXhs(data, errors)
-  validateTwitter(data, errors)
-  validateJike(data, errors)
-  validateWeibo(data, errors)
-  return errors
-}
-
-/** 只校验某一个平台 */
+/** 只校验某一个平台，返回人可读的错误列表；空数组表示通过 */
 export function validatePlatform(data: AIResultSet, platform: RewriteId): string[] {
   const errors: string[] = []
   if (platform === 'xiaohongshu') {

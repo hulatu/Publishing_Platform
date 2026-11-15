@@ -11,7 +11,6 @@
  */
 
 import {
-  fmtBytes,
   imageRule,
   judge,
   mimeExt,
@@ -21,6 +20,7 @@ import {
   type ImageFacts,
   type ImageIssue,
 } from '../src/core/image-audit'
+import { formatBytes } from '../src/core/num'
 
 let fail = 0
 const check = (cond: boolean, msg: string) => {
@@ -122,9 +122,9 @@ check(
   !has(judge({ loaded: true, bytes: 300 * 1024, contentType: 'image/jpeg' }, GENERIC, 'https://a.com/a.jpg'), '偏大'),
   '300 KB 不报',
 )
-check(fmtBytes(900) === '900 B', 'fmtBytes: 900 B')
-check(fmtBytes(1536) === '2 KB', 'fmtBytes: 1536 → 2 KB')
-check(fmtBytes(3 * 1024 * 1024) === '3.0 MB', 'fmtBytes: 3 MB')
+check(formatBytes(900) === '900 B', 'formatBytes: 900 B')
+check(formatBytes(1536) === '2 KB', 'formatBytes: 1536 → 2 KB')
+check(formatBytes(3 * 1024 * 1024) === '3.0 MB', 'formatBytes: 3 MB')
 
 console.log('\n判定：比例')
 check(

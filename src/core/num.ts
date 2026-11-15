@@ -34,3 +34,16 @@ export function parseNum(raw: string): number | undefined {
   // 这些数字都是「多少个」，没有小数意义；四舍五入顺便吃掉 1.2万 = 12000 的浮点误差
   return Math.round(base * mult)
 }
+
+/**
+ * 字节数 → 人读的大小（`900 B` / `400 KB` / `3.0 MB`）。
+ *
+ * 图片体检、图片导出、本地数据备份原来各有一份实现，其中两份逐字相同。
+ * 三处显示的量级必须一致 —— 体检说「2.0 MB」、导出说「2048 KB」，
+ * 用户会以为是两张图。
+ */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}

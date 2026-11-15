@@ -11,6 +11,7 @@
 import { useState } from 'react'
 import { buildTailHtml, TAIL_VARS, type TailConfig } from '../core/tail'
 import { getWechatTheme } from '../themes/wechat'
+import { Modal } from './Modal'
 
 interface Props {
   open: boolean
@@ -44,8 +45,7 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
   }
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal tail-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal open={open} onClose={onClose} label="公众号文末" className="tail-modal">
         <div className="modal-head">
           <div>
             <div className="modal-title">公众号文末</div>
@@ -69,8 +69,11 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
           {tab === 'form' ? (
             <>
               <div className="field">
-                <label className="field-label">账号名（替换文案里的 {'{account}'}）</label>
+                <label className="field-label" htmlFor="tail-account">
+                  账号名（替换文案里的 {'{account}'}）
+                </label>
                 <input
+                  id="tail-account"
                   className="field-input"
                   value={account}
                   onChange={(e) => onAccountChange(e.target.value)}
@@ -92,12 +95,14 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                   <div className="tail-block-body">
                     <input
                       className="field-input"
+                      aria-label="关注引导小标题"
                       value={cfg.follow.title}
                       onChange={(e) => patchFollow({ title: e.target.value })}
                       placeholder="小标题（选填，例如：关于作者）"
                     />
                     <textarea
                       className="field-textarea"
+                      aria-label="关注引导正文"
                       style={{ marginTop: 8, minHeight: 64 }}
                       value={cfg.follow.text}
                       onChange={(e) => patchFollow({ text: e.target.value })}
@@ -121,6 +126,7 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                   <div className="tail-block-body">
                     <input
                       className="field-input"
+                      aria-label="往期推荐小标题"
                       value={cfg.history.title}
                       onChange={(e) => patchHistory({ title: e.target.value })}
                       placeholder="小标题（选填，例如：往期推荐）"
@@ -131,12 +137,14 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                           <span className="tail-item-idx">{String(i + 1).padStart(2, '0')}</span>
                           <input
                             className="field-input"
+                            aria-label={`第 ${i + 1} 条往期标题`}
                             value={item.title}
                             onChange={(e) => setItem(i, { title: e.target.value })}
                             placeholder="往期文章标题"
                           />
                           <input
                             className="field-input tail-item-url"
+                            aria-label={`第 ${i + 1} 条往期链接`}
                             value={item.url}
                             onChange={(e) => setItem(i, { url: e.target.value })}
                             placeholder="链接（选填，微信会剥离正文外链）"
@@ -186,6 +194,7 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                   <div className="tail-block-body">
                     <input
                       className="field-input"
+                      aria-label="版权声明正文"
                       value={cfg.copyright.text}
                       onChange={(e) => patchCopyright({ text: e.target.value })}
                       placeholder="© {year} {account} · 转载请注明出处"
@@ -215,12 +224,6 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
           )}
         </div>
 
-        <div className="modal-foot">
-          <button className="btn btn-primary btn-sm" onClick={onClose}>
-            完成
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

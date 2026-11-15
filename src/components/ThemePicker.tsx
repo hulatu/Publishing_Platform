@@ -12,11 +12,12 @@
  * 等比缩到列宽——固定 184px 的老做法会浪费右侧空间。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { renderHtml } from '../core/html-inline'
 import type { HtmlTheme } from '../core/html-inline'
 import type { Block } from '../core/ir'
 import { getWechatTheme, wechatThemes } from '../themes/wechat'
+import { Modal } from './Modal'
 
 /**
  * 样例：两个二级标题 + 一段带加粗的正文 + 一句引用。
@@ -85,9 +86,10 @@ function ThemeThumb({ theme, html, active, onSelect }: ThumbProps) {
       className={`theme-card ${active ? 'active' : ''}`}
       onClick={onSelect}
       title={`${theme.name} · ${theme.hint}`}
+      aria-label={`${theme.name}，${theme.group}，${theme.hint}`}
       aria-pressed={active}
     >
-      <div className="theme-frame" ref={frameRef}>
+      <div className="theme-frame" ref={frameRef} aria-hidden="true">
         <div
           className="theme-scaled"
           style={{ transform: `scale(${scale})` }}
@@ -115,46 +117,34 @@ export function ThemePicker({ value, onChange }: Props) {
   const [open, setOpen] = useState(false)
   const current = getWechatTheme(value)
 
-  // 主题是静态数据，整张表只渲染一次
-  const previews = useMemo(
-    () => new Map(wechatThemes.map((t) => [t.id, previewOf(t)])),
-    [],
-  )
-
+  // 12 张真实预览不必在导入文章时就渲染：第一次打开主题墙再算，之后保留。
+  const [previews, setPreviews] = useState<Map<string, string>>(() => new Map())
   useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+    if (!open || previews.size > 0) return
+    setPreviews(new Map(wechatThemes.map((t) => [t.id, previewOf(t)])))
+  }, [open, previews.size])
 
   return (
     <>
       <div className="theme-bar-wrap">
         <button className="theme-bar" onClick={() => setOpen(true)}>
-          <span className="theme-bar-label">排版主题</span>
           <span className="theme-swatches" aria-hidden>
             <span style={{ background: current.swatch?.bg ?? '#fff' }} />
             <span style={{ background: current.swatch?.accent ?? '#c0392b' }} />
             <span style={{ background: current.swatch?.ink ?? '#1b1917' }} />
           </span>
           <span className="theme-bar-current">{current.name}</span>
-          <span className="theme-bar-hint">{current.hint}</span>
-          <span className="theme-bar-action">更换 · {wechatThemes.length} 款</span>
+          <span className="theme-bar-action">更换</span>
         </button>
       </div>
 
       {open ? (
-        <div className="modal-mask" onClick={() => setOpen(false)}>
-          <div
-            className="theme-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label="选择公众号排版主题"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <Modal
+          open={open}
+          onClose={() => setOpen(false)}
+          label="选择公众号排版主题"
+          shellClass="theme-sheet"
+        >
             <div className="theme-sheet-head">
               <div>
                 <div className="modal-title">排版主题</div>
@@ -179,17 +169,7 @@ export function ThemePicker({ value, onChange }: Props) {
               </div>
             </div>
 
-            <div className="theme-sheet-foot">
-              <span className="theme-sheet-current">
-                当前：<b>{current.name}</b>
-                <span className="muted"> · {current.hint}</span>
-              </span>
-              <button className="btn btn-primary btn-sm" onClick={() => setOpen(false)}>
-                完成
-              </button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       ) : null}
     </>
   )

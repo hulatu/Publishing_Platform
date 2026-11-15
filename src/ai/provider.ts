@@ -144,6 +144,10 @@ export interface ByokSettings {
 }
 
 const BYOK_KEY = 'dispatch.byok.v1'
+/** 关掉「记住 Key」时写这里：关掉标签页就没了 */
+const BYOK_SESSION_KEY = 'dispatch.byok.session.v1'
+/** 用户的偏好本身不是密钥，永远存 localStorage */
+const REMEMBER_KEY = 'dispatch.byok.remember'
 
 const DEEPSEEK = PROVIDER_PRESETS[0]
 
@@ -155,9 +159,26 @@ export const emptyByok: ByokSettings = {
   jsonMode: DEEPSEEK.jsonMode,
 }
 
+/** 默认记住。关掉之后 Key 只活到这次会话结束 */
+export function loadRememberKey(): boolean {
+  try {
+    return localStorage.getItem(REMEMBER_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+export function saveRememberKey(remember: boolean): void {
+  try {
+    localStorage.setItem(REMEMBER_KEY, remember ? '1' : '0')
+  } catch {
+    // 存不住就按默认（记住）走，不影响本次使用
+  }
+}
+
 export function loadByok(): ByokSettings {
   try {
-    const raw = localStorage.getItem(BYOK_KEY)
+    const raw = localStorage.getItem(BYOK_KEY) ?? sessionStorage.getItem(BYOK_SESSION_KEY)
     if (!raw) return { ...emptyByok }
     const parsed = JSON.parse(raw) as Partial<ByokSettings>
     const merged: ByokSettings = { ...emptyByok, ...parsed }
@@ -181,7 +202,15 @@ export function loadByok(): ByokSettings {
 export function saveByok(settings: ByokSettings): boolean {
   let ok = false
   try {
-    localStorage.setItem(BYOK_KEY, JSON.stringify(settings))
+    const raw = JSON.stringify(settings)
+    if (loadRememberKey()) {
+      localStorage.setItem(BYOK_KEY, raw)
+      // 免得两份并存，改了偏好之后读到旧的
+      sessionStorage.removeItem(BYOK_SESSION_KEY)
+    } else {
+      sessionStorage.setItem(BYOK_SESSION_KEY, raw)
+      localStorage.removeItem(BYOK_KEY)
+    }
     ok = true
   } catch {
     // 写不进去不影响本次会话：设置还在内存里，能正常用
@@ -194,6 +223,7 @@ export function saveByok(settings: ByokSettings): boolean {
 export function clearByok(): boolean {
   try {
     localStorage.removeItem(BYOK_KEY)
+    sessionStorage.removeItem(BYOK_SESSION_KEY)
     return true
   } catch {
     return false

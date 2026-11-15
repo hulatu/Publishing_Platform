@@ -15,6 +15,7 @@
  * 3. 全量文章跑一遍往返，结构和文字都得一致
  */
 
+import { ok, fail, report } from './harness'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { POSTS } from './posts-dir'
@@ -24,21 +25,9 @@ import { blocksToText } from '../src/core/ir'
 import { renderWechat } from '../src/renderers/wechat'
 import type { Block } from '../src/core/ir'
 
-let failures = 0
 
-function fail(msg: string) {
-  failures++
-  console.log(`  ✗ ${msg}`)
-}
 
-function ok(msg: string) {
-  console.log(`  ✓ ${msg}`)
-}
 
-function check(cond: boolean, msg: string) {
-  if (cond) ok(msg)
-  else fail(msg)
-}
 
 function doc(body: string) {
   return parseArticle({ source: `---\ntitle: 往返测试\n---\n\n${body}\n`, fileName: 'rt.md' })
@@ -88,15 +77,15 @@ console.log('1. 脚注：引用和定义必须用同一套编号')
 
 {
   const { d1, md } = roundtrip('正文一句[^1]，再来一句[^2]。\n\n[^1]: 定义甲\n[^2]: 定义乙\n')
-  check(fnRefs(d1.blocks).join(',') === '1,2', '引用保留作者写的 label（1、2），不是内部序号（0、1）')
-  check(fnLabels(d1.blocks).join(',') === '1,2', '定义保留作者写的 label')
-  check(md.includes('[^1]') && md.includes('[^1]: 定义甲'), '导出的引用与定义都用 [^1]')
-  check(!md.includes('[^0]'), '导出里不出现内部序号 [^0]')
+  ok(fnRefs(d1.blocks).join(',') === '1,2', '引用保留作者写的 label（1、2），不是内部序号（0、1）')
+  ok(fnLabels(d1.blocks).join(',') === '1,2', '定义保留作者写的 label')
+  ok(md.includes('[^1]') && md.includes('[^1]: 定义甲'), '导出的引用与定义都用 [^1]')
+  ok(!md.includes('[^0]'), '导出里不出现内部序号 [^0]')
 
   // 编号非连续 / 非数字的写法同样要成立
   const named = roundtrip('正文[^note]。\n\n[^note]: 说明\n')
-  check(named.md.includes('[^note]') && named.md.includes('[^note]: 说明'), '文字型 label（[^note]）也能对上')
-  check(fnLabels(named.d1.blocks).length === 1, '文字型 label 的定义没丢')
+  ok(named.md.includes('[^note]') && named.md.includes('[^note]: 说明'), '文字型 label（[^note]）也能对上')
+  ok(fnLabels(named.d1.blocks).length === 1, '文字型 label 的定义没丢')
 }
 
 /* ------------------------------------------------------------------ */
@@ -112,9 +101,9 @@ console.log('\n2. 脚注：没人引用的定义不许静默消失')
   for (const [name, body] of cases) {
     const { d1, d2 } = roundtrip(body)
     const kept = fnLabels(d1.blocks).length === 1 && blocksToText(d1.blocks).includes('定义一')
-    check(kept, `${name}：定义被保留（以前整块丢失）`)
-    check(shape(d1.blocks).join('|') === shape(d2.blocks).join('|'), `${name}：往返结构不变`)
-    check(
+    ok(kept, `${name}：定义被保留（以前整块丢失）`)
+    ok(shape(d1.blocks).join('|') === shape(d2.blocks).join('|'), `${name}：往返结构不变`)
+    ok(
       d1.warnings.some((w) => w.includes('脚注定义没有对应的引用')),
       `${name}：给出「有定义没引用」的提示`,
     )
@@ -122,8 +111,8 @@ console.log('\n2. 脚注：没人引用的定义不许静默消失')
 
   // 部分引用：只提示真正落单的那条
   const partial = roundtrip('正文[^a]。\n\n[^a]: 甲\n[^b]: 乙\n')
-  check(fnLabels(partial.d1.blocks).join(',') === 'a,b', '引用一条、落单一条：两条定义都在')
-  check(
+  ok(fnLabels(partial.d1.blocks).join(',') === 'a,b', '引用一条、落单一条：两条定义都在')
+  ok(
     partial.d1.warnings.some((w) => w.includes('[^b]') && !w.includes('[^a]')),
     '只提示落单的 [^b]，不误报已引用的 [^a]',
   )
@@ -141,8 +130,8 @@ console.log('\n3. 行首块级标记要转义')
     '- `1.` 可以表示有序列表',
   ].join('\n')
   const { d1, d2, md } = roundtrip(src)
-  check(md.includes('- `#` 可以表示几级标题'), '列表项里的 `#` 原样导出，没变成标题')
-  check(
+  ok(md.includes('- `#` 可以表示几级标题'), '列表项里的 `#` 原样导出，没变成标题')
+  ok(
     shape(d1.blocks).join('|') === shape(d2.blocks).join('|'),
     '往返结构不变（列表还是列表，没被读成标题/引用）',
   )
@@ -158,17 +147,17 @@ console.log('\n3. 行首块级标记要转义')
   for (const [src, text] of markers) {
     const { d1, d2, md } = roundtrip(`${src}\n`)
     const isText = d1.blocks.length === 1 && d1.blocks[0].t === 'p'
-    check(isText, `源「${src}」解析成段落（是纯文字，不是块级结构）`)
-    check(
+    ok(isText, `源「${src}」解析成段落（是纯文字，不是块级结构）`)
+    ok(
       shape(d1.blocks).join('|') === shape(d2.blocks).join('|'),
       `「${text}」导出后仍是段落，没被读成标题/列表/引用`,
     )
-    check(!/^[#>+-]|^\d+[.)]/.test(md), `导出行首带转义：${JSON.stringify(md)}`)
+    ok(!/^[#>+-]|^\d+[.)]/.test(md), `导出行首带转义：${JSON.stringify(md)}`)
   }
 
   // 段落的第二行以块级标记开头（硬换行之后）
   const brk = roundtrip('第一行  \n\\# 不是标题\n')
-  check(
+  ok(
     shape(brk.d1.blocks).join('|') === shape(brk.d2.blocks).join('|'),
     '硬换行后的 `#` 不被当成标题',
   )
@@ -194,8 +183,8 @@ console.log('\n4. 全量文章往返')
     if (!textSame || !shapeSame) diffs.push(`${file}（${textSame ? '结构' : '文字'}不一致）`)
   }
 
-  check(files.length > 0, `读到 ${files.length} 篇文章`)
-  check(diffs.length === 0, diffs.length === 0 ? '全部往返一致' : `${diffs.length} 篇不一致：${diffs.slice(0, 5).join('；')}`)
+  ok(files.length > 0, `读到 ${files.length} 篇文章`)
+  ok(diffs.length === 0, diffs.length === 0 ? '全部往返一致' : `${diffs.length} 篇不一致：${diffs.slice(0, 5).join('；')}`)
 }
 
 /* ------------------------------------------------------------------ */
@@ -205,17 +194,16 @@ console.log('\n5. 补回定义后，各出口仍然能正常渲染')
   // 脚注块是我们在 core 阶段塞回 token 流的，顺手确认三个出口都没被这步搞坏
   const orphanSrc = '正文一句[^a]，再一句。\n\n[^a]: 被引用的定义\n[^b]: 落单的定义\n'
   const preview = renderPreviewHtml(orphanSrc)
-  check(preview.includes('被引用的定义'), '预览里渲染出被引用的定义')
-  check(preview.includes('落单的定义'), '预览里也渲染出落单的定义（以前预览里同样消失）')
+  ok(preview.includes('被引用的定义'), '预览里渲染出被引用的定义')
+  ok(preview.includes('落单的定义'), '预览里也渲染出落单的定义（以前预览里同样消失）')
 
   const d = doc(orphanSrc)
   const wx = renderWechat(d, { wechatThemeId: 'paper' }).html ?? ''
   // 脚注是 [注n]（和外链的 [n] 区分开），这里断言编号与内容对得上
-  check(/\[注1\][^<]*被引用的定义/.test(wx), '公众号 HTML 里脚注编号与内容对得上')
-  check(!wx.includes('落单的定义'), '公众号只列被引用过的脚注（落单的进不了注释区）')
-  check(!wx.includes('[^'), '公众号 HTML 里没有残留的 [^a] 字面量')
+  ok(/\[注1\][^<]*被引用的定义/.test(wx), '公众号 HTML 里脚注编号与内容对得上')
+  ok(!wx.includes('落单的定义'), '公众号只列被引用过的脚注（落单的进不了注释区）')
+  ok(!wx.includes('[^'), '公众号 HTML 里没有残留的 [^a] 字面量')
 }
 
 /* ------------------------------------------------------------------ */
-console.log(failures === 0 ? '\n往返层全部通过' : `\n${failures} 项失败`)
-process.exit(failures === 0 ? 0 : 1)
+process.exit(report('往返层'))

@@ -12,7 +12,7 @@
  * - 实心底上的字（--on-ink / --on-accent / --on-status）≥ 4.5:1
  * - toast 是半透明底，先合成到 --panel 上再算
  * - 预览区的六个块必须共用 --read-w，不许再出现三个宽度
- * - 字号只许走 --fs-* 阶梯（8 档），且相邻两档至少差 1px
+ * - 字号只许走 --fs-* 阶梯（7 档），且相邻两档至少差 1px
  * - 圆角只许走 --radius* 阶梯，外加 1px / 2px 发丝线和 50% 正圆
  * - 同一个选择器不许写两遍（后一份会静默盖掉前一份）
  *
@@ -237,32 +237,39 @@ for (const selector of READ_COLUMN) {
 
 /**
  * 曾经散着 18 个值：9 / 9.5 / 10 / 10.5 / 11 / 11.5 / 12 / 12.5 / 13 全挤在 4px 里。
- * 半像素的差别看不出层级，只让人看到参差。现在只允许走 --fs-* 阶梯，
+ * 半像素的差别看不出层级，只让人看到参差。现在最小的两档也合并到 12px，只允许走 --fs-* 阶梯，
  * 唯一的例外是 8px —— 那是折叠箭头 ▶ 的字形尺寸，属于图标不属于字号。
+ *
+ * 单位是 rem：px 会让浏览器「默认字号」设置失效，而这是个读长文、改长文的工具，
+ * 系统字号被调大的用户应当能受益。默认根字号 16px 下与原来的 px 值一致。
  */
+const ROOT_PX = 16
 const FS_SCALE: Record<string, number> = {
-  'fs-2xs': 10.5,
-  'fs-xs': 11.5,
-  'fs-sm': 12.5,
-  'fs-md': 14,
-  'fs-lg': 16,
-  'fs-xl': 18,
-  'fs-2xl': 20,
-  'fs-3xl': 26,
+  'fs-xs': 0.75, // 12px
+  'fs-sm': 0.8125, // 13px
+  'fs-md': 0.875, // 14px
+  'fs-lg': 1, // 16px
+  'fs-xl': 1.125, // 18px
+  'fs-2xl': 1.25, // 20px
+  'fs-3xl': 1.625, // 26px
 }
 const FS_ALLOWED_RAW = new Set(['8px', 'inherit', '0.82em', '0.87em'])
 
 console.log('\n字号阶梯')
-for (const [name, px] of Object.entries(FS_SCALE)) {
+for (const [name, rem] of Object.entries(FS_SCALE)) {
   const raw = light.get(name)
-  must(raw === `${px}px`, `--${name} 应为 ${px}px，实际是 ${raw ?? '（缺失）'}`)
-  if (name !== 'fs-2xs') {
+  must(raw === `${rem}rem`, `--${name} 应为 ${rem}rem，实际是 ${raw ?? '（缺失）'}`)
+  if (name !== 'fs-xs') {
     const prev = Object.keys(FS_SCALE)
     const i = prev.indexOf(name)
     const before = FS_SCALE[prev[i - 1]]
-    must(px - before >= 1, `--${name}(${px}) 与上一档 ${before} 只差 ${px - before}px，层级读不出来`)
+    // 相邻两档至少差 1px（根字号 16px 下 1px = 0.0625rem），否则层级读不出来
+    must(
+      rem - before >= 0.0625 - 1e-9,
+      `--${name}(${rem}rem) 与上一档 ${before}rem 只差 ${((rem - before) * ROOT_PX).toFixed(2)}px，层级读不出来`,
+    )
   }
-  console.log(`  --${name.padEnd(7)} ${String(px).padStart(5)}px`)
+  console.log(`  --${name.padEnd(7)} ${String(rem).padStart(8)}rem  ≈ ${String(rem * ROOT_PX).padStart(4)}px`)
 }
 
 const fsValues = [...bare.matchAll(/font-size:\s*([^;]+);/g)].map((m) => m[1].trim())

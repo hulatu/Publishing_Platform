@@ -1,14 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Doc, DocMeta } from './core/ir'
-import { blocksToText, collectImages } from './core/ir'
+import { collectImages } from './core/ir'
 import { charCount } from './core/cjk'
+import { sanitizePreview } from './core/sanitize-preview'
 import { splitSections } from './core/sections'
-import { copyByMode, copyPlain, copySync, downloadText, mimeFor } from './core/copy'
-import { splitByH2 } from './core/split'
 import { checkText, scopeOf, stripHtml } from './core/compliance'
-import { activeBlocks, readTailConfig, writeTailConfig, type TailConfig } from './core/tail'
-import { whenIdle } from './core/async'
-import { loadOpenOnCopy, preopenTab, publishUrlOf, saveOpenOnCopy } from './core/publish'
+import { readTailConfig, writeTailConfig, type TailConfig } from './core/tail'
+import { loadOpenOnCopy, publishUrlOf, saveOpenOnCopy } from './core/publish'
 import {
   clearDrafts,
   deleteDraft,
@@ -17,72 +15,92 @@ import {
   formatAgo,
   listDrafts,
   readDraft,
-  sameDraft,
-  sanitizeForStore,
-  writeDraft,
   type DraftSnapshot,
 } from './core/drafts'
 import {
   articleKeyOf,
   clearArticle,
-  markPublished as markRecord,
+  publishedCount,
   readAllLedgers,
-  readLedger,
-  setStats as setLedgerStats,
   setUrl as setLedgerUrl,
-  unmark,
-  type ArticleLedger,
-  type LedgerWrite,
-  type PlatformStats,
+  unmarkPublished,
 } from './core/ledger'
 import { summarizeAll } from './core/review'
-import { allPlatforms, cardPlatform, convertPlatforms, loadConvertRenderer, rewritePlatforms, type RenderFn, type RenderOutput } from './renderers'
-import { downloadBlob, safeFileName } from './cards/export'
+import {
+  allPlatforms,
+  cardPlatform,
+  convertPlatforms,
+  loadConvertRenderer,
+  platformGroups,
+  rewritePlatforms,
+  type RenderFn,
+  type RenderOutput,
+} from './renderers'
 import { loadHidden, saveHidden, sortByWidth } from './core/platform-visibility'
 import { WECHAT_WORD_LIMIT } from './renderers/limits'
 import { ThemePicker } from './components/ThemePicker'
 import { wechatThemes } from './themes/wechat'
-import { runDigest, runPlatform } from './ai/pipeline'
-import { runMetaLab } from './ai/meta-lab'
 import { resolveProvider } from './ai/provider'
-import {
-  emptyAIState,
-  emptyDigestState,
-  emptyMetaLabState,
-  emptyPlatformStates,
-  rewriteIds,
-  type AIState,
-  type DigestSet,
-  type DigestState,
-  type MetaLabState,
-  type PlatformAIStates,
-  type RewriteId,
-  type RewriteTone,
-} from './ai/types'
+import { emptyAIState, isRewriteId, rewriteIds, type AIState, type RewriteId } from './ai/types'
+import { useAIJobs } from './hooks/useAIJobs'
+import { useCopyActions } from './hooks/useCopyActions'
+import { useLedger } from './hooks/useLedger'
+import { useReadiness } from './hooks/useReadiness'
+import { useDraftAutosave } from './hooks/useDraftAutosave'
 import { DEFAULT_SITE_NAME } from './cards/build'
+import { SAMPLE_ARTICLE } from './core/sample'
 
-import { ImportPanel } from './components/ImportPanel'
-import { MetaEditor } from './components/MetaEditor'
+import { ImportPanel, type ImportPanelHandle } from './components/ImportPanel'
+import { ActionBar } from './components/ActionBar'
 import { PlatformNav } from './components/PlatformNav'
-// AIPanel / CardStudio 只在导入文章、选了平台之后才渲染，首屏不需要：
-// 拆成懒加载 chunk，省掉首屏主包里的一大块。其它面板（SettingsSheet 等）
-// 是常驻挂载的，懒加载省不掉首屏请求，就不拆了。
+import { Sheet, type SheetId } from './components/Sheet'
+import type { LedgerContentState } from './components/PublishLedger'
+// 主工作面板首屏不需要；弹层也只在用户打开时加载，避免把设置、台账、
+// 封面、复盘等低频代码都塞进首屏主包。
 const AIPanel = lazy(() =>
   import('./components/AIPanel').then((m) => ({ default: m.AIPanel })),
 )
 const CardStudio = lazy(() =>
   import('./components/CardStudio').then((m) => ({ default: m.CardStudio })),
 )
-import { SettingsSheet } from './components/SettingsSheet'
-import { ComplianceChip } from './components/ComplianceChip'
-import { PublishLedger } from './components/PublishLedger'
-import { ImageList } from './components/ImageList'
-import { CoverSheet } from './components/CoverSheet'
-import { MetaLab } from './components/MetaLab'
-import { TailSheet } from './components/TailSheet'
-import { DraftsSheet } from './components/DraftsSheet'
-import { ReviewSheet } from './components/ReviewSheet'
-import { PlatformFilterSheet } from './components/PlatformFilterSheet'
+const SettingsSheet = lazy(() =>
+  import('./components/SettingsSheet').then((m) => ({ default: m.SettingsSheet })),
+)
+const PublishLedger = lazy(() =>
+  import('./components/PublishLedger').then((m) => ({ default: m.PublishLedger })),
+)
+const ImageList = lazy(() =>
+  import('./components/ImageList').then((m) => ({ default: m.ImageList })),
+)
+const CoverSheet = lazy(() =>
+  import('./components/CoverSheet').then((m) => ({ default: m.CoverSheet })),
+)
+const MetaLab = lazy(() =>
+  import('./components/MetaLab').then((m) => ({ default: m.MetaLab })),
+)
+const TailSheet = lazy(() =>
+  import('./components/TailSheet').then((m) => ({ default: m.TailSheet })),
+)
+const DraftsSheet = lazy(() =>
+  import('./components/DraftsSheet').then((m) => ({ default: m.DraftsSheet })),
+)
+const ReviewSheet = lazy(() =>
+  import('./components/ReviewSheet').then((m) => ({ default: m.ReviewSheet })),
+)
+const PlatformFilterSheet = lazy(() =>
+  import('./components/PlatformFilterSheet').then((m) => ({
+    default: m.PlatformFilterSheet,
+  })),
+)
+const ReadinessSheet = lazy(() =>
+  import('./components/ReadinessSheet').then((m) => ({ default: m.ReadinessSheet })),
+)
+const PlatformPalette = lazy(() =>
+  import('./components/PlatformPalette').then((m) => ({ default: m.PlatformPalette })),
+)
+const RecoverySheet = lazy(() =>
+  import('./components/RecoverySheet').then((m) => ({ default: m.RecoverySheet })),
+)
 import { NoticeStack, type NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
@@ -92,10 +110,6 @@ function kindOf(id: string): Kind {
   if (convertPlatforms.some((p) => p.id === id)) return 'convert'
   if (rewritePlatforms.some((p) => p.id === id)) return 'rewrite'
   return 'card'
-}
-
-function isRewriteId(id: string): id is RewriteId {
-  return (rewriteIds as string[]).includes(id)
 }
 
 const THEME_KEY = 'ad.wechat-theme'
@@ -122,14 +136,6 @@ function readStoredTheme(): string {
 }
 
 /**
- * 复制失败时的提示文案。
- *
- * 「剪贴板没被改写」这句必须说清：写失败时剪贴板里留的是**上一次**的内容，
- * 用户直接粘出来会以为「复制不全、后半篇丢了」，其实是拿到了旧快照。
- */
-const COPY_FAILED = '复制失败：剪贴板没被改写，里面还是上一次的内容'
-
-/**
  * Markdown 解析（含 markdown-it，单文件 125KB min）是动态 import 进来的 ——
  * 首屏（空状态）不需要它，导入文章时才加载。模块级缓存：整个会话只加载一次。
  */
@@ -146,7 +152,14 @@ export default function App() {
   const [platform, setPlatform] = useState('wechat')
   /** 侧栏隐藏了哪些平台。只是显示偏好，不影响渲染、台账和生成 */
   const [hidden, setHidden] = useState(() => loadHidden(allPlatforms.map((p) => p.id)))
-  const [filterOpen, setFilterOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  /**
+   * 当前打开的弹层。原来这里是 12 个独立布尔 —— 于是「开 B 之前先关 A」
+   * 得靠每个调用点自己记得，漏一次就是两个遮罩叠在一起。
+   * 现在同时只可能有一个，这件事由类型保证。
+   */
+  const [sheet, setSheet] = useState<SheetId | null>(null)
+  const closeSheet = useCallback(() => setSheet(null), [])
   const [themeId, setThemeIdRaw] = useState(readStoredTheme)
 
   const setThemeId = useCallback((id: string) => {
@@ -175,52 +188,57 @@ export default function App() {
   const [cardThemeId, setCardThemeId] = useState('paper')
   const [siteName, setSiteName] = useState(DEFAULT_SITE_NAME)
 
-  const [tone, setTone] = useState<RewriteTone>('original')
-  const [digest, setDigest] = useState<DigestState>(emptyDigestState)
-  const [platformStates, setPlatformStates] = useState<PlatformAIStates>(emptyPlatformStates())
-
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsVersion, setSettingsVersion] = useState(0)
-  /** 发布台账：这篇文章已经发到哪几个平台 */
-  const [ledger, setLedger] = useState<ArticleLedger>({})
   /** 台账的 key 在导入时算一次就锁住 —— 用户改标题不该把记录「弄丢」 */
   const [articleKey, setArticleKey] = useState('')
-  const [ledgerOpen, setLedgerOpen] = useState(false)
-  const [imagesOpen, setImagesOpen] = useState(false)
+  const [ledgerFocusPlatform, setLedgerFocusPlatform] = useState('')
   /** 封面图：从 Unsplash 按文章搜 3 张候选 */
-  const [coverOpen, setCoverOpen] = useState(false)
-  /** 标题候选 + 标签推荐 */
-  const [metaLab, setMetaLab] = useState<MetaLabState>(emptyMetaLabState)
-  const [metaOpen, setMetaOpen] = useState(false)
   /** 公众号文末三块（账号级配置，和文章无关，所以存在 localStorage 而不是 doc 里） */
   const [tail, setTail] = useState<TailConfig>(readTailConfig)
   const [account, setAccount] = useState(readStoredAccount)
-  const [tailOpen, setTailOpen] = useState(false)
+  /** 点击发布轨道的「草稿」时，通知侧栏里的文章信息展开 */
+  const [metaEditorSignal, setMetaEditorSignal] = useState(0)
   /** 导入时的完整原文（含 front matter），草稿要连正文一起存才恢复得回来 */
   const [sourceText, setSourceText] = useState('')
   const [drafts, setDrafts] = useState<DraftSnapshot[]>(listDrafts)
-  const [draftsOpen, setDraftsOpen] = useState(false)
-  const [reviewOpen, setReviewOpen] = useState(false)
-  const saveTimer = useRef<number | null>(null)
-  /** 草稿存盘失败只提醒一次，别每 800ms 弹一条 */
-  const saveFailedRef = useRef(false)
-  /** 上次真正落盘的那份快照，用来跳过「内容没变」的重复写入 */
-  const lastSnapRef = useRef<DraftSnapshot | null>(null)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
-  /** 「导出全平台」打包中 */
-  const [zipping, setZipping] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const importPanelRef = useRef<ImportPanelHandle>(null)
+  const mainTitleRef = useRef<HTMLHeadingElement>(null)
   /** 已加载的解析模块：load / restoreDraft 里先加载、再 setDoc，所以 previewHtml 的 useMemo 跑到时它一定已经在了 */
   const parseModRef = useRef<ParseModule | null>(null)
-  const { items: toasts, push: toast } = useToasts()
+  const { items: toasts, push: toast, dismiss: dismissToast, pause: pauseToast, resume: resumeToast } = useToasts()
+
+  /* ---------------- AI：状态与编排 ---------------- */
+  /**
+   * 章节切分。摘要、配图、发布轨道都按它走 ——
+   * 必须排在 useAIJobs 之前，因为它就是这个 hook 的入参。
+   */
+  const sections = useMemo(() => (doc ? splitSections(doc) : []), [doc])
+
+  // 摘要 / 四平台文案 / 标题候选 / 语气，以及三段流水线的并发与取消语义，
+  // 都在 hooks/useAIJobs.ts 里。这里只拿结果和动作。
+  const {
+    tone,
+    digest,
+    platformStates,
+    metaLab,
+    setTone,
+    adopt: adoptAI,
+    reset: resetAI,
+    generateDigest,
+    generateCurrent,
+    generateAll,
+    cancelGenerate,
+    generateMetaLab,
+    cancelMetaLab,
+    editSummary,
+    editOneLiner,
+  } = useAIJobs({ doc, sections, platform, toast })
 
   /** 复制后是否自动打开发布页。默认开，用户关掉后记住 */
   const [openOnCopy, setOpenOnCopy] = useState(loadOpenOnCopy)
-  /** 上一次自动打开的时间，用来挡住连点两下复制时开出两个标签 */
-  const lastOpenRef = useRef(0)
-
   /**
    * 勾选 / 取消一个平台的显示。
    *
@@ -291,27 +309,25 @@ export default function App() {
       setArticleKey(key)
 
       if (saved && parsed.blocks.length > 0 && saved.fingerprint === fp && draftValue(saved).worth) {
-        setDigest(saved.digest)
-        setPlatformStates(saved.platformStates)
-        setMetaLab(saved.metaLab)
-        setTone(saved.tone)
+        adoptAI({
+          digest: saved.digest,
+          platformStates: saved.platformStates,
+          metaLab: saved.metaLab,
+          tone: saved.tone,
+        })
         toast(`已解析「${parsed.meta.title}」· 接回 ${formatAgo(saved.updatedAt)} 的草稿`, 'success')
         return
       }
 
-      setDigest(emptyDigestState)
-      setPlatformStates(emptyPlatformStates())
-      setMetaLab(emptyMetaLabState)
+      resetAI()
 
       if (parsed.blocks.length === 0) {
         toast('解析后正文是空的，请检查文件内容', 'error')
       } else if (saved && saved.fingerprint !== fp) {
         toast(`已解析「${parsed.meta.title}」· 正文结构变了，旧草稿不再套用`, 'info')
-      } else {
-        toast(`已解析「${parsed.meta.title}」`, 'success')
       }
     },
-    [toast],
+    [toast, adoptAI, resetAI],
   )
 
   const updateMeta = useCallback((patch: Partial<DocMeta>) => {
@@ -413,26 +429,53 @@ export default function App() {
     }
   }, [doc, kind, output])
 
+  /**
+   * 富文本预览只给站内看，复制出去的 HTML 不应带懒加载属性。
+   * 长文一次插几十张图时，只让首屏附近的图片立即解码。
+   *
+   * 先过一遍允许列表再补属性：这段 HTML 是 dangerouslySetInnerHTML 插进我们
+   * 自己的页面的，作者在 Markdown 里写的裸 HTML 会原样进来（公众号产物为了保真
+   * 不剥内联样式），所以预览这一层必须自己兜住脚本。见 core/sanitize-preview.ts。
+   */
+  const richPreviewHtml = useMemo(
+    () =>
+      sanitizePreview(output?.html ?? '').replace(
+        /<img\b(?![^>]*\bloading=)/g,
+        '<img loading="lazy" decoding="async"',
+      ),
+    [output],
+  )
+
   /** 能切「预览 / 源码」的平台：md 走渲染预览，公众号走富文本预览 */
   const canPreview = Boolean(
     output && (output.format === 'markdown' ? previewHtml : output.format === 'html' && output.html),
   )
 
-  const notices: NoticeItem[] = useMemo(() => {
-    if (!output) return []
+  const { notices, formatNotes } = useMemo<{ notices: NoticeItem[]; formatNotes: string[] }>(() => {
+    if (!output) return { notices: [], formatNotes: [] }
     const hasError = output.stats.some((s) => s.level === 'error')
-    return output.warnings.map((text, i) => ({
-      text,
-      level: i === 0 && hasError ? 'error' : 'warn',
-    }))
+    const warnings = output.warnings
+      // 外链被转成文末参考链接是这些平台的固定转换结果，不是用户需要处理的异常。
+      .filter((text) => !/外链.*(?:抽成文末|转文末)/.test(text))
+    const actionable = warnings.filter((text) => /超过|超限|往期推荐|需在|请手动|无法|失败|错误/.test(text))
+    const formatNotes = warnings.filter((text) => !actionable.includes(text))
+    return {
+      notices: actionable.map((text, i) => ({
+        text,
+        level: i === 0 && hasError ? 'error' : 'warn',
+      })),
+      formatNotes,
+    }
   }, [output])
 
   /* ---------------- 发布台账 / 合规检查 / 图片清单 ---------------- */
 
-  // 换文章才重读台账。key 在导入时算一次就锁住，改标题不会把它冲掉
-  useEffect(() => {
-    setLedger(articleKey ? readLedger(articleKey) : {})
-  }, [articleKey])
+  const {
+    ledger,
+    apply: applyLedger,
+    changeStats,
+    markPublished: markLedgerPublished,
+  } = useLedger(articleKey, toast)
 
   /**
    * 跨篇复盘。
@@ -440,47 +483,15 @@ export default function App() {
    * 标题优先取草稿箱里的（那里存着每篇的完整 meta），草稿被淘汰了就退化成 slug ——
    * 至少还能认出是哪篇，不至于显示成「未命名」。
    */
+  const reviewSheetOpen = sheet === 'review'
   const summaries = useMemo(() => {
     const titles = new Map(drafts.map((d) => [d.key, d.title]))
     if (doc) titles.set(articleKey, doc.meta.title)
     return summarizeAll(readAllLedgers(), (k) => titles.get(k))
-    // reviewOpen 进依赖：每次打开都重读，避免在别的标签页改过之后看到旧数字
-  }, [drafts, doc, articleKey, ledger, reviewOpen])
-
-  /**
-   * 落地一次台账写操作。
-   *
-   * 内存里的值照常更新（点了「标记已发」必须立刻有反应），
-   * 但落盘失败要说出来 —— 否则刷新之后记录全没，用户还以为自己记过。
-   * 只提醒一次，避免每敲一个数字弹一条。
-   *
-   * 返回是否真的写进了本地存储：调用方要据此决定还能不能说「已记为已发」，
-   * 否则会先弹一条红字「没存上」、紧跟一条绿字「已记为已发」。
-   */
-  const ledgerFailedRef = useRef(false)
-  const applyLedger = useCallback(
-    (w: LedgerWrite): boolean => {
-      setLedger(w.ledger)
-      if (w.persisted) {
-        ledgerFailedRef.current = false
-        return true
-      }
-      if (!ledgerFailedRef.current) {
-        ledgerFailedRef.current = true
-        toast('台账没存上：浏览器本地存储已满或被禁用。这次的记录刷新后会丢', 'error')
-      }
-      return false
-    },
-    [toast],
-  )
-
-  const changeStats = useCallback(
-    (platformId: string, patch: PlatformStats) => {
-      if (!articleKey) return
-      applyLedger(setLedgerStats(articleKey, platformId, patch))
-    },
-    [articleKey, applyLedger],
-  )
+    // 「复盘」打开时重读一次，避免在别的标签页改过之后看到旧数字；
+    // ledger 也是刻意列的：刚在台账里改完数字，复盘要立刻反映出来
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ledger 只用来触发重读
+  }, [drafts, doc, articleKey, ledger, reviewSheetOpen])
 
   const images = useMemo(() => (doc ? collectImages(doc.blocks) : []), [doc])
 
@@ -518,69 +529,25 @@ export default function App() {
   const scopeLabel =
     platform === 'xiaohongshu' ? '小红书规则' : platform === 'wechat' ? '公众号规则' : '通用规则'
 
-  /* ---------------- 章节切分 ---------------- */
-
-  const sections = useMemo(() => (doc ? splitSections(doc) : []), [doc])
-
   /* ---------------- 草稿箱 ---------------- */
 
-  /**
-   * 自动保存，延迟 800ms。
-   *
-   * 没有保存按钮：用户会忘。但也不能每次按键都写盘 —— 一篇文章的草稿带正文
-   * 约 30–60KB，逐字序列化会把主线程卡出明显的输入延迟。
-   *
-   * 生成过程中整个跳过：streaming 每 100ms 涨一次，写进去既没用又浪费配额。
-   */
-  useEffect(() => {
-    if (!doc || !articleKey || !sourceText) return
-    const busy =
-      digest.status === 'running' ||
-      metaLab.status === 'running' ||
-      Object.values(platformStates).some((s) => s.status === 'running')
-    if (busy) return
-
-    if (saveTimer.current) window.clearTimeout(saveTimer.current)
-    saveTimer.current = window.setTimeout(() => {
-      const snap = sanitizeForStore({
-        key: articleKey,
-        doc,
-        source: sourceText,
-        fileName,
-        tone,
-        themeId,
-        platform,
-        digest,
-        platformStates,
-        metaLab,
-        sectionCount: sections.length,
-      })
-      // 写盘挪到空闲时段：一篇文章带正文 30–60KB，同步写会卡主线程十几毫秒，
-      // 而 800ms 的防抖窗口正好是用户还在打字的时候
-      whenIdle(() => {
-        // 内容一个字没变（只是打开草稿 / 切了标签）就别写，
-        // 否则「最后修改时间」会变成「最后看了一眼的时间」
-        if (sameDraft(lastSnapRef.current, snap)) return
-        const ok = writeDraft(snap)
-        setDrafts(listDrafts())
-        // 草稿箱的全部价值就是「关掉页面也不会丢」。存不下却不说，
-        // 等于骗用户 —— localStorage 满或隐私模式时必须让他知道
-        if (!ok) {
-          if (!saveFailedRef.current) {
-            saveFailedRef.current = true
-            toast('草稿没存上：浏览器本地存储已满或被禁用。先删几篇旧草稿再试', 'error')
-          }
-        } else {
-          saveFailedRef.current = false
-          lastSnapRef.current = snap
-        }
-      })
-    }, 800)
-
-    return () => {
-      if (saveTimer.current) window.clearTimeout(saveTimer.current)
-    }
-  }, [doc, articleKey, sourceText, fileName, tone, themeId, platform, digest, platformStates, metaLab, sections.length, toast])
+  // 自动保存：800ms 防抖、生成中跳过、内容没变不写、写失败只报一次。
+  // 细节见 hooks/useDraftAutosave.ts。
+  const { saveStatus, savedAt, adoptSnapshot } = useDraftAutosave({
+    doc,
+    articleKey,
+    sourceText,
+    fileName,
+    tone,
+    themeId,
+    platform,
+    digest,
+    platformStates,
+    metaLab,
+    sectionCount: sections.length,
+    onDrafts: setDrafts,
+    toast,
+  })
 
   /** 从草稿箱显式打开：这次连 meta 一起还原，用户要的就是「回到当时那一刻」 */
   const restoreDraft = useCallback(
@@ -598,18 +565,23 @@ export default function App() {
       setFileName(d.fileName)
       setSourceText(d.source)
       setArticleKey(d.key)
-      setDigest(d.digest)
-      setPlatformStates(d.platformStates)
-      setMetaLab(d.metaLab)
-      setTone(d.tone)
+      adoptAI({
+        digest: d.digest,
+        platformStates: d.platformStates,
+        metaLab: d.metaLab,
+        tone: d.tone,
+      })
       setThemeId(d.themeId)
       if (d.platform) setPlatform(d.platform)
       // 打开草稿不该算「修改」：记下它，紧接着那次自动保存会判定内容没变而跳过
-      lastSnapRef.current = d
-      setDraftsOpen(false)
-      toast(`已打开草稿「${d.meta.title}」`, 'success')
+      adoptSnapshot(d)
+      closeSheet()
+      const restoredPlatform = d.platform && !hidden.has(d.platform)
+        ? allPlatforms.find((item) => item.id === d.platform)?.name
+        : null
+      toast(restoredPlatform ? `已恢复草稿 · 继续在${restoredPlatform}` : '已恢复草稿', 'success')
     },
-    [toast, setThemeId],
+    [toast, setThemeId, hidden, adoptAI, adoptSnapshot, closeSheet],
   )
 
   const removeDraft = useCallback(
@@ -620,7 +592,6 @@ export default function App() {
         toast('删除没写进本地存储，刷新后这篇草稿还会回来', 'error')
         return
       }
-      toast('已删除这篇草稿')
     },
     [toast],
   )
@@ -631,273 +602,27 @@ export default function App() {
       return
     }
     setDrafts([])
-    toast('草稿箱已清空')
   }, [toast])
 
-  /* ---------------- AI 编排 ---------------- */
+  /* ---------------- AI 服务商 ---------------- */
 
+  const settingsSheetOpen = sheet === 'settings'
   const providerReady = useMemo(
     () => resolveProvider().provider !== null,
-    // settingsVersion 在保存设置后 +1，用于强制重算
-    [settingsVersion, settingsOpen],
+    // settingsVersion 在保存设置后 +1：Key 换了，可用性必须重算
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 用它当版本号触发重算
+    [settingsVersion, settingsSheetOpen],
   )
-
-  /**
-   * 本帧的 AI 状态快照。
-   *
-   * 中断时流水线返回的是「空状态」，直接 setState 会让用户按一下「停止」
-   * 就把已经花钱生成好的摘要 / 文案一起抹掉 —— 所以取消时要用它还原上一版。
-   */
-  const aiSnapshot = useRef({ digest, platformStates, metaLab })
-  aiSnapshot.current = { digest, platformStates, metaLab }
-
-  const startJob = useCallback(() => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    return controller
-  }, [])
-
-  /**
-   * 这次中断是不是「用户按了停止」。
-   *
-   * 被新任务顶掉时 abortRef 已经指向新任务，那种情况不能还原 ——
-   * 否则旧任务收尾时会把新任务刚写进去的「生成中」状态盖回去。
-   */
-  const isUserAbort = useCallback((controller: AbortController) => {
-    return controller.signal.aborted && abortRef.current === controller
-  }, [])
-
-  /**
-   * 意料之外的异常兜底。
-   *
-   * 流水线内部已经把能处理的错误都转成状态了，走到这里说明是真没料到的
-   * （prompt 拼装抛错、浏览器扩展拦截之类）。必须把 running 收掉，
-   * 否则按钮永远停在「生成中」，用户只能刷新页面。
-   */
-  const failJob = useCallback(
-    (err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err)
-      setDigest((p) => (p.status === 'running' ? { ...p, status: 'error', error: msg } : p))
-      setPlatformStates((prev) => {
-        let touched = false
-        const next = { ...prev }
-        for (const id of rewriteIds) {
-          if (next[id].status === 'running') {
-            next[id] = { ...next[id], status: 'error', error: msg }
-            touched = true
-          }
-        }
-        return touched ? next : prev
-      })
-      setMetaLab((p) => (p.status === 'running' ? { ...p, status: 'error', error: msg } : p))
-      toast(`生成失败：${msg}`, 'error')
-    },
-    [toast],
-  )
-
-  /**
-   * Stage 1 本身。取消时返回 null 并且不写状态 ——
-   * 「被取消」和「失败」是两件完全不同的事，不能都弹一条红字。
-   */
-  const runDigestStage = useCallback(
-    async (controller: AbortController): Promise<DigestState | null> => {
-      if (!doc) return null
-      const prev = aiSnapshot.current.digest
-      setDigest({ ...emptyDigestState, status: 'running' })
-
-      const out = await runDigest(doc, sections, tone, controller.signal, {
-        onStream: (text) => setDigest((p) => ({ ...p, status: 'running', streaming: text })),
-      })
-
-      if (controller.signal.aborted) {
-        if (isUserAbort(controller)) setDigest(prev)
-        return null
-      }
-
-      setDigest(out.state)
-      return out.state
-    },
-    [doc, sections, tone, isUserAbort],
-  )
-
-  /** Stage 1：逐节摘要（用户显式点「生成摘要 / 重新摘要」） */
-  const generateDigest = useCallback(async () => {
-    if (!doc || sections.length === 0) {
-      toast('没有可切分的正文', 'error')
-      return
-    }
-    const controller = startJob()
-    try {
-      const state = await runDigestStage(controller)
-      if (!state) return
-      if (state.error) {
-        toast(state.error, state.fallback ? 'info' : 'error')
-      } else {
-        toast(`已生成 ${state.digest?.sections.length ?? 0} 节摘要`, 'success')
-      }
-    } catch (err) {
-      failJob(err)
-    }
-  }, [doc, sections, tone, startJob, runDigestStage, failJob, toast])
-
-  /** 有摘要就直接用，没有才跑 Stage 1。返回 null 表示被取消或失败（已提示过） */
-  const ensureDigest = useCallback(
-    async (controller: AbortController): Promise<DigestSet | null> => {
-      if (digest.digest) return digest.digest
-      const state = await runDigestStage(controller)
-      // 取消不是失败，别在这里再补一条「摘要生成失败」
-      if (controller.signal.aborted) return null
-      if (!state?.digest) {
-        toast(state?.error ?? '摘要生成失败', 'error')
-        return null
-      }
-      return state.digest
-    },
-    [digest.digest, runDigestStage, toast],
-  )
-
-  const setOnePlatform = useCallback((id: RewriteId, state: AIState) => {
-    setPlatformStates((prev) => ({ ...prev, [id]: state }))
-  }, [])
-
-  /** Stage 2：单个平台。取消时把上一版文案放回去，并返回 null */
-  const runOnePlatform = useCallback(
-    async (id: RewriteId, dg: DigestSet, controller: AbortController): Promise<AIState | null> => {
-      if (!doc) return null
-      const prev = aiSnapshot.current.platformStates[id]
-      setOnePlatform(id, { ...emptyAIState, status: 'running' })
-
-      const out = await runPlatform(id, doc, dg, tone, controller.signal, {
-        onStream: (text) =>
-          setPlatformStates((p) => ({ ...p, [id]: { ...p[id], status: 'running', streaming: text } })),
-      })
-
-      if (controller.signal.aborted) {
-        // 「重新生成」跑到一半点停止，原来的那版不该跟着消失
-        if (isUserAbort(controller)) setOnePlatform(id, prev)
-        return null
-      }
-
-      setOnePlatform(id, out.state)
-      return out.state
-    },
-    [doc, tone, setOnePlatform, isUserAbort],
-  )
-
-  /** 生成当前平台：缺摘要就先跑 Stage 1 */
-  const generateCurrent = useCallback(async () => {
-    if (!doc || !isRewriteId(platform)) return
-    const controller = startJob()
-    try {
-      const dg = await ensureDigest(controller)
-      if (!dg) return
-
-      const state = await runOnePlatform(platform, dg, controller)
-      if (!state) return
-      if (state.error) toast(state.error, state.fallback ? 'info' : 'error')
-      else if (state.fallback) toast('已用本地组装生成（未调用大模型）')
-      else toast('生成好了', 'success')
-    } catch (err) {
-      failJob(err)
-    }
-  }, [doc, platform, startJob, ensureDigest, runOnePlatform, failJob, toast])
-
-  /** 生成四个平台 */
-  const generateAll = useCallback(async () => {
-    if (!doc) return
-    const controller = startJob()
-
-    try {
-      const dg = await ensureDigest(controller)
-      if (!dg) return
-
-      // 并发 2。四个平台串行是 4 × 30s ≈ 2 分钟，并发能砍掉一半；
-      // 但不敢开满 —— 同一个 Key 同时打四个请求很容易撞限流。
-      // 一旦有人撞上 429，剩下的立刻退回串行，别把「限流」打成「封禁」。
-      const queue = [...rewriteIds]
-      let cursor = 0
-      let throttled = false
-
-      const worker = async () => {
-        for (;;) {
-          if (controller.signal.aborted || throttled) return
-          const i = cursor++
-          if (i >= queue.length) return
-          const st = await runOnePlatform(queue[i], dg, controller)
-          if (st?.error && /429|限流/.test(st.error)) throttled = true
-        }
-      }
-
-      await Promise.all([worker(), worker()])
-
-      // 撞了限流：把没跑的串行收尾
-      if (throttled && !controller.signal.aborted) {
-        while (cursor < queue.length) {
-          await runOnePlatform(queue[cursor++], dg, controller)
-          if (controller.signal.aborted) return
-        }
-      }
-
-      if (controller.signal.aborted) return
-      toast('四个平台的文案都生成好了', 'success')
-    } catch (err) {
-      failJob(err)
-    }
-  }, [doc, startJob, ensureDigest, runOnePlatform, failJob, toast])
-
-  const cancelGenerate = useCallback(() => {
-    abortRef.current?.abort()
-    setDigest((prev) => (prev.status === 'running' ? { ...prev, status: 'idle', streaming: '' } : prev))
-    setPlatformStates((prev) => {
-      const next = { ...prev }
-      for (const id of rewriteIds) {
-        if (next[id].status === 'running') next[id] = { ...next[id], status: 'idle', streaming: '' }
-      }
-      return next
-    })
-    toast('已停止生成')
-  }, [toast])
 
   /* ---------------- 标题与标签 ---------------- */
-
-  const generateMetaLab = useCallback(async () => {
-    if (!doc) return
-    const controller = startJob()
-    const prev = aiSnapshot.current.metaLab
-    setMetaLab({ ...emptyMetaLabState, status: 'running' })
-
-    try {
-      const out = await runMetaLab(doc, digest.digest, sections, controller.signal, {
-        onStream: (text) => setMetaLab((p) => ({ ...p, status: 'running', streaming: text })),
-      })
-
-      if (controller.signal.aborted) {
-        if (isUserAbort(controller)) setMetaLab(prev)
-        return
-      }
-
-      setMetaLab(out.state)
-      if (out.state.error) toast(out.state.error, out.state.fallback ? 'info' : 'error')
-      else toast(`已生成 ${out.state.result?.titles.length ?? 0} 个标题候选`, 'success')
-    } catch (err) {
-      failJob(err)
-    }
-  }, [doc, digest.digest, sections, startJob, isUserAbort, failJob, toast])
-
-  const cancelMetaLab = useCallback(() => {
-    abortRef.current?.abort()
-    setMetaLab((prev) => (prev.status === 'running' ? { ...prev, status: 'idle', streaming: '' } : prev))
-  }, [])
 
   const applyTitle = useCallback(
     (title: string) => {
       updateMeta({ title })
       // 卡片不跟着变是刻意的：CardStudio 只在重新导入时重建，
       // 否则每改一次元信息就把用户手工调过的卡片文字冲掉
-      toast('已换标题 · 配图里点「重新生成」封面才会跟着变', 'success')
     },
-    [updateMeta, toast],
+    [updateMeta],
   )
 
   const applyTags = useCallback(
@@ -906,261 +631,59 @@ export default function App() {
       const merged = [...doc.meta.tags]
       for (const t of tags) if (!merged.includes(t)) merged.push(t)
       updateMeta({ tags: merged })
-      toast(`已写入标签，现有 ${merged.length} 个`, 'success')
     },
-    [doc, updateMeta, toast],
+    [doc, updateMeta],
   )
-
-  useEffect(() => {
-    return () => abortRef.current?.abort()
-  }, [])
 
   // 切平台/切视图后回到顶部 —— 否则从长文滚到一半再切走，新面板会停在中间
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [platform, viewMode])
 
-  /* ---------------- 摘要编辑 ---------------- */
+  // 一篇文章开一个标签页是常态，标题栏不能全叫「文章分发台」
+  useEffect(() => {
+    document.title = doc?.meta.title ? `${doc.meta.title} · 文章分发台` : '文章分发台'
+  }, [doc?.meta.title])
 
-  const editSummary = useCallback((index: number, summary: string) => {
-    setDigest((prev) => {
-      if (!prev.digest) return prev
-      return {
-        ...prev,
-        digest: {
-          ...prev.digest,
-          sections: prev.digest.sections.map((s) => (s.index === index ? { ...s, summary } : s)),
-        },
-      }
-    })
-  }, [])
-
-  const editOneLiner = useCallback((oneLiner: string) => {
-    setDigest((prev) => (prev.digest ? { ...prev, digest: { ...prev.digest, oneLiner } } : prev))
+  /** 清单里「去生成」要滚回顶部；单独拎出来是为了给它一个稳定的引用 */
+  const scrollToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
 
   /* ---------------- 复制 / 下载 ---------------- */
 
-  /**
-   * 写一段纯文本进剪贴板。
-   *
-   * 先走同步通道：execCommand 在用户手势里一次就落地，不 await、不受焦点影响。
-   * 只有同步通道不可用时才退到异步的 clipboard API。
-   */
-  const writePlain = useCallback(async (text: string): Promise<boolean> => {
-    if (copySync('plain', { text })) return true
-    try {
-      await copyPlain(text)
-      return true
-    } catch {
-      return false
-    }
-  }, [])
-
-  const copyPlainText = useCallback(
-    async (text: string, label: string) => {
-      if (!(await writePlain(text))) {
-        toast(COPY_FAILED, 'error')
-        return
-      }
-      // 改写平台复制成功也算发过了；第一次会顺带提示，避免用户以为只是复制
-      let tail = ''
-      if (articleKey && isRewriteId(platform)) {
-        const persisted = applyLedger(markRecord(articleKey, platform))
-        // 没写进去就别在成功提示里说「已记为已发」——上面已经报过错了
-        if (persisted && !ledger[platform]) tail = ' · 已记为已发'
-      }
-      toast(`已复制${label}${tail}`, 'success')
-    },
-    [toast, articleKey, platform, ledger, applyLedger, writePlain],
-  )
-
-  /**
-   * 只复制、不记台账。
-   * 标题和标签是从「标题/标签」弹层里复制的，跟当前停在哪个平台无关 ——
-   * 在小红书标签页里复制一个标题，不该被记成「小红书已发布」。
-   */
-  const copyTextOnly = useCallback(
-    async (text: string, label: string) => {
-      if (!(await writePlain(text))) {
-        toast(COPY_FAILED, 'error')
-        return
-      }
-      toast(`已复制${label}`, 'success')
-    },
-    [toast, writePlain],
-  )
-
-  /**
-   * 复制成功后打开发布页。
-   *
-   * 必须在用户手势里同步开标签（见 core/publish.ts 的 preopenTab）：
-   * 等复制这个 await 回来再 window.open 会被弹窗拦截。
-   *
-   * 连点两下复制时不再开第二个 —— 3 秒内同一个平台只开一次。
-   */
-  const openPublishFor = useCallback(
-    (platformId: string): ReturnType<typeof preopenTab> => {
-      if (!openOnCopy) return null
-      const target = publishUrlOf(platformId)
-      if (!target) return null
-      const now = Date.now()
-      if (now - lastOpenRef.current < 3000) return null
-      lastOpenRef.current = now
-      return preopenTab(target.url)
-    },
-    [openOnCopy],
-  )
-
-  /**
-   * 复制当前平台的产物。
-   *
-   * 顺序是这段代码的全部要点：**先同步复制，再开标签**。
-   * 反过来（先 preopenTab 再 await 复制）会让新标签把本页的焦点抢走，
-   * 剪贴板 API 抛 NotAllowedError: Document is not focused，
-   * execCommand 也返回 false —— 三个通道一起废掉，用户看到「复制失败」，
-   * 而剪贴板里还留着上一次的内容，粘出来就是「复制不完全、丢了后面新加的部分」。
-   */
-  const doCopyPrimary = useCallback(() => {
-    if (!output) return
-
-    const payload = { html: output.html, text: output.text }
-    const finish = (channel: 'rich' | 'plain') => {
-      const persisted = articleKey ? applyLedger(markRecord(articleKey, platform)) : false
-      const tail = persisted && !ledger[platform] ? ' · 已记为已发' : ''
-      if (output.copyMode === 'rich') {
-        toast(
-          channel === 'rich'
-            ? `已复制富文本，直接粘进编辑器即可${tail}`
-            : `浏览器不支持富文本复制，已改为复制纯文本${tail}`,
-          channel === 'rich' ? 'success' : 'info',
-        )
-      } else {
-        toast(`已复制${tail}`, 'success')
-      }
-    }
-
-    // 1) 同步通道：还在用户手势里、本页也还有焦点，一次写完
-    const channel = copySync(output.copyMode, payload)
-    if (channel) {
-      // 2) 复制已经落地，这时候再开标签，焦点被抢走也无所谓了
-      openPublishFor(platform)?.commit()
-      finish(channel)
-      return
-    }
-
-    // 3) 同步通道不可用（极老浏览器 / execCommand 被禁用）才走异步。
-    //    这里同样不能先开标签，否则异步复制也会因为失焦而失败。
-    //    代价是此时 window.open 已经不在用户激活窗口里了，可能被当成弹窗拦掉 ——
-    //    拦了就只复制、不开页面，用户点旁边的「打开发布页」按钮一样能到。
-    void (async () => {
-      try {
-        const mode = await copyByMode(output.copyMode, payload)
-        finish(mode)
-        openPublishFor(platform)?.commit()
-      } catch {
-        toast(COPY_FAILED, 'error')
-      }
-    })()
-  }, [output, toast, articleKey, platform, ledger, applyLedger, openPublishFor])
-
-  const doCopySource = useCallback(() => {
-    if (!output) return
-    const finish = () => {
-      const persisted = articleKey ? applyLedger(markRecord(articleKey, platform)) : false
-      const tail = persisted && !ledger[platform] ? ' · 已记为已发' : ''
-      toast(`已复制源码${tail}`, 'success')
-    }
-    if (copySync('plain', { text: output.primary })) {
-      finish()
-      return
-    }
-    void (async () => {
-      try {
-        await copyPlain(output.primary)
-        finish()
-      } catch {
-        toast(COPY_FAILED, 'error')
-      }
-    })()
-  }, [output, toast, articleKey, platform, ledger, applyLedger])
-
-  const doDownload = useCallback(() => {
-    if (!output) return
-    downloadText(output.primary, output.fileName ?? 'article.md', mimeFor(output.format))
-  }, [output])
-
-  /**
-   * 把这篇文章在全部「转换」平台上的产物打成一个 zip。
-   *
-   * 逐个点「下载」会被浏览器拦（多个文件要授权一次），也麻烦。这里一次渲染
-   * 7 个平台，文件名带序号，解压后按名称排序就是侧栏的顺序。
-   *
-   * 只导转换平台：AI 改写的 4 个平台没有确定性产物（要先调模型），
-   * 配图是 PNG，走各自的导出入口。隐藏的平台不导 —— 隐藏本来就表示「我不发这家」。
-   */
-  const doExportAllPlatforms = useCallback(async () => {
-    if (!doc) return
-    const list = convertPlatforms.filter((p) => !hidden.has(p.id))
-    if (list.length === 0) {
-      toast('没有可导出的平台', 'error')
-      return
-    }
-    setZipping(true)
-    try {
-      const { default: JSZip } = await import('jszip')
-      const zip = new JSZip()
-      const slug = safeFileName(doc.meta.slug || doc.meta.title || 'article')
-
-      for (const [i, p] of list.entries()) {
-        const render = await loadConvertRenderer(p.id)
-        const out = render(doc, { wechatThemeId: themeId, tail, account })
-        const ext = out.format === 'markdown' ? 'md' : 'html'
-        // 平台名放在文件名里，解压后一眼知道哪个文件给哪家
-        zip.file(`${String(i + 1).padStart(2, '0')}-${safeFileName(p.name)}-${slug}.${ext}`, out.primary)
-      }
-
-      const blob = await zip.generateAsync({ type: 'blob' })
-      downloadBlob(blob, `${slug}-全平台.zip`)
-      toast(`已导出 ${list.length} 个平台的产物`, 'success')
-    } catch (e) {
-      toast(`打包失败：${e instanceof Error ? e.message : String(e)}`, 'error')
-    } finally {
-      setZipping(false)
-    }
-  }, [doc, hidden, themeId, tail, account, toast])
-
-  const doSplitExport = useCallback(async () => {
-    if (!doc) return
-    const parts = splitByH2(doc)
-    const render = await loadConvertRenderer('wechat').catch(() => null)
-    if (!render) {
-      toast('渲染器加载失败，刷新页面可重试', 'error')
-      return
-    }
-    parts.forEach((part, i) => {
-      const out = render(part, { wechatThemeId: themeId, tail, account })
-      setTimeout(() => {
-        downloadText(
-          out.primary,
-          `${out.fileName?.replace(/\.html$/, '') ?? `part-${i + 1}`}.html`,
-          'text/html',
-        )
-      }, i * 300)
-    })
-    toast(`已拆成 ${parts.length} 篇并开始下载`, 'success')
-  }, [doc, themeId, tail, account, toast])
-
-  /* ---------------- 顶栏统计 ---------------- */
-
-  const totalChars = useMemo(() => (doc ? charCount(blocksToText(doc.blocks)) : 0), [doc])
+  // 复制 / 下载 / 导出全平台。这段的顺序约束（先同步复制再开标签）
+  // 写在 hooks/useCopyActions.ts 的文件头，改动前先读那里。
+  const {
+    zipping,
+    copyPlainText,
+    copyTextOnly,
+    doCopyPrimary,
+    doCopySource,
+    doDownload,
+    doExportAllPlatforms,
+    doSplitExport,
+  } = useCopyActions({
+    doc,
+    output,
+    articleKey,
+    platform,
+    ledger,
+    applyLedger,
+    openOnCopy,
+    hidden,
+    themeId,
+    tail,
+    account,
+    toast,
+  })
 
   const currentAI: AIState = isRewriteId(platform) ? platformStates[platform] : emptyAIState
 
   const currentPlatformMeta = useMemo(() => {
     if (kind === 'convert') return convertPlatforms.find((p) => p.id === platform)
     if (kind === 'rewrite') return rewritePlatforms.find((p) => p.id === platform)
-    return { id: 'cards', name: '配图卡片', hint: '1080×1440 文字卡片，导出 PNG', limits: '小红书 3:4' }
+    return { id: 'cards', name: '配图卡片', hint: '文字卡片 · 导出 PNG', limits: '小红书 3:4' }
   }, [platform, kind])
 
   const navStatus = useMemo(() => {
@@ -1169,9 +692,153 @@ export default function App() {
     return map
   }, [platformStates])
 
-  /** 台账进度：8 个平台发了几个 */
+  /** 台账进度：11 个发布平台里，真正确认发过几个 */
   const platformTotal = convertPlatforms.length + rewritePlatforms.length
-  const ledgerDone = Object.keys(ledger).length
+  const ledgerDone = publishedCount(ledger)
+  const currentPublished = Boolean(ledger[platform]?.at)
+  const currentPrepared = Boolean(ledger[platform]?.copiedAt)
+
+  const currentRewriteCopy = useMemo(() => {
+    const result = currentAI.result
+    if (!result || !isRewriteId(platform)) return null
+    if (platform === 'xiaohongshu' && result.xhs) {
+      return {
+        text: `${result.xhs.title}\n\n${result.xhs.body}\n\n${result.xhs.tags.map((t) => `#${t}`).join(' ')}`,
+        label: '小红书全文',
+      }
+    }
+    if (platform === 'twitter' && result.twitter) {
+      return {
+        text: result.twitter.thread
+          .map((t, i) => `${i + 1}/${result.twitter!.thread.length} ${t}`)
+          .join('\n\n'),
+        label: '完整 thread',
+      }
+    }
+    if (platform === 'jike' && result.jike) {
+      return { text: result.jike.body, label: '即刻正文' }
+    }
+    if (platform === 'weibo' && result.weibo) {
+      return {
+        text: `${result.weibo.text} ${result.weibo.topics.map((t) => `#${t}#`).join(' ')}`,
+        label: '微博全文',
+      }
+    }
+    return null
+  }, [currentAI.result, platform])
+
+  const currentGenerated =
+    kind === 'convert'
+      ? Boolean(output)
+      : kind === 'rewrite'
+        ? Boolean(currentAI.result)
+        : Boolean(doc)
+
+  /** 当前平台发布完成后，沿侧栏可见顺序找下一个未发布平台，末尾回到开头。 */
+  const nextUnpublished = useMemo(() => {
+    const visible = sortByWidth(
+      [...convertPlatforms, ...rewritePlatforms].filter((item) => !hidden.has(item.id)),
+    )
+    const index = visible.findIndex((item) => item.id === platform)
+    const ordered = index >= 0 ? [...visible.slice(index + 1), ...visible.slice(0, index + 1)] : visible
+    return ordered.find((item) => !ledger[item.id]?.at) ?? null
+  }, [hidden, ledger, platform])
+
+  const ledgerContentStates = useMemo<Record<string, LedgerContentState>>(() => {
+    const states: Record<string, LedgerContentState> = {}
+    for (const item of convertPlatforms) {
+      states[item.id] = item.id === platform && output ? 'ready' : 'available'
+    }
+    for (const item of rewritePlatforms) {
+      const id = item.id as RewriteId
+      const state = platformStates[id]
+      states[id] = state.status === 'running' ? 'running' : state.result ? 'ready' : 'pending'
+    }
+    return states
+  }, [output, platform, platformStates])
+
+  const allPublished = ledgerDone === platformTotal
+
+  /**
+   * 主界面只保留真正影响发布判断的字数。
+   * HTML 体积、图片数、外链数等实现细节仍在渲染产物的 stats 里，
+   * 需要时由发布准备和对应面板承接，不再长期占据主标题下方。
+   */
+  const summaryStats = useMemo(() => {
+    if (!doc || !output) return []
+    if (platform === 'wechat') {
+      return output.stats.filter((stat) => stat.label === '正文' || stat.label === '含文末')
+    }
+    return [{ label: '正文', value: `${charCount(output.text).toLocaleString()} 字符` }]
+  }, [doc, output, platform])
+
+  const markCurrentPublished = useCallback(() => {
+    markLedgerPublished(platform)
+  }, [markLedgerPublished, platform])
+
+  const copyCurrentResult = useCallback(() => {
+    if (kind === 'convert') {
+      doCopyPrimary()
+      return
+    }
+    if (kind === 'rewrite') {
+      if (!currentRewriteCopy) {
+        toast('还没有可复制的文案，先点「生成」', 'info')
+        return
+      }
+      void copyPlainText(currentRewriteCopy.text, currentRewriteCopy.label)
+      return
+    }
+    toast('配图卡片请点「导出 PNG」', 'info')
+  }, [kind, doCopyPrimary, currentRewriteCopy, copyPlainText, toast])
+
+  const readiness = useReadiness({
+    doc,
+    kind,
+    output,
+    platform,
+    tail,
+    platformName: currentPlatformMeta?.name,
+    hasAIResult: Boolean(currentAI.result),
+    rewriteLabel: currentRewriteCopy?.label ?? null,
+    complianceHits,
+    scopeLabel,
+    checkContent,
+    imageCount: images.length,
+    openSheet: setSheet,
+    closeSheet,
+    scrollToTop,
+  })
+
+  const palettePlatforms = useMemo(
+    () =>
+      platformGroups.flatMap((group) =>
+        group.list
+          .filter((item) => !hidden.has(item.id))
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            hint: item.hint,
+            group: group.label.split(' · ')[0] ?? group.label,
+          })),
+      ),
+    [hidden],
+  )
+
+  const visiblePlatformOrder = useMemo(
+    () => [
+      ...sortByWidth(convertPlatforms.filter((item) => !hidden.has(item.id))),
+      ...sortByWidth(rewritePlatforms.filter((item) => !hidden.has(item.id))),
+      ...(hidden.has(cardPlatform.id) ? [] : [cardPlatform]),
+    ],
+    [hidden],
+  )
+
+  const selectPlatform = useCallback((id: string) => {
+    setPlatform(id)
+    setSidebarOpen(false)
+    requestAnimationFrame(() => mainTitleRef.current?.focus({ preventScroll: true }))
+  }, [])
 
   /* ---------------- 操作条高度 → CSS 变量 ---------------- */
 
@@ -1200,150 +867,229 @@ export default function App() {
     }
   }, [doc])
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey
+      if (!mod) {
+        const target = event.target instanceof HTMLElement ? event.target : null
+        const typing = Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'))
+        if (
+          doc &&
+          !typing &&
+          !event.altKey &&
+          !document.querySelector('[role="dialog"]') &&
+          (event.key === '[' || event.key === ']')
+        ) {
+          event.preventDefault()
+          const current = visiblePlatformOrder.findIndex((item) => item.id === platform)
+          const delta = event.key === ']' ? 1 : -1
+          const next =
+            visiblePlatformOrder[
+              (Math.max(0, current) + delta + visiblePlatformOrder.length) % visiblePlatformOrder.length
+            ]
+          if (next) selectPlatform(next.id)
+        }
+        return
+      }
+
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        if (!document.querySelector('[role="dialog"]')) setSheet('palette')
+        return
+      }
+
+      if (event.key === 'Enter' && doc && !document.querySelector('[role="dialog"]')) {
+        event.preventDefault()
+        copyCurrentResult()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [doc, copyCurrentResult, visiblePlatformOrder, platform, selectPlatform])
+
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [sidebarOpen])
+
   return (
-    <div className="app">
+    <div className={`app ${sidebarOpen ? 'sidebar-open' : ''}`}>
       {/* ================= 顶栏 ================= */}
       <header className="topbar">
+        <button
+          className="sidebar-toggle"
+          onClick={() => setSidebarOpen((value) => !value)}
+          aria-expanded={sidebarOpen}
+          aria-label={sidebarOpen ? '收起平台列表' : '展开平台列表'}
+        >
+          <span aria-hidden>{sidebarOpen ? '×' : '☰'}</span>
+          <span>平台</span>
+        </button>
+
         <div className="brand">
           <img className="brand-icon" src="./icon.svg" alt="" width={26} height={26} />
           <span className="brand-mark">文章分发台</span>
-          <span className="brand-sub">Dispatch</span>
         </div>
 
         <div className="topbar-spacer" />
 
         {doc ? (
-          <div className="topbar-stat">
-            <span>正文</span>
-            <strong>{totalChars.toLocaleString()}</strong>
-            <span>字</span>
-          </div>
+          <button
+            className={`save-status ${saveStatus}`}
+            onClick={() => {
+              setDrafts(listDrafts())
+              setSheet('drafts')
+            }}
+            title="打开草稿箱"
+            /* 不挂 aria-live：每停顿 800ms 就播报一次「已保存 14:03」太吵。
+               真正需要播报的是保存失败，那条走的是 role=alert 的 toast。 */
+          >
+            <span className="save-dot" aria-hidden />
+            {saveStatus === 'saving'
+              ? '保存中…'
+              : saveStatus === 'error'
+                ? '保存失败'
+                : savedAt
+                  ? `已保存 ${new Date(savedAt).toLocaleTimeString('zh-CN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false,
+                    })}`
+                  : '已保存'}
+          </button>
         ) : null}
-
-        <button
-          className={`topbar-ai ${providerReady ? 'ok' : 'idle'}`}
-          onClick={() => setSettingsOpen(true)}
-          title={providerReady ? '点击修改模型设置' : '点击填入自己的 API Key'}
-        >
-          <span className={`dot ${providerReady ? 'dot-ok' : 'dot-idle'}`} />
-          <span>{providerReady ? 'AI 已就绪' : '填入 API Key'}</span>
-        </button>
 
         {doc ? (
           <button
             className={`btn btn-sm btn-quiet ledger-entry ${ledgerDone === platformTotal ? 'complete' : ''}`}
-            onClick={() => setLedgerOpen(true)}
+            onClick={() => {
+              setLedgerFocusPlatform('')
+              setSheet('ledger')
+            }}
             title="发布台账：记录这篇文章发到哪几个平台、什么时候、链接是什么"
           >
-            台账 {ledgerDone}/{platformTotal}
+            {allPublished ? `已完成 ${platformTotal}/${platformTotal}` : `台账 ${ledgerDone}/${platformTotal}`}
           </button>
         ) : null}
 
-        {doc ? (
-          <button
-            className="btn btn-sm btn-quiet review-entry"
-            onClick={() => setReviewOpen(true)}
-            title="复盘：手填各平台的阅读 / 点赞 / 评论 / 收藏，看互动率与跨篇对比"
-          >
-            复盘
-          </button>
-        ) : null}
-
-        <button
-          className={`btn btn-sm btn-quiet drafts-entry ${drafts.length > 0 ? 'has' : ''}`}
-          onClick={() => {
-            setDrafts(listDrafts())
-            setDraftsOpen(true)
+        <details
+          className="topbar-tools"
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              e.currentTarget.removeAttribute('open')
+            }
           }}
-          title="草稿箱：自动保存正文、摘要与 AI 文案，关掉页面也不会丢"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') e.currentTarget.removeAttribute('open')
+          }}
         >
-          草稿{drafts.length > 0 ? ` ${drafts.length}` : ''}
-        </button>
-
-        <button className="btn btn-sm btn-quiet" onClick={() => setSettingsOpen(true)}>
-          设置
-        </button>
+          <summary className="btn btn-sm btn-quiet topbar-tools-trigger">工具</summary>
+          <div className="topbar-menu">
+            {doc ? (
+              <button
+                aria-label="复盘"
+                data-return-focus=".topbar-tools-trigger"
+                onClick={() => setSheet('review')}
+              >
+                <span>复盘</span>
+              </button>
+            ) : null}
+            <button
+              aria-label="故障排查"
+              data-return-focus=".topbar-tools-trigger"
+              onClick={() => setSheet('recovery')}
+            >
+              <span>故障排查</span>
+            </button>
+            <button
+              aria-label="打开草稿箱"
+              data-return-focus=".topbar-tools-trigger"
+              onClick={() => {
+                setDrafts(listDrafts())
+                setSheet('drafts')
+              }}
+            >
+              <span>草稿{drafts.length > 0 ? ` ${drafts.length}` : ''}</span>
+            </button>
+            <button
+              aria-label="打开设置"
+              data-return-focus=".topbar-tools-trigger"
+              onClick={() => {
+                setSheet('settings')
+              }}
+            >
+              <span>设置</span>
+            </button>
+          </div>
+        </details>
       </header>
 
       <div className="app-body">
         {/* ================= 侧栏 ================= */}
         <aside className="sidebar">
           <ImportPanel
+            ref={importPanelRef}
             currentName={fileName}
+            meta={doc?.meta}
+            onMetaChange={updateMeta}
+            metaOpenSignal={metaEditorSignal}
             onLoad={load}
             onError={(m) => toast(m, 'error')}
             onNotice={(m) => toast(m, 'info')}
           />
-          {doc ? <MetaEditor meta={doc.meta} onChange={updateMeta} /> : null}
           <PlatformNav
             active={platform}
-            onSelect={setPlatform}
+            onSelect={selectPlatform}
             platformStatus={navStatus}
             published={ledger}
             hidden={hidden}
-            onOpenFilter={() => setFilterOpen(true)}
+            onOpenFilter={() => setSheet('filter')}
+            onQuickSwitch={() => setSheet('palette')}
           />
         </aside>
+        {sidebarOpen ? (
+          <button
+            className="sidebar-scrim"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="关闭平台列表"
+          />
+        ) : null}
 
         {/* ================= 主区域 ================= */}
         <main className="main">
           <div className="main-head">
             <div className="head-row">
               <div className="head-title">
-                <h1 className="main-title">{currentPlatformMeta?.name}</h1>
-                {/* 平台限制跟 hint 放同一行，而不是塞进右边那排按钮里 ——
-                    按钮行是 flex-shrink:0，限制文案一长就被挤成两行，「域名」还会被从中间劈开 */}
-                <p className="main-hint">
-                  {currentPlatformMeta?.hint}
-                  {currentPlatformMeta?.limits ? (
-                    <span
-                      className="limit-note"
-                      title={`${currentPlatformMeta.name}的平台限制`}
-                    >
-                      {currentPlatformMeta.limits}
-                    </span>
-                  ) : null}
-                </p>
+                <h1
+                  className="main-title"
+                  ref={mainTitleRef}
+                  tabIndex={-1}
+                  aria-keyshortcuts="BracketLeft BracketRight"
+                  title="按 [ / ] 切换平台"
+                >
+                  {currentPlatformMeta?.name}
+                </h1>
               </div>
 
               <div className="head-tools">
                 {doc ? (
                   <button
-                    className="head-chip meta-entry"
-                    onClick={() => setMetaOpen(true)}
-                    title="一次生成 8 个不同角度的标题，其中至少 3 条在 20 字内；另附标签建议"
+                    className={`readiness-entry tone-${readiness.tone}`}
+                    onClick={() => setSheet('readiness')}
+                    title="查看标题、正文、合规与素材的发布准备状态"
                   >
-                    {metaLab.result ? `标题 ${metaLab.result.titles.length}` : '标题 / 标签'}
-                  </button>
-                ) : null}
-                {doc ? (
-                  <button
-                    className="head-chip cover-entry"
-                    onClick={() => setCoverOpen(true)}
-                    title="按文章内容从 Unsplash 搜 3 张封面图，挑一张下载"
-                  >
-                    封面
-                  </button>
-                ) : null}
-                {platform === 'wechat' && doc ? (
-                  <button
-                    className="head-chip tail-entry"
-                    onClick={() => setTailOpen(true)}
-                    title="文末三块：关注引导 / 往期推荐 / 版权声明"
-                  >
-                    文末 {activeBlocks(tail)}/3
-                  </button>
-                ) : null}
-                {doc && kind !== 'card' && checkContent.length > 0 ? (
-                  <ComplianceChip hits={complianceHits} scopeLabel={scopeLabel} />
-                ) : null}
-                {doc && kind !== 'card' && images.length > 0 ? (
-                  <button
-                    className="head-chip img-entry"
-                    onClick={() => setImagesOpen(true)}
-                    title="正文图片清单：按序号打包下载，方便传进公众号"
-                  >
-                    图片 {images.length}
+                    <span className="readiness-dot" aria-hidden />
+                    <span>发布准备</span>
+                    {readiness.done < readiness.required.length ? (
+                      <strong>
+                        {readiness.done}/{readiness.required.length}
+                      </strong>
+                    ) : null}
                   </button>
                 ) : null}
                 {canPreview ? (
@@ -1365,27 +1111,82 @@ export default function App() {
               </div>
             </div>
 
-            {doc && (output?.stats.length || kind === 'rewrite') ? (
-              <div className="stats-bar">
-                {output?.stats.map((s, i) => (
-                  <span key={i} className={`stat-chip ${s.level ?? ''}`}>
-                    <span className="stat-label">{s.label}</span>
-                    {s.value}
-                  </span>
-                ))}
-                {kind === 'rewrite' && sections.length > 0 ? (
-                  <span className="stat-chip">
-                    <span className="stat-label">按 ## 切分</span>
-                    {sections.length} 节
+            {doc ? (
+              <ol className="dispatch-rail" aria-label="当前平台的发布进度">
+                <li className="done">
+                  <button
+                    className="dispatch-step"
+                    onClick={() => {
+                      setMetaEditorSignal((value) => value + 1)
+                      setSidebarOpen(true)
+                    }}
+                  >
+                    草稿
+                  </button>
+                </li>
+                <li className={currentGenerated ? 'done' : 'current'}>
+                  <button
+                    className="dispatch-step"
+                    onClick={() => {
+                      scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+                      if (canPreview) setViewMode('preview')
+                    }}
+                  >
+                    已生成
+                  </button>
+                </li>
+                <li className={currentPrepared || currentPublished ? 'done' : currentGenerated ? 'current' : ''}>
+                  <button
+                    className="dispatch-step"
+                    onClick={() => {
+                      setLedgerFocusPlatform(platform)
+                      setSheet('ledger')
+                    }}
+                  >
+                    待发布
+                  </button>
+                </li>
+                <li className={currentPublished ? 'current published' : ''}>
+                  <button
+                    className="dispatch-step"
+                    onClick={() => {
+                      setLedgerFocusPlatform(platform)
+                      setSheet('ledger')
+                    }}
+                  >
+                    已发布
+                  </button>
+                </li>
+              </ol>
+            ) : null}
+
+            <div className="main-meta-row">
+              <p className="main-hint">
+                {currentPlatformMeta?.hint}
+                {currentPlatformMeta?.limits ? (
+                  <span
+                    className="limit-note"
+                    title={`${currentPlatformMeta.name}的平台限制`}
+                  >
+                    {currentPlatformMeta.limits}
                   </span>
                 ) : null}
-              </div>
-            ) : null}
+              </p>
+              {doc && summaryStats.length > 0 ? (
+                <div className="stats-bar">
+                  {summaryStats.map((s, i) => (
+                    <span key={i} className={`stat-chip ${s.level ?? ''}`}>
+                      <span className="stat-label">{s.label}</span>
+                      {s.value}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {doc && kind === 'convert' && platform === 'wechat' ? (
+                <ThemePicker value={themeId} onChange={setThemeId} />
+              ) : null}
+            </div>
           </div>
-
-          {kind === 'convert' && platform === 'wechat' && doc ? (
-            <ThemePicker value={themeId} onChange={setThemeId} />
-          ) : null}
 
           {/* ---------- 预览区 ---------- */}
           <div className="preview-scroll" ref={scrollRef}>
@@ -1398,19 +1199,18 @@ export default function App() {
                 </div>
                 <div className="empty-text">先导入一篇博客文章</div>
                 <div className="empty-hint">
-                  支持拖入 .md 或直接粘贴。会读出 front matter 里的标题、分类、标签与摘要，
-                  再按各平台规则产出对应格式。
+                  在左侧「文章」区拖入、选择或粘贴 Markdown 文件。
                 </div>
-                <div className="empty-steps">
-                  <span>
-                    <b>1</b>拖入 .md
-                  </span>
-                  <span>
-                    <b>2</b>选平台
-                  </span>
-                  <span>
-                    <b>3</b>复制粘贴
-                  </span>
+                <div className="empty-actions">
+                  <button
+                    className="btn btn-accent empty-primary"
+                    onClick={() => importPanelRef.current?.chooseFile()}
+                  >
+                    选择 Markdown 文件
+                  </button>
+                  <button className="btn" onClick={() => void load(SAMPLE_ARTICLE, '示例文章.md')}>
+                    载入示例文章
+                  </button>
                 </div>
                 <a
                   className="empty-help"
@@ -1438,6 +1238,17 @@ export default function App() {
                   </div>
                 ) : null}
 
+                {formatNotes.length > 0 ? (
+                  <details className="details format-notes">
+                    <summary>转换说明（{formatNotes.length}）</summary>
+                    <div className="details-body">
+                      {formatNotes.map((note, i) => (
+                        <div key={i}>· {note}</div>
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
+
                 {output?.extras?.map((extra, i) => (
                   <details key={i} className="details">
                     <summary>
@@ -1456,7 +1267,7 @@ export default function App() {
                     output ? (
                     viewMode === 'preview' && canPreview ? (
                       output.format === 'html' && output.html ? (
-                        <div className="rich-preview" dangerouslySetInnerHTML={{ __html: output.html }} />
+                        <div className="rich-preview" dangerouslySetInnerHTML={{ __html: richPreviewHtml }} />
                       ) : (
                         <div className="md-preview-wrap" dangerouslySetInnerHTML={{ __html: previewHtml }} />
                       )
@@ -1491,7 +1302,7 @@ export default function App() {
                         onCopy={copyPlainText}
                         onEditSummary={editSummary}
                         onEditOneLiner={editOneLiner}
-                        onOpenSettings={() => setSettingsOpen(true)}
+                        onOpenSettings={() => setSheet('settings')}
                       />
                       </Suspense>
                     </div>
@@ -1518,222 +1329,207 @@ export default function App() {
 
           {/* ---------- 操作条 ---------- */}
           {doc ? (
-            <div className="actionbar" ref={actionbarRef}>
-              {kind === 'convert' && output ? (
-                <>
-                  <button className="btn btn-accent" onClick={doCopyPrimary}>
-                    {output.copyMode === 'rich' ? '复制富文本' : output.copyMode === 'markdown' ? '复制 Markdown' : '复制全文'}
-                  </button>
-                  {/* markdown 平台的 primary 就是 text，两个按钮会做同一件事 */}
-                  {output.format !== 'markdown' ? (
-                    <button className="btn" onClick={doCopySource}>
-                      复制源码
-                    </button>
-                  ) : null}
-                  <button className="btn" onClick={doDownload}>
-                    下载 {output.format === 'markdown' ? '.md' : '.html'}
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={doExportAllPlatforms}
-                    disabled={zipping}
-                    title="把这篇文章在全部转换平台上的产物打成一个 zip（AI 改写的平台与配图不在这里）"
-                  >
-                    {zipping ? <span className="spinner" /> : null}
-                    {zipping ? '打包中…' : '导出全平台'}
-                  </button>
-                </>
-              ) : null}
-
-              {kind === 'rewrite' ? (
-                <>
-                  <button
-                    className="btn btn-accent"
-                    onClick={generateCurrent}
-                    disabled={currentAI.status === 'running' || digest.status === 'running'}
-                  >
-                    {currentAI.status === 'running' || digest.status === 'running' ? (
-                      <span className="spinner" />
-                    ) : null}
-                    {currentAI.status === 'running' || digest.status === 'running'
-                      ? '生成中…'
-                      : currentAI.result
-                        ? `重新生成${currentPlatformMeta?.name ?? ''}`
-                        : `生成${currentPlatformMeta?.name ?? ''}文案`}
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={generateAll}
-                    disabled={currentAI.status === 'running' || digest.status === 'running'}
-                  >
-                    四个平台一起生成
-                  </button>
-                </>
-              ) : null}
-
-              {kind === 'card' ? (
-                <span className="muted actionbar-note">左侧选卡片、改文字、换配色，然后导出 PNG</span>
-              ) : null}
-
-              <div className="actionbar-spacer" />
-
-              {/* 发布页入口：只负责打开页面，登录与发布仍由人完成。
-                  左边是开关（偏好），右边是真链接（动作）—— 原来两边都写「打开发布页」，
-                  读起来像两个一样的入口，点左边却只是勾选框，容易误会。 */}
-              {kind !== 'card' ? (
-                <div className="publish-open">
-                  <label
-                    className="check-row publish-toggle"
-                    title="复制成功后自动打开该平台的发布页。只打开页面，不自动登录、不自动发布。"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={openOnCopy}
-                      onChange={(e) => {
-                        setOpenOnCopy(e.target.checked)
-                        saveOpenOnCopy(e.target.checked)
-                      }}
-                    />
-                    <span>复制后自动打开</span>
-                  </label>
-                  {publishTarget ? (
-                    /* 用 <a> 而不是 button + window.open：中键、右键「复制链接地址」、
-                       悬停看目标地址都能用，也不会被弹窗拦截器当成脚本弹窗 */
-                    <a
-                      className="btn btn-sm btn-quiet publish-now"
-                      href={publishTarget.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={`在浏览器打开${currentPlatformMeta?.name ?? '该平台'}的发布页${
-                        publishTarget.note ? `（${publishTarget.note}）` : ''
-                      }`}
-                    >
-                      打开{currentPlatformMeta?.name ?? ''}发布页
-                      <span className="publish-now-arrow" aria-hidden>
-                        ↗
-                      </span>
-                    </a>
-                  ) : (
-                    <span className="muted actionbar-note">这个平台没有发布页</span>
-                  )}
-                </div>
-              ) : null}
-
-              {doc.warnings.length > 0 ? (
-                <details className="details details-inline">
-                  <summary>解析提示（{doc.warnings.length}）</summary>
-                  <div className="details-body">
-                    {doc.warnings.map((w, i) => (
-                      <div key={i}>· {w}</div>
-                    ))}
-                  </div>
-                </details>
-              ) : null}
-            </div>
+            <ActionBar
+              kind={kind}
+              doc={doc}
+              output={output}
+              platformName={currentPlatformMeta?.name ?? ''}
+              publishTarget={publishTarget}
+              currentPrepared={currentPrepared}
+              currentPublished={currentPublished}
+              currentGenerated={currentGenerated}
+              allPublished={allPublished}
+              platformTotal={platformTotal}
+              nextUnpublished={nextUnpublished}
+              busy={currentAI.status === 'running' || digest.status === 'running'}
+              aiRunning={currentAI.status === 'running'}
+              hasRewriteResult={Boolean(currentAI.result)}
+              canCopyRewrite={Boolean(currentAI.result) && Boolean(currentRewriteCopy)}
+              rewriteCopyLabel={currentRewriteCopy?.label ?? null}
+              zipping={zipping}
+              openOnCopy={openOnCopy}
+              onToggleOpenOnCopy={(on) => {
+                setOpenOnCopy(on)
+                saveOpenOnCopy(on)
+              }}
+              onCopyPrimary={doCopyPrimary}
+              onCopySource={doCopySource}
+              onDownload={doDownload}
+              onExportAll={() => void doExportAllPlatforms()}
+              onGenerateAll={() => void generateAll()}
+              onCopyCurrent={copyCurrentResult}
+              onGenerateCurrent={() => void generateCurrent()}
+              onMarkPublished={markCurrentPublished}
+              onSelectPlatform={selectPlatform}
+              actionbarRef={actionbarRef}
+            />
           ) : null}
         </main>
       </div>
 
-      <SettingsSheet
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onSaved={(m, kind = 'success') => {
-          setSettingsVersion((v) => v + 1)
-          toast(m, kind)
-        }}
-      />
-
-      {doc ? (
-        <PublishLedger
-          open={ledgerOpen}
-          onClose={() => setLedgerOpen(false)}
-          title={doc.meta.title}
-          ledger={ledger}
-          onMark={(id) => applyLedger(markRecord(articleKey, id))}
-          onUnmark={(id) => applyLedger(unmark(articleKey, id))}
-          onSetUrl={(id, url) => applyLedger(setLedgerUrl(articleKey, id, url))}
-          onClear={() => {
-            // 失败时 applyLedger 已经报过错，别再补一条「已清空」
-            if (applyLedger(clearArticle(articleKey))) toast('已清空这篇的台账')
+      <Sheet id="settings" current={sheet}>
+        <SettingsSheet
+          open
+          onClose={closeSheet}
+          onSaved={(m, kind = 'success') => {
+            setSettingsVersion((v) => v + 1)
+            toast(m, kind)
           }}
         />
-      ) : null}
-
-      <ImageList
-        open={imagesOpen}
-        onClose={() => setImagesOpen(false)}
-        images={images}
-        title={doc?.meta.title ?? '文章'}
-        platform={platform}
-        platformLabel={allPlatforms.find((p) => p.id === platform)?.name ?? platform}
-      />
-
-      <CoverSheet
-        open={coverOpen}
-        onClose={() => setCoverOpen(false)}
-        doc={doc}
-        onToast={toast}
-        onOpenSettings={() => {
-          setCoverOpen(false)
-          setSettingsOpen(true)
-        }}
-      />
+      </Sheet>
 
       {doc ? (
-        <MetaLab
-          open={metaOpen}
-          onClose={() => setMetaOpen(false)}
-          state={metaLab}
-          currentTitle={doc.meta.title}
-          currentTags={doc.meta.tags}
-          onRun={generateMetaLab}
-          onCancel={cancelMetaLab}
-          onApplyTitle={applyTitle}
-          onApplyTags={applyTags}
-          onCopy={copyTextOnly}
-          providerReady={providerReady}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
+        <Sheet id="ledger" current={sheet}>
+          <PublishLedger
+            open
+            onClose={() => {
+              closeSheet()
+              setLedgerFocusPlatform('')
+            }}
+            title={doc.meta.title}
+            ledger={ledger}
+            contentStates={ledgerContentStates}
+            focusPlatform={ledgerFocusPlatform}
+            onSelectPlatform={selectPlatform}
+            onMark={(id) => markLedgerPublished(id)}
+            onUnmark={(id) => applyLedger(unmarkPublished(articleKey, id))}
+            onSetUrl={(id, url) => applyLedger(setLedgerUrl(articleKey, id, url))}
+            onClear={() => {
+              // 失败时 applyLedger 已经报过错，别再补一条「已清空」
+              applyLedger(clearArticle(articleKey))
+            }}
+          />
+        </Sheet>
       ) : null}
 
-      <TailSheet
-        open={tailOpen}
-        onClose={() => setTailOpen(false)}
-        cfg={tail}
-        account={account}
-        themeId={themeId}
-        onChange={changeTail}
-        onAccountChange={changeAccount}
-      />
+      <Sheet id="images" current={sheet}>
+        <ImageList
+          open
+          onClose={closeSheet}
+          images={images}
+          title={doc?.meta.title ?? '文章'}
+          platform={platform}
+          platformLabel={allPlatforms.find((p) => p.id === platform)?.name ?? platform}
+        />
+      </Sheet>
 
-      <DraftsSheet
-        open={draftsOpen}
-        onClose={() => setDraftsOpen(false)}
-        drafts={drafts}
-        currentKey={articleKey}
-        onOpen={restoreDraft}
-        onDelete={removeDraft}
-        onClearAll={wipeDrafts}
-      />
+      <Sheet id="cover" current={sheet}>
+        <CoverSheet
+          open
+          onClose={closeSheet}
+          doc={doc}
+          onToast={toast}
+          onOpenSettings={() => setSheet('settings')}
+        />
+      </Sheet>
 
-      <ReviewSheet
-        open={reviewOpen}
-        onClose={() => setReviewOpen(false)}
-        articleTitle={doc?.meta.title ?? ''}
-        ledger={ledger}
-        summaries={summaries}
-        onSetStats={changeStats}
-      />
+      {doc ? (
+        <Sheet id="meta" current={sheet}>
+          <MetaLab
+            open
+            onClose={closeSheet}
+            state={metaLab}
+            currentTitle={doc.meta.title}
+            currentTags={doc.meta.tags}
+            onRun={generateMetaLab}
+            onCancel={cancelMetaLab}
+            onApplyTitle={applyTitle}
+            onApplyTags={applyTags}
+            onCopy={copyTextOnly}
+            providerReady={providerReady}
+            onOpenSettings={() => setSheet('settings')}
+          />
+        </Sheet>
+      ) : null}
 
-      <PlatformFilterSheet
-        open={filterOpen}
-        onClose={() => setFilterOpen(false)}
-        hidden={hidden}
-        onToggle={togglePlatform}
-        onReset={resetHidden}
-      />
+      <Sheet id="tail" current={sheet}>
+        <TailSheet
+          open
+          onClose={closeSheet}
+          cfg={tail}
+          account={account}
+          themeId={themeId}
+          onChange={changeTail}
+          onAccountChange={changeAccount}
+        />
+      </Sheet>
 
-      <ToastLayer items={toasts} />
+      <Sheet id="drafts" current={sheet}>
+        <DraftsSheet
+          open
+          onClose={closeSheet}
+          drafts={drafts}
+          currentKey={articleKey}
+          onOpen={restoreDraft}
+          onDelete={removeDraft}
+          onClearAll={wipeDrafts}
+        />
+      </Sheet>
+
+      <Sheet id="review" current={sheet}>
+        <ReviewSheet
+          open
+          onClose={closeSheet}
+          articleTitle={doc?.meta.title ?? ''}
+          ledger={ledger}
+          summaries={summaries}
+          onSetStats={changeStats}
+        />
+      </Sheet>
+
+      <Sheet id="recovery" current={sheet}>
+        <RecoverySheet
+          open
+          onClose={closeSheet}
+          providerReady={providerReady}
+          imageCount={images.length}
+          onOpenSettings={() => setSheet('settings')}
+          onOpenImages={() => setSheet('images')}
+          onOpenDrafts={() => {
+            setDrafts(listDrafts())
+            setSheet('drafts')
+          }}
+        />
+      </Sheet>
+
+      <Sheet id="filter" current={sheet}>
+        <PlatformFilterSheet
+          open
+          onClose={closeSheet}
+          hidden={hidden}
+          onToggle={togglePlatform}
+          onReset={resetHidden}
+        />
+      </Sheet>
+
+      {doc ? (
+        <Sheet id="readiness" current={sheet}>
+          <ReadinessSheet
+            open
+            onClose={closeSheet}
+            title={doc.meta.title}
+            platformName={currentPlatformMeta?.name ?? platform}
+            items={readiness.items}
+          />
+        </Sheet>
+      ) : null}
+
+      <Sheet id="palette" current={sheet}>
+        <PlatformPalette
+          open
+          onClose={closeSheet}
+          active={platform}
+          platforms={palettePlatforms}
+          onSelect={selectPlatform}
+        />
+      </Sheet>
+
+      <ToastLayer
+        items={toasts}
+        onDismiss={dismissToast}
+        onPause={pauseToast}
+        onResume={resumeToast}
+      />
     </div>
   )
 }

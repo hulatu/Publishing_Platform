@@ -12,6 +12,7 @@
  * 注意按**字数**比，不按 HTML 字符数 —— 微信编辑器算的是字数。
  */
 
+import { ok, fail, report, addFailures } from './harness'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { POSTS } from './posts-dir'
@@ -21,14 +22,6 @@ import { buildTailHtml, defaultTailConfig, applyVars, activeBlocks, type TailCon
 import { getWechatTheme, wechatThemes } from '../src/themes/wechat'
 import { renderWechat, WECHAT_WORD_LIMIT } from '../src/renderers/wechat'
 
-let failed = 0
-function ok(cond: boolean, msg: string) {
-  if (cond) console.log(`  ✓ ${msg}`)
-  else {
-    failed++
-    console.log(`  ✗ ${msg}`)
-  }
-}
 
 const theme = getWechatTheme('paper')
 const full: TailConfig = {
@@ -129,12 +122,10 @@ for (const file of files) {
   // 尾部必须真的拼在最后 —— HTML 和纯文本两条通道都要
   const tail = buildTailHtml(defaultTailConfig, getWechatTheme('paper'), '胡拉图说')
   if (tail.html && !after.primary.endsWith(tail.html)) {
-    failed++
-    console.log(`  ✗ ${file}：尾部没有拼在 HTML 产物末尾`)
+    fail(`${file}：尾部没有拼在 HTML 产物末尾`)
   }
   if (tail.text && !after.text.endsWith(tail.text)) {
-    failed++
-    console.log(`  ✗ ${file}：尾部没有拼在纯文本产物末尾（降级成纯文本时会丢文末）`)
+    fail(`${file}：尾部没有拼在纯文本产物末尾（降级成纯文本时会丢文末）`)
   }
 }
 
@@ -148,11 +139,6 @@ console.log(`  加完落在 19000–20000 字的：${nearLimit} 篇`)
 
 if (overAfter > overBefore) {
   console.log(`\n✗ 有 ${overAfter - overBefore} 篇因为尾部而超限`)
-  process.exit(1)
+  addFailures(overAfter - overBefore)
 }
-
-if (failed > 0) {
-  console.log(`\n✗ ${failed} 项失败`)
-  process.exit(1)
-}
-console.log('\n✓ 文末组件全部通过')
+process.exit(report('文末组件'))

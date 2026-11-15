@@ -93,8 +93,11 @@ export function SectionDigestView({
           {data ? (
             <>
               <div className="digest-oneliner">
-                <label className="field-label">全篇一句话（用于微博正文与各平台开场）</label>
+                <label className="field-label" htmlFor="digest-oneliner">
+                  全篇一句话（用于微博正文与各平台开场）
+                </label>
                 <input
+                  id="digest-oneliner"
                   className="field-input"
                   value={data.oneLiner}
                   onChange={(e) => onEditOneLiner(e.target.value)}
@@ -123,6 +126,7 @@ export function SectionDigestView({
                       </div>
                       <textarea
                         className="field-textarea digest-input"
+                        aria-label={`「${s.heading}」的摘要`}
                         value={s.summary}
                         rows={Math.max(2, Math.ceil(charCount(s.summary) / 32) + (charCount(s.summary) > 64 ? 1 : 0))}
                         onChange={(e) => onEditSummary(s.index, e.target.value)}
@@ -137,9 +141,8 @@ export function SectionDigestView({
               </div>
             </>
           ) : !running ? (
-            <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.9 }}>
-              还没有摘要。点右上角按钮，会按 ## 把文章切成 {sections.length} 节，
-              每节压成 1–2 句话。之后的平台文案就从这些句子组装。
+            <div className="muted field-hint" style={{ lineHeight: 1.9 }}>
+              还没有摘要。生成后会按小节提取要点，并用于平台文案。
             </div>
           ) : null}
         </div>

@@ -6,7 +6,7 @@
  * 表现是「页面正常但永远是空状态」，很容易误判成数据加载坏了。
  *
  * /dev/app-preview.html             → 载入 fixture 后停在公众号
- * /dev/app-preview.html?open=ledger|check|images|meta|tail|drafts
+ * /dev/app-preview.html?open=ledger|check|images|meta|tail|drafts|review
  * 另有 seed=1 / tail=full / drafts=full / run=1 / tab=preview / scroll=bottom
  */
 
@@ -78,25 +78,38 @@ function Harness() {
 
   useEffect(() => {
     if (!ready || !open) return
-    const sel =
-      open === 'ledger'
-        ? '.ledger-entry'
-        : open === 'check'
-          ? '.check-chip'
-          : open === 'images'
-            ? '.img-entry'
-            : open === 'meta'
-              ? '.meta-entry'
-              : open === 'tail'
-                ? '.tail-entry'
-                : open === 'drafts'
-                  ? '.drafts-entry'
-                  : open === 'review'
-                    ? '.review-entry'
-                    : ''
-    if (!sel) return
+    const readinessAction: Record<string, string | undefined> = {
+      check: undefined,
+      images: '图片体检',
+      meta: '标题候选',
+      tail: '编辑文末',
+    }
+    const toolsAction: Record<string, string> = {
+      drafts: '打开草稿箱',
+      review: '复盘',
+    }
+    if (!['ledger', ...Object.keys(readinessAction), ...Object.keys(toolsAction)].includes(open)) return
+
     const t = setTimeout(() => {
-      document.querySelector<HTMLButtonElement>(sel)?.click()
+      if (open === 'ledger') {
+        document.querySelector<HTMLButtonElement>('.ledger-entry')?.click()
+      } else if (open in readinessAction) {
+        document.querySelector<HTMLButtonElement>('.readiness-entry')?.click()
+        const action = readinessAction[open]
+        if (action) {
+          setTimeout(() => {
+            const button = [...document.querySelectorAll<HTMLButtonElement>('.readiness-action')].find(
+              (item) => item.textContent?.trim() === action,
+            )
+            button?.click()
+          }, 250)
+        }
+      } else {
+        document.querySelector<HTMLElement>('.topbar-tools-trigger')?.click()
+        setTimeout(() => {
+          document.querySelector<HTMLButtonElement>(`[aria-label="${toolsAction[open]}"]`)?.click()
+        }, 100)
+      }
       // ?run=1：再点一下弹层里的主按钮（本地兜底会立刻出结果，方便截图）
       if (params.get('run') === '1') {
         setTimeout(() => {
@@ -125,6 +138,8 @@ function Harness() {
       }
     }, 200)
     return () => clearTimeout(t)
+    // params 是模块级的 URLSearchParams，不会变
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 见上
   }, [ready, open])
 
   return <App />

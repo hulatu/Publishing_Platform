@@ -1,24 +1,51 @@
-import { useRef, useState, type DragEvent } from 'react'
+import {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type DragEvent,
+} from 'react'
+import type { DocMeta } from '../core/ir'
 import { decodeText, looksMojibake } from '../core/text'
 import { isImageFile, isMarkdownFile } from '../core/local-assets'
+import { MetaEditor } from './MetaEditor'
 
 interface Props {
   currentName: string
+  meta?: DocMeta | null
+  onMetaChange?: (patch: Partial<DocMeta>) => void
+  /** 主区域点击「草稿」时触发文章信息展开 */
+  metaOpenSignal?: number
   onLoad: (source: string, fileName: string) => void
   onError: (message: string) => void
   /** 非错误的提示，比如「这份文件是 GBK 编码，已自动转换」 */
   onNotice?: (message: string) => void
 }
 
-export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
+export interface ImportPanelHandle {
+  chooseFile: () => void
+}
+
+export const ImportPanel = forwardRef<ImportPanelHandle, Props>(function ImportPanel(
+  { currentName, meta, onMetaChange, metaOpenSignal, onLoad, onError, onNotice },
+  ref,
+) {
   const [over, setOver] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
   /** 已经导入过就收起成一行 —— 侧栏的空间要留给平台导航 */
   const [reopen, setReopen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const pasteRef = useRef<HTMLTextAreaElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    chooseFile: () => fileRef.current?.click(),
+  }))
 
   const compact = Boolean(currentName) && !reopen
+  const articleTitle = meta?.title?.trim() || currentName
+  const fileWithoutExt = currentName.replace(/\.[^.]+$/, '')
+  const showFileName = Boolean(meta?.title?.trim()) && articleTitle !== currentName && articleTitle !== fileWithoutExt
 
   const readFile = async (file: File) => {
     if (!/\.(md|markdown|txt)$/i.test(file.name)) {
@@ -88,14 +115,29 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
       </div>
 
       {compact ? (
-        <button className="file-row" onClick={() => setReopen(true)} title="换一篇">
-          <span className="file-row-icon">MD</span>
-          <span className="file-row-name">{currentName}</span>
-          <span className="file-row-swap">换一篇</span>
-        </button>
+        <>
+          <button className="file-row" onClick={() => setReopen(true)} title="换一篇">
+            <span className="file-row-main">
+              <span className="file-row-title">{articleTitle}</span>
+              {showFileName ? <span className="file-row-filename">{currentName}</span> : null}
+            </span>
+            <span className="file-row-swap">换一篇</span>
+          </button>
+          {meta && onMetaChange ? (
+            <MetaEditor
+              meta={meta}
+              onChange={onMetaChange}
+              embedded
+              openSignal={metaOpenSignal}
+            />
+          ) : null}
+        </>
       ) : (
         <>
-          <div
+          {/* 用 button 而不是 div：这块的可点击区域必须能 Tab 到、能回车触发。
+              旁边虽然也有「选择 .md 文件」，但看起来能点的方块不能只有鼠标能用。 */}
+          <button
+            type="button"
             className={`dropzone ${over ? 'over' : ''}`}
             onDragOver={(e) => {
               e.preventDefault()
@@ -113,7 +155,7 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
             </span>
             <span className="dropzone-main">把 .md 拖到这里</span>
             <span className="dropzone-hint">支持 .md / .markdown / .txt，最大 4MB</span>
-          </div>
+          </button>
 
           {/* 只有两个入口：选文件、粘贴。并排成一行，地位对等 */}
           <div className="import-actions">
@@ -129,6 +171,7 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
           {pasteOpen ? (
             <div className="paste-wrap">
               <textarea
+                ref={pasteRef}
                 className="paste-area"
                 placeholder="把 Markdown 全文粘贴到这里，包含 --- 包裹的 front matter 也可以…"
                 value={pasteText}
@@ -160,4 +203,4 @@ export function ImportPanel({ currentName, onLoad, onError, onNotice }: Props) {
       />
     </div>
   )
-}
+})

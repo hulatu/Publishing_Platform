@@ -12,6 +12,7 @@
  *    绝不能把用户当前正在写的那份删掉
  */
 
+import { ok, report } from './harness'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArticle } from '../src/core/parse'
@@ -38,14 +39,6 @@ import {
   type PlatformAIStates,
 } from '../src/ai/types'
 
-let failed = 0
-function ok(cond: boolean, msg: string) {
-  if (cond) console.log(`  ✓ ${msg}`)
-  else {
-    failed++
-    console.log(`  ✗ ${msg}`)
-  }
-}
 
 /* ---------------- 假的 localStorage ---------------- */
 
@@ -291,8 +284,4 @@ ok(formatAgo('不是时间') === '', '坏时间返回空串，不显示 NaN')
 
 /* ---------------- 汇总 ---------------- */
 
-if (failed > 0) {
-  console.log(`\n✗ ${failed} 项失败`)
-  process.exit(1)
-}
-console.log('\n✓ 草稿箱全部通过')
+process.exit(report('草稿箱'))

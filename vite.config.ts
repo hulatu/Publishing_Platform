@@ -70,5 +70,18 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        /**
+         * React 单独成块。
+         *
+         * 入口约 130 kB gzip，其中一半是 React —— 不拆的话，改一行业务代码
+         * 也会让回访用户把 React 一起重下。拆出去之后它只在升级 React 时才变。
+         */
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-dom/client', 'scheduler'],
+        },
+      },
+    },
   },
 })

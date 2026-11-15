@@ -5,19 +5,12 @@
  * 光靠点几下很难发现，所以用假 provider 把每个分支都走一遍。
  */
 
+import { ok, report } from './harness'
 import type { AIProvider, CompleteResult } from '../src/ai/provider'
 import { AITimeoutError, completeWithRetry, describeAIError, isRetryableAIError } from '../src/ai/provider'
 import { mapLimit } from '../src/core/async'
 import { formatElapsed } from '../src/core/time'
 
-let failed = 0
-function ok(cond: boolean, label: string) {
-  if (cond) console.log(`  ✓ ${label}`)
-  else {
-    console.log(`  ✗ ${label}`)
-    failed++
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* 1. 错误分类                                                          */
@@ -250,5 +243,4 @@ await retryTests()
 await limitTests()
 timeTests()
 
-console.log(failed === 0 ? '\n✓ 网络层全部通过' : `\n✗ ${failed} 项失败`)
-process.exit(failed === 0 ? 0 : 1)
+process.exit(report('网络层'))

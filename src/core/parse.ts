@@ -14,7 +14,10 @@ import MarkdownIt from 'markdown-it'
 import footnote from 'markdown-it-footnote'
 import type { Align, Block, Doc, Inline } from './ir'
 import { buildMeta, parseFrontMatter, splitFrontMatter } from './frontmatter'
-import { blocksToText, imageCaption } from './ir'
+import { anchorHref, blocksToText, imageCaption } from './ir'
+import { escapeHtml } from './escape'
+import { sanitizeHtml } from './sanitize'
+import { sanitizePreview } from './sanitize-preview'
 
 /* ------------------------------------------------------------------ */
 /* 最小化的 token 结构（避免依赖 @types/markdown-it 的内部类型路径）      */
@@ -115,7 +118,6 @@ function isSoleImageInline(token: { children?: unknown[] | null }): boolean {
   return found
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 md.renderer.rules.paragraph_open = (tokens: any[], idx: number, options: any, env: any, self: any) => {
   const next = tokens[idx + 1]
   const sole = !!next && next.type === 'inline' && isSoleImageInline(next)
@@ -136,45 +138,26 @@ md.renderer.rules.image = (tokens: any[], idx: number, options: any, env: any, s
   const altIdx = token.attrIndex('alt')
   if (altIdx >= 0 && token.attrs) token.attrs[altIdx][1] = altText
 
+  // 只影响站内预览：首屏外的图片不要抢占网络和主线程。
+  token.attrSet('loading', 'lazy')
+  token.attrSet('decoding', 'async')
   const img = self.renderToken(tokens, idx, options)
   if (env[SOLE_IMG_KEY] !== true) return img
 
   const name = imageCaption(token.attrGet('src') ?? '', altText)
-  const cap = name ? `<figcaption>${escapeText(name)}</figcaption>` : ''
+  const cap = name ? `<figcaption>${escapeHtml(name)}</figcaption>` : ''
   return `<figure class="md-figure">${img}${cap}</figure>`
-}
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
-function escapeText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 /* ------------------------------------------------------------------ */
 /* 预处理：处理无法安全进入 IR 的裸 HTML                                 */
 /* ------------------------------------------------------------------ */
 
-const BLOCKED_TAGS = 'script|style|iframe|object|embed|noscript'
-
 /**
- * 清洗裸 HTML：移除危险标签、事件属性，以及 class / id。
- *
- * `keepClasses` 只给站内阅读预览用 —— 预览渲染在我们自己的页面里，
- * class 有用（脚注、表格的对齐都要靠它）；而交给微信的那份必须剥干净。
+ * 清洗裸 HTML 的实现搬到 sanitize.ts（预览层要复用其中的 safeUrl）。
+ * 这里保留同名导出，避免调用方跟着改。
  */
-export function sanitizeHtml(raw: string, opts: { keepClasses?: boolean } = {}): string {
-  let out = raw
-    .replace(new RegExp(`<(${BLOCKED_TAGS})\\b[^>]*>[\\s\\S]*?</\\1>`, 'gi'), '')
-    .replace(new RegExp(`</?(${BLOCKED_TAGS})\\b[^>]*>`, 'gi'), '')
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '')
-
-  // class / id 必须剥掉：微信编辑器会静默丢弃它们，留着只会让人误以为样式生效；
-  // 而 style 是唯一能在微信里活下来的内联属性，保留。
-  if (!opts.keepClasses) {
-    out = out.replace(/\s(class|id)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-  }
-  return out
-}
+export { sanitizeHtml } from './sanitize'
 
 export interface PreprocessResult {
   src: string
@@ -186,9 +169,11 @@ export function preprocess(src: string): PreprocessResult {
   const warnings: string[] = []
   let out = src
 
-  // <script> / <style> 整块移除
+  // <script> / <style> 整块移除。
+  // 这里只看这两类：它们被删掉是用户该知道的事（会改正文），
+  // 而 <form> / <svg> 这类是 sanitizeHtml 的职责，静默处理即可，不该弹提示。
   const beforeScripts = out
-  out = out.replace(new RegExp(`<(${BLOCKED_TAGS})\\b[^>]*>[\\s\\S]*?</\\1>`, 'gi'), '')
+  out = out.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
   if (out !== beforeScripts) {
     warnings.push('正文内嵌的 script / style 代码块已移除（公众号与知乎都不支持）')
   }
@@ -247,6 +232,25 @@ function attrOf(tok: MdToken, name: string): string | undefined {
 /* ------------------------------------------------------------------ */
 /* Inline 解析                                                         */
 /* ------------------------------------------------------------------ */
+
+const ANCHOR_OPEN = /^\s*<a\b([^>]*)>/i
+const ANCHOR_CLOSE = /^\s*<\/a\s*>/i
+
+/**
+ * 从 start 起找配对的 `</a>`。
+ *
+ * 遇到另一个开标签就放弃：`<a>` 不能嵌套，多出来的开标签说明 HTML 本身是坏的，
+ * 这时候硬配一对反而会把后面一大段正文吞进链接里。
+ */
+function findAnchorClose(tokens: MdToken[], start: number): number {
+  for (let k = start; k < tokens.length; k++) {
+    const tok = tokens[k]
+    if (tok.type !== 'html_inline') continue
+    if (ANCHOR_CLOSE.test(tok.content)) return k
+    if (ANCHOR_OPEN.test(tok.content)) return -1
+  }
+  return -1
+}
 
 function parseInline(tokens: MdToken[]): Inline[] {
   let i = 0
@@ -324,6 +328,27 @@ function parseInline(tokens: MdToken[]): Inline[] {
           break
 
         case 'html_inline': {
+          /**
+           * 手写的 `<a href="…">文字</a>` 会被拆成三个 token：开标签、文字、闭标签。
+           * 只看单个 token 的话，它们只是两段互不相干的 HTML，**链接身份就丢了** ——
+           * 「外链抽到文末参考链接」这条规则只认 link 节点，于是公众号里链接失效、
+           * 头条和百家号把标签连文字一起抹掉。
+           *
+           * 这里把跨越多个 token 的一对 `<a>` 合回一个 link 节点，让手写 HTML 和
+           * Markdown 链接走同一条路。找不到闭标签（半截 HTML）就还是当普通 html 节点。
+           */
+          const open = ANCHOR_OPEN.exec(tok.content)
+          if (open) {
+            const closeAt = findAnchorClose(tokens, i + 1)
+            if (closeAt > i) {
+              const href = anchorHref(open[1])
+              const c = parseInline(tokens.slice(i + 1, closeAt))
+              i = closeAt + 1
+              if (href) out.push({ t: 'link', href, c })
+              else out.push(...c)
+              break
+            }
+          }
           const clean = sanitizeHtml(tok.content)
           if (clean.trim()) out.push({ t: 'html', raw: clean })
           i++
@@ -651,10 +676,12 @@ export function parseArticle({ source, fileName = '' }: ParseInput): Doc {
  * 所以预览里看到的结构就是转换器看到的结构 —— 不会出现「预览挺好、粘出来变形」。
  *
  * 输出只用于站内预览，不进入剪贴板，所以这里允许 class（外层容器靠 class 上样式）。
+ * 清洗走 sanitize-preview 的**允许列表**而不是黑名单：这一段会被
+ * dangerouslySetInnerHTML 插进我们自己的页面，执行脚本就能读走同源 localStorage。
  */
 export function renderPreviewHtml(source: string): string {
   const split = splitFrontMatter(source)
   const pre = preprocess(split.body)
   const body = md.render(pre.src, {})
-  return `<div class="md-preview">${sanitizeHtml(body, { keepClasses: true })}</div>`
+  return `<div class="md-preview">${sanitizePreview(body)}</div>`
 }

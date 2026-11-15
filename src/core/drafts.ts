@@ -22,6 +22,7 @@
 import type { Doc, DocMeta } from './ir'
 import { blocksToText } from './ir'
 import { charCount } from './cjk'
+import { readJson } from './storage'
 import type { DigestState, MetaLabState, PlatformAIStates, RewriteTone } from '../ai/types'
 
 const KEY = 'ad.drafts.v1'
@@ -69,30 +70,39 @@ export function fingerprintOf(doc: Doc, sectionCount: number): string {
 /* 读写                                                                */
 /* ------------------------------------------------------------------ */
 
-function readStore(): Store {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return {}
-    const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as Store
-  } catch {
-    // 隐私模式 / 手改坏了，都当成空草稿箱
-    return {}
-  }
+/**
+ * 上一次写盘时被淘汰掉的草稿。
+ *
+ * 淘汰是静默发生的（超过 20 篇、或 localStorage 满了），而被淘汰的那篇里
+ * 可能躺着刚花过 token 生成的文案 —— 不告诉用户，等于悄悄丢东西。
+ * 写盘后由调用方 takeEvicted() 取走并提示，取完即清。
+ */
+let lastEvicted: DraftSnapshot[] = []
+
+/** 取走「上一次写盘淘汰了哪些」，取完清空 */
+export function takeEvicted(): DraftSnapshot[] {
+  const out = lastEvicted
+  lastEvicted = []
+  return out
 }
 
 /** 写入成功返回 true；容量不足时淘汰最旧的再试，全试完还不行就 false */
 function writeStore(store: Store): boolean {
   for (let attempt = 0; attempt <= MAX_DRAFTS; attempt++) {
+    const pruned = prune(store)
     try {
-      localStorage.setItem(KEY, JSON.stringify(prune(store)))
+      localStorage.setItem(KEY, JSON.stringify(pruned))
+      // 超过 20 篇时 prune 会丢掉最旧的几篇，记下来好让调用方提示
+      for (const k of Object.keys(store)) {
+        if (!(k in pruned)) lastEvicted.push(store[k])
+      }
       return true
     } catch {
       const keys = Object.keys(store)
       if (keys.length <= 1) return false
       // 淘汰最旧的一篇再试
       const oldest = keys.reduce((a, b) => (store[a].updatedAt <= store[b].updatedAt ? a : b))
+      lastEvicted.push(store[oldest])
       delete store[oldest]
     }
   }
@@ -114,15 +124,15 @@ function sortDrafts(store: Store): DraftSnapshot[] {
 }
 
 export function listDrafts(): DraftSnapshot[] {
-  return sortDrafts(readStore())
+  return sortDrafts(readJson<Store>(KEY))
 }
 
 export function readDraft(key: string): DraftSnapshot | null {
-  return readStore()[key] ?? null
+  return readJson<Store>(KEY)[key] ?? null
 }
 
 export function writeDraft(snap: DraftSnapshot): boolean {
-  const store = readStore()
+  const store = readJson<Store>(KEY)
   store[snap.key] = snap
   return writeStore(store)
 }
@@ -142,7 +152,7 @@ export function sameDraft(a: DraftSnapshot | null, b: DraftSnapshot): boolean {
 
 /** 删除一篇草稿。`persisted` 为 false 时它刷新后会回来 */
 export function deleteDraft(key: string): { drafts: DraftSnapshot[]; persisted: boolean } {
-  const store = readStore()
+  const store = readJson<Store>(KEY)
   delete store[key]
   const persisted = writeStore(store)
   return { drafts: sortDrafts(store), persisted }

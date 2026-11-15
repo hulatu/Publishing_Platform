@@ -26,6 +26,8 @@
  * - 不下「必须改」的结论。查出问题、说清依据，改不改由人定。
  */
 
+import { formatBytes } from './num'
+
 /* ------------------------------------------------------------------ */
 /* 平台规则                                                            */
 /* ------------------------------------------------------------------ */
@@ -156,12 +158,6 @@ export interface ImageFacts {
   reachable?: boolean
 }
 
-export function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
-}
-
 /**
  * 把事实翻成结论。纯函数，不碰网络 —— 这样 check-imgaudit 能直接喂数据进来测。
  *
@@ -249,7 +245,7 @@ export function judge(facts: ImageFacts, rule: ImageRule, src: string): ImageIss
     issues.push({
       level: 'warn',
       tag: '偏大',
-      detail: `${fmtBytes(facts.bytes)}，超过 ${fmtBytes(rule.heavyBytes)}。大图在公众号转存和手机端加载都容易出问题。`,
+      detail: `${formatBytes(facts.bytes)}，超过 ${formatBytes(rule.heavyBytes)}。大图在公众号转存和手机端加载都容易出问题。`,
     })
   }
 

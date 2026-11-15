@@ -15,6 +15,7 @@ import { LIMITS, type MetaLabState, type TitleCandidate } from '../ai/types'
 import { styleLabel } from '../ai/meta-lab'
 import { useElapsed } from './useElapsed'
 import { formatElapsed } from '../core/time'
+import { Modal } from './Modal'
 
 interface Props {
   open: boolean
@@ -49,7 +50,9 @@ export function MetaLab({
 }: Props) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
 
-  const tags = state.result?.tags ?? []
+  // 挂在 result 上而不是 `?? []`：后者的字面量每次渲染都是新数组，
+  // 会让下面 useMemo 的依赖天天变
+  const tags = useMemo(() => state.result?.tags ?? [], [state.result])
   const titles = state.result?.titles ?? []
 
   // 每次出结果后，默认勾上「原文里已经有」的标签
@@ -105,8 +108,7 @@ export function MetaLab({
   }
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal meta-modal" onClick={(e) => e.stopPropagation()}>
+    <Modal open={open} onClose={onClose} label="标题与标签" className="meta-modal">
         <div className="modal-head">
           <div>
             <div className="modal-title">标题与标签</div>
@@ -127,9 +129,9 @@ export function MetaLab({
             <div className="notice notice-warn" style={{ marginBottom: 14 }}>
               <span className="notice-mark">!</span>
               <span>
-                还没填 API Key，只能用本地拼装（只重排原文已有的字句，不新增事实）。
+                本地模式：只重排原文已有字句。
                 <button className="link-btn" onClick={onOpenSettings}>
-                  去填 Key
+                  填入 API Key
                 </button>
               </span>
             </div>
@@ -157,19 +159,10 @@ export function MetaLab({
             </div>
           ) : null}
 
-          {!running && titles.length === 0 ? (
-            <div className="check-empty" style={{ padding: '36px 0' }}>
-              还没有候选。点右下角「生成 8 个标题」开始。
-            </div>
-          ) : null}
-
           {titles.length > 0 ? (
             <>
               <div className="meta-section-head">
                 <span>标题候选</span>
-                <span className="meta-section-hint">
-                  {titles.length} 条 · 其中 {shortOnes} 条可直接用于小红书
-                </span>
               </div>
               <div className="meta-titles">{titles.map(titleRow)}</div>
             </>
@@ -177,9 +170,9 @@ export function MetaLab({
 
           {tags.length > 0 ? (
             <>
-              <div className="meta-section-head" style={{ marginTop: 22 }}>
+              <div className="meta-section-head meta-section-head-gap">
                 <span>标签建议</span>
-                <span className="meta-section-hint">点选后写进 front matter，已选 {pickedList.length} 个</span>
+                <span className="meta-section-hint">已选 {pickedList.length} 个</span>
               </div>
               <div className="meta-tags">
                 {tags.map((t) => (
@@ -193,7 +186,7 @@ export function MetaLab({
                   </button>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <div className="meta-bulk-actions">
                 <button
                   className="btn btn-sm"
                   disabled={pickedList.length === 0}
@@ -221,15 +214,11 @@ export function MetaLab({
         </div>
 
         <div className="modal-foot">
-          <button className="btn btn-sm" onClick={onClose}>
-            关闭
-          </button>
           <button className="btn btn-primary btn-sm" onClick={onRun} disabled={running}>
             {running ? <span className="spinner dark" /> : null}
             {running ? '生成中…' : titles.length > 0 ? '换一批' : `生成 ${LIMITS.titleCount} 个标题`}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

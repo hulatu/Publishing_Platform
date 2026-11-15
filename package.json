@@ -8,28 +8,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "npm run check:parse && npm run check:roundtrip && npm run check:captions && npm run check:digest && npm run check:themes && npm run check:cards && npm run check:ledger && npm run check:compliance && npm run check:titles && npm run check:tail && npm run check:platforms && npm run check:drafts && npm run check:review && npm run check:network && npm run check:imgproxy && npm run check:imgaudit && npm run check:imgexport && npm run check:cover && npm run check:contrast",
-    "check:contrast": "esbuild scripts/check-contrast.ts --bundle --platform=node --format=esm --outfile=.tmp/check-contrast.mjs --log-level=warning && node .tmp/check-contrast.mjs",
-    "check:roundtrip": "esbuild scripts/check-roundtrip.ts --bundle --platform=node --format=esm --outfile=.tmp/check-roundtrip.mjs --log-level=warning && node .tmp/check-roundtrip.mjs",
-    "check:captions": "esbuild scripts/check-captions.ts --bundle --platform=node --format=esm --outfile=.tmp/check-captions.mjs --log-level=warning && node .tmp/check-captions.mjs",
-    "check:cards": "esbuild scripts/check-cards.ts --bundle --platform=node --format=esm --outfile=.tmp/check-cards.mjs --log-level=warning && node .tmp/check-cards.mjs",
-    "check:ledger": "esbuild scripts/check-ledger.ts --bundle --platform=node --format=esm --outfile=.tmp/check-ledger.mjs --log-level=warning && node .tmp/check-ledger.mjs",
-    "check:themes": "esbuild scripts/check-themes.ts --bundle --platform=node --format=esm --outfile=.tmp/check-themes.mjs --log-level=warning && node .tmp/check-themes.mjs",
-    "icons": "bash scripts/build-icons.sh",
+    "lint": "eslint .",
+    "check": "esbuild scripts/run-checks.ts --bundle --platform=node --format=esm --external:esbuild --outfile=.tmp/run-checks.mjs --log-level=warning && node .tmp/run-checks.mjs",
     "check:fixtures": "POSTS_DIR=scripts/fixtures npm run check",
-    "check:parse": "esbuild scripts/check-parse.ts --bundle --platform=node --format=esm --outfile=.tmp/check-parse.mjs --log-level=warning && node .tmp/check-parse.mjs",
-    "check:digest": "esbuild scripts/check-digest.ts --bundle --platform=node --format=esm --outfile=.tmp/check-digest.mjs --log-level=warning && node .tmp/check-digest.mjs",
-    "check:compliance": "esbuild scripts/check-compliance.ts --bundle --platform=node --format=esm --outfile=.tmp/check-compliance.mjs --log-level=warning && node .tmp/check-compliance.mjs",
-    "check:titles": "esbuild scripts/check-titles.ts --bundle --platform=node --format=esm --outfile=.tmp/check-titles.mjs --log-level=warning && node .tmp/check-titles.mjs",
-    "check:tail": "esbuild scripts/check-tail.ts --bundle --platform=node --format=esm --outfile=.tmp/check-tail.mjs --log-level=warning && node .tmp/check-tail.mjs",
-    "check:platforms": "esbuild scripts/check-platforms.ts --bundle --platform=node --format=esm --outfile=.tmp/check-platforms.mjs --log-level=warning && node .tmp/check-platforms.mjs",
-    "check:drafts": "esbuild scripts/check-drafts.ts --bundle --platform=node --format=esm --outfile=.tmp/check-drafts.mjs --log-level=warning && node .tmp/check-drafts.mjs",
-    "check:review": "esbuild scripts/check-review.ts --bundle --platform=node --format=esm --outfile=.tmp/check-review.mjs --log-level=warning && node .tmp/check-review.mjs",
-    "check:network": "esbuild scripts/check-network.ts --bundle --platform=node --format=esm --outfile=.tmp/check-network.mjs --log-level=warning && node .tmp/check-network.mjs",
-    "check:imgproxy": "esbuild scripts/check-imgproxy.ts --bundle --platform=node --format=esm --outfile=.tmp/check-imgproxy.mjs --log-level=warning && node .tmp/check-imgproxy.mjs",
-    "check:imgaudit": "esbuild scripts/check-imgaudit.ts --bundle --platform=node --format=esm --outfile=.tmp/check-imgaudit.mjs --log-level=warning && node .tmp/check-imgaudit.mjs",
-    "check:cover": "esbuild scripts/check-cover.ts --bundle --platform=node --format=esm --outfile=.tmp/check-cover.mjs --log-level=warning && node .tmp/check-cover.mjs",
-    "check:imgexport": "esbuild scripts/check-imgexport.ts --bundle --platform=node --format=esm --outfile=.tmp/check-imgexport.mjs --log-level=warning && node .tmp/check-imgexport.mjs"
+    "icons": "bash scripts/build-icons.sh"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
@@ -44,7 +26,10 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.72.2",
     "vite": "^6.0.7"
   }
 }
