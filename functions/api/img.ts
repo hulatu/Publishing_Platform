@@ -24,8 +24,8 @@
 
 const ALLOWED_HOSTS = ['hulatu.com', 'img.hulatu.com']
 
-/** 单张上限：图床原图通常几百 KB，20MB 已经远超正常范围 */
-const MAX_BYTES = 20 * 1024 * 1024
+/** 单张上限：图床原图通常几百 KB，10MB 已经远超正常范围 */
+const MAX_BYTES = 10 * 1024 * 1024
 
 /**
  * 探测用的第三方 Referer。
@@ -43,6 +43,55 @@ function isAllowed(target: URL): boolean {
   if (target.protocol !== 'https:') return false
   const host = target.hostname.toLowerCase()
   return ALLOWED_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))
+}
+
+/**
+ * 只放行同站请求。
+ *
+ * 代理响应带 ACAO:*，如果不看 Sec-Fetch-Site，任何第三方页面都能拿这个域名
+ * 当代取白名单图床的跳板。老浏览器没有 Sec-Fetch-Site 时退回看 Origin；
+ * 两者都没有（直接导航 / curl）就放行，否则本地排查会很难受。
+ */
+function isSameSite(request: Request): boolean {
+  const site = request.headers.get('sec-fetch-site')
+  if (site) return site === 'same-origin' || site === 'none'
+  const origin = request.headers.get('origin')
+  if (!origin) return true
+  try {
+    return new URL(origin).origin === new URL(request.url).origin
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 手动跟重定向，但每一跳都重新过白名单。
+ *
+ * 默认 `redirect: 'follow'` 会让白名单域名 302 到任意地址，等于绕开 ALLOWED_HOSTS。
+ * 这里最多跟 3 跳，目标不是 https + 白名单就抛错，由调用方统一报 502。
+ */
+async function fetchAllowed(
+  target: URL,
+  init: RequestInit & { cf?: Record<string, unknown> },
+): Promise<Response> {
+  let current = target
+  for (let hop = 0; hop < 4; hop++) {
+    if (!isAllowed(current)) throw new Error('redirect host not allowed')
+    const res = await fetch(current.toString(), { ...init, redirect: 'manual' })
+    if (res.status < 300 || res.status >= 400) return res
+    const location = res.headers.get('location')
+    if (!location) return res
+    current = new URL(location, current)
+  }
+  throw new Error('too many redirects')
+}
+
+/** 错误响应不缓存：下次重试应该真的去取一次 */
+function bad(status: number, message: string): Response {
+  return new Response(message, {
+    status,
+    headers: { 'cache-control': 'no-store' },
+  })
 }
 
 /**
@@ -74,7 +123,7 @@ async function head(target: URL, referer?: string): Promise<HeadResult> {
   }
 
   try {
-    const res = await fetch(target.toString(), init)
+    const res = await fetchAllowed(target, init)
     // 不读 body：探测只要响应头
     try {
       await res.body?.cancel()
@@ -120,17 +169,19 @@ async function probe(target: URL): Promise<Response> {
 }
 
 export const onRequestGet = async (ctx: { request: Request }): Promise<Response> => {
+  if (!isSameSite(ctx.request)) return bad(403, 'cross-site requests are not allowed')
+
   const params = new URL(ctx.request.url).searchParams
   const raw = params.get('u')
-  if (!raw) return new Response('missing ?u=', { status: 400 })
+  if (!raw) return bad(400, 'missing ?u=')
 
   let target: URL
   try {
     target = new URL(raw)
   } catch {
-    return new Response('bad ?u=', { status: 400 })
+    return bad(400, 'bad ?u=')
   }
-  if (!isAllowed(target)) return new Response('host not allowed', { status: 403 })
+  if (!isAllowed(target)) return bad(403, 'host not allowed')
 
   if (params.get('probe') === '1') return probe(target)
 
@@ -147,27 +198,25 @@ export const onRequestGet = async (ctx: { request: Request }): Promise<Response>
 
   let upstream: Response
   try {
-    upstream = await fetch(target.toString(), init)
+    upstream = await fetchAllowed(target, init)
   } catch (e) {
-    return new Response(`upstream fetch failed: ${e instanceof Error ? e.message : 'unknown'}`, {
-      status: 502,
-    })
+    return bad(502, `upstream fetch failed: ${e instanceof Error ? e.message : 'unknown'}`)
   }
 
-  if (!upstream.ok) return new Response(`upstream ${upstream.status}`, { status: 502 })
+  if (!upstream.ok) return bad(502, `upstream ${upstream.status}`)
 
   const type = upstream.headers.get('content-type') ?? ''
   // 只转发图片：万一白名单域名被挂上了别的文件，这里也不能变成通用代理
-  if (!type.startsWith('image/')) return new Response('not an image', { status: 415 })
+  if (!type.startsWith('image/')) return bad(415, 'not an image')
 
   const len = Number(upstream.headers.get('content-length') ?? '0')
-  if (len > MAX_BYTES) return new Response('image too large', { status: 413 })
+  if (len > MAX_BYTES) return bad(413, 'image too large')
 
   // content-length 只能防「老实交代体积」的源站：分块编码不发长度时，
   // 上面的 413 检查等于没做。用 TransformStream 边流边数，超了就掐断 ——
   // 总比把一张 100MB 的图整个流进 Worker、再塞进 zip 里强。
   // 掐断后客户端读流会失败，调用方按「这张图拿不到」处理，不会静默混进坏数据。
-  if (!upstream.body) return new Response('upstream empty body', { status: 502 })
+  if (!upstream.body) return bad(502, 'upstream empty body')
   let seen = 0
   const guard = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {

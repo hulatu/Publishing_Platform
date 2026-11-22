@@ -32,6 +32,7 @@ const CHECKS = [
   'captions',
   'digest',
   'themes',
+  'darkmode',
   'cards',
   'cardstore',
   'ledger',

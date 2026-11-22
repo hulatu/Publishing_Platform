@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Doc } from '../core/ir'
 import type { ArticleSection } from '../core/sections'
 import { buildCards, DEFAULT_SITE_NAME, makeCard, type SectionSummary } from '../cards/build'
@@ -43,8 +43,9 @@ interface Props {
   onToast: (text: string, kind?: 'info' | 'success' | 'error') => void
 }
 
-/** 预览框的最大占位，实际缩放按比例算 */
-const PREVIEW_BOX = { w: 400, h: 500 }
+/** 预览框的最大占位，实际缩放按比例算。
+    360 宽在 390 窄屏和 340 宽检查器旁边都不会溢出。 */
+const PREVIEW_BOX = { w: 360, h: 440 }
 
 /** 加卡菜单的顺序：常用版式在前，首尾两张放最后 */
 const ADDABLE: CardLayout[] = ['quote', 'points', 'section', 'stat', 'toc', 'compare', 'cta', 'cover', 'end']
@@ -63,6 +64,15 @@ const DENSITY_OPTIONS: { id: CardDensity; label: string }[] = [
   { id: 'normal', label: '标准' },
   { id: 'airy', label: '舒展' },
 ]
+
+/** 离屏层只在导出时存在；单张导出只挂一张卡，全部导出才挂整套。 */
+const ExportCardRenderer = memo(CardRenderer)
+
+interface ExportRequest {
+  formats: CardFormatId[]
+  /** null = 整套卡片；数组 = 只挂这几张 */
+  cardIds: string[] | null
+}
 
 /**
  * 重排/增删之后页码会错位（把第 4 张拖到第 1 位，它头上还挂着 04 / 08），
@@ -102,6 +112,18 @@ export function CardStudio({
   const [format, setFormat] = useState<CardFormatId>('3:4')
   const [multiSize, setMultiSize] = useState(false)
 
+  // 破坏性操作：先变文案，再点一次才执行；失焦或 3 秒后恢复
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+  const [confirmRebuild, setConfirmRebuild] = useState(false)
+
+  // 离屏层默认不存在。单张/复制只挂当前卡 + 当前比例，全部导出才挂整套；
+  // 导出结束立刻卸载。退出卡片页时如果导出还没开始，等 promise 也要解开，
+  // 避免 async 永远悬着。
+  const [exportRequest, setExportRequest] = useState<ExportRequest | null>(null)
+  const exportRequestRef = useRef<ExportRequest | null>(null)
+  const exportReadyRef = useRef(false)
+  const exportWaiters = useRef<Array<() => void>>([])
+
   // 拖拽排序
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
@@ -112,6 +134,105 @@ export function CardStudio({
 
   // 导出的节点引用：离屏渲染完整尺寸，避免被预览缩放影响
   const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const addWrapRef = useRef<HTMLDivElement | null>(null)
+
+  /** 等离屏层提交并完成一帧布局后，再让 html-to-image 读取节点。
+      两个 rAF：第一个等 React commit，第二个等样式/布局稳定。 */
+  useLayoutEffect(() => {
+    if (!exportRequest) return
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        exportReadyRef.current = true
+        const waiters = exportWaiters.current.splice(0)
+        for (const resolve of waiters) resolve()
+      })
+    })
+    return () => {
+      cancelAnimationFrame(outer)
+      cancelAnimationFrame(inner)
+    }
+  }, [exportRequest])
+
+  useEffect(
+    () => () => {
+      // 真卸载时没有下一帧了，把等待者解开，让导出流程走到报错/收尾
+      const waiters = exportWaiters.current.splice(0)
+      for (const resolve of waiters) resolve()
+    },
+    [],
+  )
+
+  const ensureExportLayer = (formats: CardFormatId[], cardIds: string[] | null) => {
+    const current = exportRequestRef.current
+    const coversFormats = Boolean(current && formats.every((f) => current.formats.includes(f)))
+    const coversCards = Boolean(
+      current &&
+        (current.cardIds === null ||
+          (cardIds !== null && cardIds.every((id) => current.cardIds?.includes(id)))),
+    )
+    if (coversFormats && coversCards) {
+      if (exportReadyRef.current) return Promise.resolve()
+      return new Promise<void>((resolve) => exportWaiters.current.push(resolve))
+    }
+    const request = { formats, cardIds }
+    exportRequestRef.current = request
+    exportReadyRef.current = false
+    setExportRequest(request)
+    return new Promise<void>((resolve) => exportWaiters.current.push(resolve))
+  }
+
+  const clearExportLayer = () => {
+    exportRequestRef.current = null
+    exportReadyRef.current = false
+    setExportRequest(null)
+  }
+
+  // 切卡时把右栏滚到「本张卡片」，否则会停在上一个版式的表单中部，
+  // 看到的字段和刚点的卡对不上。用「上一次选中的 id」判断，避免 StrictMode
+  // 下 effect 跑两遍时在首屏就滚走整套设置。
+  const inspectorRef = useRef<HTMLElement | null>(null)
+  const editorHeadRef = useRef<HTMLDivElement | null>(null)
+  const lastSelected = useRef(selectedId)
+  useEffect(() => {
+    if (lastSelected.current === selectedId) return
+    lastSelected.current = selectedId
+    const box = inspectorRef.current
+    const head = editorHeadRef.current
+    if (!box || !head) return
+    if (box.scrollHeight <= box.clientHeight + 4) return
+    box.scrollTo({ top: Math.max(0, head.offsetTop - 4), behavior: 'smooth' })
+  }, [selectedId])
+
+  // 换选卡片或 3 秒后，把「确定删除」收回普通删除
+  useEffect(() => {
+    setConfirmRemoveId(null)
+  }, [selectedId])
+  useEffect(() => {
+    if (!confirmRemoveId) return
+    const t = setTimeout(() => setConfirmRemoveId(null), 3000)
+    return () => clearTimeout(t)
+  }, [confirmRemoveId])
+
+  // 加卡菜单：Esc 关闭，点外面也关闭（不再只靠 mouseleave）
+  useEffect(() => {
+    if (!addOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setAddOpen(false)
+        addWrapRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+      }
+    }
+    const onDown = (e: MouseEvent) => {
+      if (!addWrapRef.current?.contains(e.target as Node)) setAddOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [addOpen])
 
   const rebuild = () => {
     const next = buildCards({ doc, themeId: cardThemeId, siteName, sections, summaries })
@@ -215,9 +336,11 @@ export function CardStudio({
 
   const removeCard = (id: string) => {
     dirty.current = true
+    setConfirmRemoveId(null)
     setCards((prev) => {
+      const index = prev.findIndex((c) => c.id === id)
       const next = renumber(prev.filter((c) => c.id !== id))
-      if (selectedId === id) setSelectedId(next[0]?.id ?? '')
+      if (selectedId === id) setSelectedId(next[Math.min(index, next.length - 1)]?.id ?? '')
       return next
     })
   }
@@ -236,6 +359,34 @@ export function CardStudio({
     dirty.current = true
   }
 
+  /** 上移/下移一位：Alt+↑↓ 和卡片行里的小箭头都走这里 */
+  const moveCardBy = (id: string, delta: number) => {
+    const index = cards.findIndex((c) => c.id === id)
+    const target = index + delta
+    if (index < 0 || target < 0 || target >= cards.length) return
+    dirty.current = true
+    setCards((prev) => {
+      const next = [...prev]
+      const [item] = next.splice(index, 1)
+      next.splice(target, 0, item)
+      return renumber(next)
+    })
+  }
+
+  /** 重新生成会覆盖所有手工修改；改过才需要第二次确认 */
+  const requestRebuild = () => {
+    if (!dirty.current) {
+      rebuild()
+      return
+    }
+    if (confirmRebuild) {
+      setConfirmRebuild(false)
+      rebuild()
+      return
+    }
+    setConfirmRebuild(true)
+  }
+
   /** 上/下一张：到头就绕回去，键盘 ← → 也走这里 */
   const go = (delta: number) => {
     if (cards.length < 2) return
@@ -247,13 +398,14 @@ export function CardStudio({
 
   const exportOne = async () => {
     if (!selected) return
-    const node = nodeRefs.current[`${selected.id}@${format}`]
-    if (!node) {
-      onToast('渲染节点还没准备好，请稍后重试', 'error')
-      return
-    }
     setExporting(true)
     try {
+      await ensureExportLayer([format], [selected.id])
+      const node = nodeRefs.current[`${selected.id}@${format}`]
+      if (!node) {
+        onToast('渲染节点还没准备好，请稍后重试', 'error')
+        return
+      }
       const blob = await renderCardToBlob(node, { backgroundColor: theme.bg, format })
       // 提示里的数字读真实像素，而不是按配置推算 —— 这样尺寸不对时不会骗人
       const px = await readPngSize(blob)
@@ -265,23 +417,25 @@ export function CardStudio({
       onToast(`导出失败：${e instanceof Error ? e.message : String(e)}`, 'error')
     } finally {
       setExporting(false)
+      clearExportLayer()
     }
   }
 
   /** 复制图片：公众号后台、飞书、微信都可以直接粘贴，比先下载再上传省一步 */
   const copyImage = async () => {
     if (!selected) return
-    const node = nodeRefs.current[`${selected.id}@${format}`]
-    if (!node) {
-      onToast('渲染节点还没准备好，请稍后重试', 'error')
-      return
-    }
     if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
       onToast('这个浏览器不支持复制图片，请用「导出这张」', 'info')
       return
     }
     setCopying(true)
     try {
+      await ensureExportLayer([format], [selected.id])
+      const node = nodeRefs.current[`${selected.id}@${format}`]
+      if (!node) {
+        onToast('渲染节点还没准备好，请稍后重试', 'error')
+        return
+      }
       // 把 Blob 的 Promise 直接交给 ClipboardItem：渲染要一两秒，
       // 先 await 再 write 会把用户点击的临时授权耗掉，Safari 会直接拒绝写入。
       const blobPromise = renderCardToBlob(node, { backgroundColor: theme.bg, format })
@@ -292,31 +446,41 @@ export function CardStudio({
       onToast(`复制失败：${e instanceof Error ? e.message : String(e)}`, 'error')
     } finally {
       setCopying(false)
+      clearExportLayer()
     }
   }
 
   const exportAll = async () => {
-    const formats = multiSize ? CARD_FORMATS : [fmt]
-
-    // 编号本身就是唯一键（01..NN），不会重名，不需要再按出现次数加后缀 ——
-    // 那个 `-2` 后缀反而会把 10 排到 2 后面去
-    const entries: ZipEntry[] = []
-    cards.forEach((c, i) => {
-      const name = `${fileNameOf(c, i)}.png`
-      for (const f of formats) {
-        const node = nodeRefs.current[`${c.id}@${f.id}`]
-        if (node) entries.push({ node, name, format: f.id, folder: multiSize ? f.id.replace(':', 'x') : undefined })
-      }
-    })
-
-    if (entries.length === 0) {
+    if (cards.length === 0) {
       onToast('没有可导出的卡片', 'error')
       return
     }
+    const formats = multiSize ? CARD_FORMATS : [fmt]
 
     setExporting(true)
     setProgress('')
     try {
+      await ensureExportLayer(
+        formats.map((f) => f.id),
+        null,
+      )
+
+      // 编号本身就是唯一键（01..NN），不会重名，不需要再按出现次数加后缀 ——
+      // 那个 `-2` 后缀反而会把 10 排到 2 后面去
+      const entries: ZipEntry[] = []
+      cards.forEach((c, i) => {
+        const name = `${fileNameOf(c, i)}.png`
+        for (const f of formats) {
+          const node = nodeRefs.current[`${c.id}@${f.id}`]
+          if (node) entries.push({ node, name, format: f.id, folder: multiSize ? f.id.replace(':', 'x') : undefined })
+        }
+      })
+
+      if (entries.length === 0) {
+        onToast('没有可导出的卡片', 'error')
+        return
+      }
+
       const res = await exportCardsAsZip(
         entries,
         `${safeFileName(doc.meta.title)}-配图.zip`,
@@ -334,6 +498,7 @@ export function CardStudio({
     } finally {
       setExporting(false)
       setProgress('')
+      clearExportLayer()
     }
   }
 
@@ -343,12 +508,174 @@ export function CardStudio({
 
   return (
     <div className="studio">
-      {/* ---------- 左栏：预览 + 导出 ---------- */}
+      {/* ---------- 左栏：卡片胶片。排序、增删、切卡都在这一列 ---------- */}
+      <aside className="studio-rail" aria-label="卡片列表">
+        <div className="studio-rail-head">
+          <span className="studio-stage-label">卡片</span>
+          <span className="studio-stage-meta">{cards.length} 张</span>
+        </div>
+
+        <div className="card-list">
+          {cards.map((c, index) => {
+            const t = getCardTheme(c.themeId)
+            const active = c.id === selectedId
+            const confirming = confirmRemoveId === c.id
+            return (
+              <div
+                key={c.id}
+                draggable
+                className={[
+                  'card-item',
+                  active ? 'active' : '',
+                  dragId === c.id ? 'dragging' : '',
+                  overId === c.id && dragId && dragId !== c.id ? 'drop-target' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onDragStart={(e) => {
+                  setDragId(c.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                  // Firefox 必须 setData 才会真正开始拖拽
+                  e.dataTransfer.setData('text/plain', c.id)
+                }}
+                onDragEnd={() => {
+                  setDragId(null)
+                  setOverId(null)
+                }}
+                onDragOver={(e) => {
+                  if (!dragId) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (overId !== c.id) setOverId(c.id)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const from = e.dataTransfer.getData('text/plain') || dragId
+                  if (from && from !== c.id) moveCard(from, c.id)
+                  setDragId(null)
+                  setOverId(null)
+                }}
+              >
+                <button
+                  type="button"
+                  className="card-select"
+                  onClick={() => setSelectedId(c.id)}
+                  aria-pressed={active}
+                  aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                  aria-label={`选择第 ${index + 1} 张：${layoutNames[c.layout]}`}
+                  onKeyDown={(e) => {
+                    if (!e.altKey) return
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      moveCardBy(c.id, -1)
+                    } else if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      moveCardBy(c.id, 1)
+                    }
+                  }}
+                >
+                  <span className="card-grip" aria-hidden>
+                    ⋮⋮
+                  </span>
+                  {/* 缩略图只表示配色，不塞文字 —— 34px 宽放字必然糊成一团 */}
+                  <span className="card-thumb" style={{ background: t.bg, borderColor: t.line, color: t.ink }}>
+                    <span className="card-thumb-bar" style={{ background: t.accent }} />
+                    <span className="card-thumb-lines" />
+                  </span>
+                  <span className="card-item-body">
+                    <span className="card-item-title">
+                      {layoutNames[c.layout]}
+                      {c.id.startsWith('custom') ? '（新增）' : ''}
+                      <span className="card-item-mark">{c.mark}</span>
+                    </span>
+                    <span className="card-item-sub">{c.title.slice(0, 26)}</span>
+                  </span>
+                </button>
+
+                <span className="card-move">
+                  <button
+                    type="button"
+                    className="card-move-btn"
+                    onClick={() => moveCardBy(c.id, -1)}
+                    disabled={index === 0}
+                    title="上移（Alt+↑）"
+                    aria-label={`上移${layoutNames[c.layout]}`}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="card-move-btn"
+                    onClick={() => moveCardBy(c.id, 1)}
+                    disabled={index === cards.length - 1}
+                    title="下移（Alt+↓）"
+                    aria-label={`下移${layoutNames[c.layout]}`}
+                  >
+                    ↓
+                  </button>
+                </span>
+
+                {c.id.startsWith('custom') ? (
+                  <button
+                    type="button"
+                    className={['icon-btn', 'card-item-remove', confirming ? 'confirm' : ''].filter(Boolean).join(' ')}
+                    onClick={() => {
+                      if (confirming) removeCard(c.id)
+                      else setConfirmRemoveId(c.id)
+                    }}
+                    onBlur={() => {
+                      if (confirming) setConfirmRemoveId(null)
+                    }}
+                    title={confirming ? '再点一次删除' : '删除这张卡'}
+                    aria-label={confirming ? '确认删除这张卡' : '删除这张卡'}
+                  >
+                    {confirming ? '确定' : '×'}
+                  </button>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="studio-rail-actions">
+          <div className="add-wrap" ref={addWrapRef}>
+            <button className="btn btn-sm" onClick={() => setAddOpen((v) => !v)}>
+              + 加一张卡
+            </button>
+            {addOpen ? (
+              <div className="add-menu" onMouseLeave={() => setAddOpen(false)}>
+                {ADDABLE.map((l) => (
+                  <button key={l} onClick={() => addCard(l)} title={layoutHints[l]}>
+                    {layoutNames[l]}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <button
+            className={`btn btn-sm ${confirmRebuild ? 'btn-danger' : ''}`}
+            onClick={requestRebuild}
+            onBlur={() => setConfirmRebuild(false)}
+            title={
+              confirmRebuild
+                ? '再点一次会覆盖当前所有卡片'
+                : '按文章小节重新生成整套图；改过卡片时会先请你确认'
+            }
+          >
+            {confirmRebuild ? '确定覆盖' : '重新生成'}
+          </button>
+        </div>
+        <p className="studio-rail-hint">拖动或 Alt+↑↓ 排序 · 页码自动重排</p>
+      </aside>
+
+      {/* ---------- 中栏：预览 + 导出 ---------- */}
       <div className="studio-stage">
         <div className="studio-stage-head">
           <span className="studio-stage-label">预览</span>
           <span className="studio-stage-meta">
-            {selected ? `${layoutNames[selected.layout]} · ${cardNo(selectedIndex + 1)}/${cardNo(cards.length)}` : '—'}
+            {selected
+              ? `${layoutNames[selected.layout]} · ${cardNo(selectedIndex + 1)}/${cardNo(cards.length)} · ${format}`
+              : '—'}
           </span>
         </div>
 
@@ -406,11 +733,6 @@ export function CardStudio({
             ))}
           </div>
 
-          <label className="check-row">
-            <input type="checkbox" checked={multiSize} onChange={(e) => setMultiSize(e.target.checked)} />
-            <span>导出全部时三种尺寸各出一套（zip 内分文件夹）</span>
-          </label>
-
           <div className="studio-export-actions">
             <button className="btn btn-accent" onClick={exportOne} disabled={exporting || copying || !selected}>
               {exporting ? <span className="spinner" /> : null}
@@ -434,130 +756,41 @@ export function CardStudio({
             </button>
           </div>
 
+          <label className="check-row">
+            <input type="checkbox" checked={multiSize} onChange={(e) => setMultiSize(e.target.checked)} />
+            <span>全部导出时，1:1 / 16:9 也各出一套</span>
+          </label>
+
           <p className="studio-export-note">
-            文件名带两位编号，按名称排序就是卡片顺序。纯 CSS 渲染、不引用文章配图，导出不会因外链跨域失败。
+            纯 CSS 渲染，不引用正文配图，导出不会因外链跨域失败。文件名按两位编号排序。
           </p>
         </div>
       </div>
 
-      {/* ---------- 右栏：卡片列表 + 内容编辑 ---------- */}
-      <div className="studio-panel">
-        <div className="side-title">
-          <span>卡片</span>
-          <span className="count">{cards.length} 张 · 可拖动排序</span>
-        </div>
-
-        <div className="card-list">
-          {cards.map((c) => {
-            const t = getCardTheme(c.themeId)
-            const active = c.id === selectedId
-            return (
-              <button
-                key={c.id}
-                draggable
-                className={[
-                  'card-item',
-                  active ? 'active' : '',
-                  dragId === c.id ? 'dragging' : '',
-                  overId === c.id && dragId && dragId !== c.id ? 'drop-target' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                onClick={() => setSelectedId(c.id)}
-                onDragStart={(e) => {
-                  setDragId(c.id)
-                  e.dataTransfer.effectAllowed = 'move'
-                  // Firefox 必须 setData 才会真正开始拖拽
-                  e.dataTransfer.setData('text/plain', c.id)
-                }}
-                onDragEnd={() => {
-                  setDragId(null)
-                  setOverId(null)
-                }}
-                onDragOver={(e) => {
-                  if (!dragId) return
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                  if (overId !== c.id) setOverId(c.id)
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  const from = e.dataTransfer.getData('text/plain') || dragId
-                  if (from && from !== c.id) moveCard(from, c.id)
-                  setDragId(null)
-                  setOverId(null)
-                }}
-              >
-                <span className="card-grip" aria-hidden>
-                  ⋮⋮
-                </span>
-                {/* 缩略图只表示配色，不塞文字 —— 34px 宽放字必然糊成一团 */}
-                <div className="card-thumb" style={{ background: t.bg, borderColor: t.line, color: t.ink }}>
-                  <span className="card-thumb-bar" style={{ background: t.accent }} />
-                  <span className="card-thumb-lines" />
-                </div>
-                <div className="card-item-body">
-                  <div className="card-item-title">
-                    {layoutNames[c.layout]}
-                    {c.id.startsWith('custom') ? '（新增）' : ''}
-                    <span className="card-item-mark">{c.mark}</span>
-                  </div>
-                  <div className="card-item-sub">{c.title.slice(0, 26)}</div>
-                </div>
-                {c.id.startsWith('custom') ? (
-                  <span
-                    className="icon-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeCard(c.id)
-                    }}
-                    title="删除这张卡"
-                  >
-                    ×
-                  </span>
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-          <div className="add-wrap">
-            <button className="btn btn-sm" onClick={() => setAddOpen((v) => !v)}>
-              + 加一张卡
-            </button>
-            {addOpen ? (
-              <div className="add-menu" onMouseLeave={() => setAddOpen(false)}>
-                {ADDABLE.map((l) => (
-                  <button key={l} onClick={() => addCard(l)} title={layoutHints[l]}>
-                    {layoutNames[l]}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <button className="btn btn-sm" onClick={rebuild}>
-            重新生成
-          </button>
+      {/* ---------- 右栏：整套设置 + 当前卡内容 ---------- */}
+      <section className="studio-inspector" aria-label="卡片设置" ref={inspectorRef}>
+        <div className="studio-inspector-head">
+          <span className="studio-stage-label">整套设置</span>
+          <span className="studio-stage-meta">{cards.length} 张共用</span>
         </div>
 
         {/* 配色 */}
         <div className="field">
-          <span className="field-label">配色 · 一套图共用</span>
-          <div className="theme-row">
+          <span className="field-label">
+            配色 · {getCardTheme(cardThemeId).name}
+          </span>
+          <div className="studio-theme-row">
             {cardThemes.map((t) => (
               <button
                 key={t.id}
-                className={`theme-chip ${cardThemeId === t.id ? 'active' : ''}`}
+                className={`theme-dot ${cardThemeId === t.id ? 'active' : ''}`}
                 onClick={() => onThemeChange(t.id)}
                 title={`${t.name}（底色 ${t.bg}，强调色 ${t.accent}）`}
+                aria-label={`配色：${t.name}`}
+                aria-pressed={cardThemeId === t.id}
+                style={{ background: t.bg, borderColor: t.line }}
               >
-                <span className="theme-swatch" style={{ background: t.bg, borderColor: t.line }} />
-                <span
-                  className="theme-swatch"
-                  style={{ background: t.accent, borderColor: 'transparent', marginLeft: -4 }}
-                />
-                {t.name}
+                <span style={{ background: t.accent }} />
               </button>
             ))}
           </div>
@@ -579,8 +812,9 @@ export function CardStudio({
         {/* 编辑当前卡 */}
         {selected ? (
           <>
-            <div className="studio-editor-head">
-              <span className="studio-editor-title">第 {selectedIndex + 1} 张 · {layoutNames[selected.layout]}</span>
+            <div className="studio-editor-head" ref={editorHeadRef}>
+              <span className="studio-editor-kicker">本张卡片 · 第 {selectedIndex + 1} 张</span>
+              <span className="studio-editor-title">{layoutNames[selected.layout]}</span>
               <span className="studio-editor-hint">{layoutHints[selected.layout]}</span>
             </div>
 
@@ -749,6 +983,34 @@ export function CardStudio({
               </div>
             ) : null}
 
+            {selected.layout !== 'end' ? (
+              <div className="field">
+                <label className="field-label" htmlFor={`${fid}-kicker`}>
+                  左上角小标签
+                </label>
+                <input
+                  id={`${fid}-kicker`}
+                  className="field-input"
+                  value={selected.kicker ?? ''}
+                  onChange={(e) => patch(selected.id, { kicker: e.target.value })}
+                  placeholder="分类，留空则不显示"
+                />
+              </div>
+            ) : null}
+
+            <div className="field">
+              <label className="field-label" htmlFor={`${fid}-date`}>
+                底部日期
+              </label>
+              <input
+                id={`${fid}-date`}
+                className="field-input"
+                value={selected.date ?? ''}
+                onChange={(e) => patch(selected.id, { date: e.target.value })}
+                placeholder="2026.11.03"
+              />
+            </div>
+
             {/* 排版 */}
             <div className="studio-group">
               <div className="studio-group-title">排版</div>
@@ -833,63 +1095,49 @@ export function CardStudio({
               </div>
             </div>
 
-            {selected.layout !== 'end' ? (
-              <div className="field">
-                <label className="field-label" htmlFor={`${fid}-kicker`}>
-                  左上角小标签
-                </label>
-                <input
-                  id={`${fid}-kicker`}
-                  className="field-input"
-                  value={selected.kicker ?? ''}
-                  onChange={(e) => patch(selected.id, { kicker: e.target.value })}
-                  placeholder="分类，留空则不显示"
-                />
-              </div>
-            ) : null}
-
-            <div className="field">
-              <label className="field-label" htmlFor={`${fid}-date`}>
-                底部日期
-              </label>
-              <input
-                id={`${fid}-date`}
-                className="field-input"
-                value={selected.date ?? ''}
-                onChange={(e) => patch(selected.id, { date: e.target.value })}
-                placeholder="2026.11.03"
-              />
-            </div>
           </>
         ) : null}
-      </div>
+      </section>
 
-      {/* ---------- 离屏渲染层：导出用 ---------- */}
-      <div
-        aria-hidden
-        style={{
-          position: 'fixed',
-          left: -20000,
-          top: 0,
-          pointerEvents: 'none',
-        }}
-      >
-        {CARD_FORMATS.map((f) =>
-          cards.map((c) => (
-            <div
-              key={`${c.id}@${f.id}`}
-              ref={(el) => {
-                nodeRefs.current[`${c.id}@${f.id}`] = el
-              }}
-              // 尺寸必须写死。这个容器是 shrink-to-fit 的，宽度由最宽的卡（16:9 的 960）
-              // 决定，不写 width 的话每张卡的父节点都是 960 宽，导出就按 960 算。
-              style={{ width: f.w, height: f.h }}
-            >
-              <CardRenderer spec={c} theme={getCardTheme(c.themeId)} format={f.id} />
-            </div>
-          )),
-        )}
-      </div>
+      {/* ---------- 离屏渲染层：只在实际导出时挂载 ----------
+          单张/复制只渲染当前卡 + 当前比例，全部导出才渲染整套；
+          导出结束立即卸载。固定定位 + 1px 裁剪盒：预览区外层有入场动画
+          （transform），fixed 会相对它定位；不裁掉时，几十张整尺寸卡片
+          会把预览列的 scrollHeight 撑到近万像素 —— 滚动条很长，拉到底却是空的。
+          节点本身仍有完整宽高，html-to-image 按节点尺寸导出，不受裁剪影响。 */}
+      {exportRequest ? (
+        <div
+          className="studio-export-layer"
+          aria-hidden
+          style={{
+            position: 'fixed',
+            left: -20000,
+            top: 0,
+            width: 1,
+            height: 1,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          {CARD_FORMATS.filter((f) => exportRequest.formats.includes(f.id)).map((f) =>
+            cards
+              .filter((c) => !exportRequest.cardIds || exportRequest.cardIds.includes(c.id))
+              .map((c) => (
+                <div
+                  key={`${c.id}@${f.id}`}
+                  ref={(el) => {
+                    nodeRefs.current[`${c.id}@${f.id}`] = el
+                  }}
+                  // 尺寸必须写死。这个容器是 shrink-to-fit 的，宽度由最宽的卡（16:9 的 960）
+                  // 决定，不写 width 的话每张卡的父节点都是 960 宽，导出就按 960 算。
+                  style={{ width: f.w, height: f.h }}
+                >
+                  <ExportCardRenderer spec={c} theme={getCardTheme(c.themeId)} format={f.id} />
+                </div>
+              )),
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

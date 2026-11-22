@@ -9,7 +9,7 @@
  */
 
 import { useState } from 'react'
-import { buildTailHtml, TAIL_VARS, type TailConfig } from '../core/tail'
+import { buildTailHtml, wechatArticleUrl, TAIL_VARS, type TailConfig } from '../core/tail'
 import { getWechatTheme } from '../themes/wechat'
 import { Modal } from './Modal'
 
@@ -49,7 +49,7 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
         <div className="modal-head">
           <div>
             <div className="modal-title">公众号文末</div>
-            <div className="ledger-sub">关注引导 / 往期推荐 / 版权 · 拼在正文之后，计入 20000 字上限</div>
+            <div className="ledger-sub">关注引导 / 往期推荐 / 版权 · 拼在正文之后</div>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="关闭">
             ×
@@ -132,34 +132,45 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                       placeholder="小标题（选填，例如：往期推荐）"
                     />
                     <div className="tail-items">
-                      {cfg.history.items.map((item, i) => (
-                        <div className="tail-item" key={i}>
-                          <span className="tail-item-idx">{String(i + 1).padStart(2, '0')}</span>
-                          <input
-                            className="field-input"
-                            aria-label={`第 ${i + 1} 条往期标题`}
-                            value={item.title}
-                            onChange={(e) => setItem(i, { title: e.target.value })}
-                            placeholder="往期文章标题"
-                          />
-                          <input
-                            className="field-input tail-item-url"
-                            aria-label={`第 ${i + 1} 条往期链接`}
-                            value={item.url}
-                            onChange={(e) => setItem(i, { url: e.target.value })}
-                            placeholder="链接（选填，微信会剥离正文外链）"
-                          />
-                          <button
-                            className="icon-btn"
-                            title="删除这一条"
-                            onClick={() =>
-                              patchHistory({ items: cfg.history.items.filter((_, j) => j !== i) })
-                            }
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
+                      {cfg.history.items.map((item, i) => {
+                        const badLink = item.url.trim().length > 0 && !wechatArticleUrl(item.url)
+                        return (
+                          <div className="tail-item-row" key={i}>
+                            <div className="tail-item">
+                              <span className="tail-item-idx">{String(i + 1).padStart(2, '0')}</span>
+                              <input
+                                className="field-input"
+                                aria-label={`第 ${i + 1} 条往期标题`}
+                                value={item.title}
+                                onChange={(e) => setItem(i, { title: e.target.value })}
+                                placeholder="往期文章标题"
+                              />
+                              <input
+                                className={`field-input tail-item-url${badLink ? ' is-warn' : ''}`}
+                                aria-label={`第 ${i + 1} 条往期链接`}
+                                aria-invalid={badLink || undefined}
+                                value={item.url}
+                                onChange={(e) => setItem(i, { url: e.target.value })}
+                                placeholder="https://mp.weixin.qq.com/s/…"
+                              />
+                              <button
+                                className="icon-btn"
+                                title="删除这一条"
+                                onClick={() =>
+                                  patchHistory({ items: cfg.history.items.filter((_, j) => j !== i) })
+                                }
+                              >
+                                ×
+                              </button>
+                            </div>
+                            {badLink ? (
+                              <div className="tail-item-warn">
+                                不是公众号文章链接，粘贴到公众号后不可点击
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
                     </div>
                     {cfg.history.items.length < MAX_HISTORY ? (
                       <button
@@ -173,8 +184,9 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                       </button>
                     ) : null}
                     <div className="field-hint">
-                      只填标题也能用。带链接的条目粘贴后要在公众号编辑器里用「超链接」重新挂上 ——
-                      未认证号正文里的外链会被整条剥离。
+                      只有公众号文章链接（mp.weixin.qq.com 的 /s/… 地址）会被写成可点击的超链接，
+                      粘贴后仍然能点。其他外链微信会在粘贴时剥离，只能改成纯文本、二维码，或放到
+                      「阅读原文」。
                     </div>
                   </div>
                 ) : null}

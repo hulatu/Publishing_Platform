@@ -3,24 +3,20 @@
  *
  * 两条主线：
  * 1. 断言 —— 转义、占位符、全关时不改变产物、标签配平、纯文本通道带文末
- * 2. 扫描 —— 109 篇真实文章套上默认配置后，字数还在 20000 以内吗，
- *    有没有哪篇本来就在临界值上、加了尾部直接超限
+ * 2. 扫描 —— 109 篇真实文章套上默认配置后，尾部给 HTML 增加了多少体积，
+ *    以及尾部是否真的拼在两条通道的最后
  *
- * 第 2 条是重点：文末这三块是「每篇都加」的东西，一旦它把某篇从 19900 顶到 20200，
- * 用户就会在发布那一刻才发现，代价比在这里发现大得多。
- *
- * 注意按**字数**比，不按 HTML 字符数 —— 微信编辑器算的是字数。
+ * 工具不再做正文字数上限判定；这里只关心「加了文末之后产物有没有被破坏」。
  */
 
-import { ok, fail, report, addFailures } from './harness'
+import { ok, fail, report } from './harness'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
-import { charCount } from '../src/core/cjk'
-import { buildTailHtml, defaultTailConfig, applyVars, activeBlocks, type TailConfig } from '../src/core/tail'
+import { buildTailHtml, defaultTailConfig, applyVars, activeBlocks, wechatArticleUrl, type TailConfig } from '../src/core/tail'
 import { getWechatTheme, wechatThemes } from '../src/themes/wechat'
-import { renderWechat, WECHAT_WORD_LIMIT } from '../src/renderers/wechat'
+import { renderWechat } from '../src/renderers/wechat'
 
 
 const theme = getWechatTheme('paper')
@@ -30,8 +26,9 @@ const full: TailConfig = {
     on: true,
     title: '往期推荐',
     items: [
-      { title: '第一篇', url: 'https://example.com/a' },
+      { title: '第一篇', url: 'https://mp.weixin.qq.com/s/abc' },
       { title: '第二篇', url: '' },
+      { title: '第三篇', url: 'https://example.com/a' },
     ],
   },
   copyright: { on: true, text: '© {year} {account}' },
@@ -44,8 +41,37 @@ console.log('文末组件：')
 const r1 = buildTailHtml(full, theme, '胡拉图说')
 ok(r1.html.includes('胡拉图说'), '{account} 被替换成账号名')
 ok(r1.html.includes(String(new Date().getFullYear())), '{year} 被替换成当前年份')
-ok(r1.historyCount === 2, `往期推荐统计到 ${r1.historyCount} 条`)
-ok(r1.droppedLinks === 1, `带链接的条目统计到 ${r1.droppedLinks} 条`)
+ok(r1.historyCount === 3, `往期推荐统计到 ${r1.historyCount} 条`)
+ok(r1.linkedCount === 1, `公众号文章链接统计到 ${r1.linkedCount} 条`)
+ok(r1.droppedLinks === 1, `不能点击的链接统计到 ${r1.droppedLinks} 条`)
+ok(r1.html.includes('href="https://mp.weixin.qq.com/s/abc"'), '公众号文章链接输出成 <a href>')
+ok(!r1.html.includes('href="https://example.com/a"'), '非公众号链接不输出 href（写了也会被剥离）')
+
+// 链接识别：微信号、协议归一化、伪装域名、其它页面
+ok(wechatArticleUrl('https://mp.weixin.qq.com/s/abc') === 'https://mp.weixin.qq.com/s/abc', '标准短链被识别')
+ok(wechatArticleUrl('  mp.weixin.qq.com/s/abc  ') === 'https://mp.weixin.qq.com/s/abc', '省略协议的地址补上 https')
+ok(wechatArticleUrl('http://mp.weixin.qq.com/s/abc') === 'https://mp.weixin.qq.com/s/abc', 'http 统一成 https')
+ok(
+  wechatArticleUrl('https://mp.weixin.qq.com/s?__biz=Mz&mid=1&idx=1&sn=x') ===
+    'https://mp.weixin.qq.com/s?__biz=Mz&mid=1&idx=1&sn=x',
+  '长链原样保留（& 在 href 里再转义）',
+)
+ok(wechatArticleUrl('https://mp.weixin.qq.com/mp/profile_ext?action=home') === null, '非文章页不识别')
+ok(wechatArticleUrl('https://mp.weixin.qq.com.evil.com/s/abc') === null, '伪装域名不识别')
+ok(wechatArticleUrl('https://example.com/?u=https://mp.weixin.qq.com/s/abc') === null, '查询参数里带微信号也不算')
+ok(wechatArticleUrl('javascript:alert(1)') === null, 'javascript: 不识别')
+
+// 长链含 &，进 href 时必须转义，否则属性会被截断
+const longLink = buildTailHtml(
+  {
+    follow: { on: false, title: '', text: '' },
+    history: { on: true, title: '', items: [{ title: '长链', url: 'https://mp.weixin.qq.com/s?__biz=Mz&mid=1' }] },
+    copyright: { on: false, text: '' },
+  },
+  theme,
+  'x',
+)
+ok(longLink.html.includes('href="https://mp.weixin.qq.com/s?__biz=Mz&amp;mid=1"'), 'href 里的 & 被转义')
 
 const empty = buildTailHtml(full, theme, '')
 ok(empty.html.includes('本号'), '账号名为空时退化成「本号」，不会留下半个句子')
@@ -97,9 +123,6 @@ ok(inks.size > 1, `${wechatThemes.length} 套主题产出 ${inks.size} 种不同
 
 const files = readdirSync(POSTS).filter((f) => f.endsWith('.md') && !f.startsWith('_'))
 
-let overBefore = 0
-let overAfter = 0
-let nearLimit = 0
 const tailChars: number[] = []
 
 for (const file of files) {
@@ -111,13 +134,6 @@ for (const file of files) {
   const b = [...before.primary].length
   const a = [...after.primary].length
   tailChars.push(a - b)
-
-  // 超限按**字数**算（微信编辑器的口径），不按 HTML 字符数
-  const bWords = charCount(before.text)
-  const aWords = charCount(after.text)
-  if (bWords > WECHAT_WORD_LIMIT) overBefore++
-  if (aWords > WECHAT_WORD_LIMIT) overAfter++
-  if (aWords > WECHAT_WORD_LIMIT * 0.95 && aWords <= WECHAT_WORD_LIMIT) nearLimit++
 
   // 尾部必须真的拼在最后 —— HTML 和纯文本两条通道都要
   const tail = buildTailHtml(defaultTailConfig, getWechatTheme('paper'), '胡拉图说')
@@ -134,11 +150,4 @@ const maxTail = Math.max(...tailChars)
 
 console.log(`\n扫描 ${files.length} 篇：`)
 console.log(`  默认配置增加的 HTML 字符：平均 ${avgTail.toFixed(0)}，最多 ${maxTail}`)
-console.log(`  超 20000 字的篇数：不加尾部 ${overBefore} 篇 → 加尾部 ${overAfter} 篇`)
-console.log(`  加完落在 19000–20000 字的：${nearLimit} 篇`)
-
-if (overAfter > overBefore) {
-  console.log(`\n✗ 有 ${overAfter - overBefore} 篇因为尾部而超限`)
-  addFailures(overAfter - overBefore)
-}
 process.exit(report('文末组件'))

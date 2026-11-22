@@ -99,7 +99,10 @@
   --radius-lg: 13px;
   --radius-xl: 18px;
   --radius-pill: 999px;
-  --sidebar-w: 300px;
+  /* 左栏放选项，中栏放正文，右栏放预览。中栏用 clamp 跟着窗口长，
+     但不超过 460px —— 再宽正文行就散了，反而不像编辑器。 */
+  --sidebar-w: 280px;
+  --editor-w: clamp(340px, 30vw, 460px);
 
   /* 预览区的阅读列宽。提示条、折叠清单、源码卡片、富文本预览、Markdown 预览、
      改写/配图面板全用这一个值 —— 原先分别是 780 / 780 / 780 / 720 / 760 / 820，
@@ -311,9 +314,49 @@ select {
 }
 
 .app-body {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) var(--editor-w) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+}
+
+/* 配图卡片不需要 Markdown 编辑器：收掉中栏，把编辑 + 预览的宽度
+   全交给卡片工坊。左栏仍保留，用来切平台和改文章信息。 */
+.app-body.card-mode {
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+}
+
+.app-body.card-mode .editor-pane {
+  display: none;
+}
+
+/* 卡片页没有单独的 .main-head：预览工具栏兼任页面 header，
+   「配图卡片」直接作为 h1，省掉重复的一层标题。 */
+.card-main .preview-toolbar {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.card-toolbar-title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.card-main .preview-scroll {
+  /* 卡片页没有底部操作条，不需要 96px 的 toast 让位；
+     20px 刚好让 1440×900 下不出现只有几像素的假滚动条 */
+  padding-bottom: 20px;
+}
+
+.card-workspace {
+  max-width: 1320px;
+  margin: 0 auto;
 }
 
 .sidebar-scrim {
@@ -411,6 +454,34 @@ select {
   background: var(--error);
 }
 
+/* 新版本提示：比保存状态更显眼一档，但不抢主操作 */
+.update-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.update-chip:hover {
+  background: var(--accent-soft-hover);
+  border-color: var(--accent);
+}
+
+.update-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
 .topbar-tools {
   position: relative;
 }
@@ -492,8 +563,8 @@ select {
 /* ---------- 侧栏 ---------- */
 
 .sidebar {
-  width: var(--sidebar-w);
-  flex-shrink: 0;
+  width: auto;
+  min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--sidebar-bg);
   display: flex;
@@ -848,13 +919,16 @@ select {
 
 .side-collapse-action {
   font-size: var(--fs-xs);
-  color: var(--accent);
+  /* 12px 红字原来靠 0.75 opacity 压静，实际对比度只有 3.42:1。
+     改用深一档的强调色，悬停再回到正常红并加下划线。 */
+  color: var(--accent-deep);
   flex-shrink: 0;
-  opacity: var(--quiet-link);
 }
 
 .side-collapse:hover .side-collapse-action {
-  opacity: 1;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .side-collapse-body {
@@ -1084,6 +1158,195 @@ select {
   font-weight: 600;
 }
 
+/* ---------- 左栏附加选项 ---------- */
+
+.side-options {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.side-options .theme-bar-wrap {
+  align-self: flex-start;
+}
+
+.dark-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.side-empty {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--ink-muted);
+}
+
+/* ==========================================================================
+   中栏：正文编辑器
+
+   只放正文，不放平台选项。中栏和右栏的分工是「改什么」与「看什么」：
+   改正文/元信息在左中两栏，任何平台的排版结果都在右栏。
+   ========================================================================== */
+
+.editor-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.editor-pane.over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -8px;
+}
+
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 16px 11px;
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+
+.editor-head-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.editor-eyebrow {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.editor-file {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.editor-count,
+.editor-dirty,
+.editor-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+.editor-dirty {
+  color: var(--accent);
+}
+
+.editor-head-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.editor-textarea {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  resize: none;
+  outline: none;
+  background: transparent;
+  padding: 18px 18px 24px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.8;
+  color: var(--ink-soft);
+  tab-size: 2;
+}
+
+.editor-textarea::placeholder {
+  color: var(--ink-muted);
+}
+
+.editor-textarea-empty {
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  line-height: 1.9;
+}
+
+.editor-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.editor-foot-dirty {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.editor-foot-hint {
+  color: var(--ink-muted);
+}
+
+.editor-drop-hint {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--panel-soft);
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  pointer-events: none;
+}
+
+/* 窄屏的一次只显示一栏：入口只在 <=760 出现 */
+.mobile-pane-link {
+  display: none;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.mobile-pane-link:hover {
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+}
+
 /* ==========================================================================
    主区域
    ========================================================================== */
@@ -1131,86 +1394,6 @@ select {
   line-height: 1.5;
 }
 
-.dispatch-rail {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  width: min(100%, 520px);
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--ink-muted);
-  font-size: var(--fs-xs);
-}
-
-.dispatch-rail li {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.dispatch-step {
-  color: inherit;
-  font-weight: inherit;
-}
-
-button.dispatch-step {
-  cursor: pointer;
-}
-
-button.dispatch-step:hover {
-  color: var(--ink);
-}
-
-.dispatch-rail li::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  margin-right: 6px;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  background: var(--main-bg);
-}
-
-.dispatch-rail li:not(:last-child)::after {
-  content: '';
-  width: 28px;
-  height: 1px;
-  margin: 0 9px;
-  background: var(--line);
-}
-
-.dispatch-rail li.done {
-  color: var(--ink-soft);
-}
-
-.dispatch-rail li.done::before {
-  border-color: var(--ink-soft);
-  background: var(--ink-soft);
-}
-
-.dispatch-rail li.current {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.dispatch-rail li.current::before {
-  border-color: var(--accent);
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.dispatch-rail li.published {
-  color: var(--ok);
-}
-
-.dispatch-rail li.published::before {
-  border-color: var(--ok);
-  background: var(--ok);
-  box-shadow: 0 0 0 3px var(--ok-soft);
-}
-
 .head-tools {
   display: flex;
   align-items: center;
@@ -1220,139 +1403,235 @@ button.dispatch-step:hover {
   padding-top: 1px;
 }
 
-.readiness-entry {
+/* 卡片平台没有预览/源码切换，工具位是空的，不要留一条空隙 */
+.head-tools:empty {
+  display: none;
+}
+
+/* 发布检查收成一个 chip：圆点是总体语气，数字是还没就绪的必查项。
+   标题、合规、素材、统计、转换提示都在弹层里，主界面不再占一整行。 */
+.check-chip {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  padding: 5px 11px;
+  gap: 6px;
+  padding: 4px 9px;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
   color: var(--ink-soft);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
     color var(--dur) var(--ease);
 }
 
-.readiness-entry:hover {
+.check-chip:hover {
   border-color: var(--line-strong);
-  color: var(--ink);
   background: var(--panel-soft);
+  color: var(--ink);
 }
 
-.readiness-entry strong {
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-}
-
-.readiness-dot {
-  width: 7px;
-  height: 7px;
+.check-chip-dot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--ok);
+  flex-shrink: 0;
 }
 
-.readiness-entry.tone-warn .readiness-dot {
+.check-chip.tone-note .check-chip-dot {
+  background: var(--line-strong);
+}
+
+.check-chip.tone-warn {
+  color: var(--warn);
+}
+
+.check-chip.tone-warn .check-chip-dot {
   background: var(--warn);
 }
 
-.readiness-entry.tone-error {
+.check-chip.tone-error {
   border-color: var(--accent-line);
   color: var(--error);
 }
 
-.readiness-entry.tone-error .readiness-dot {
+.check-chip.tone-error .check-chip-dot {
   background: var(--error);
 }
 
-/* 平台限制：跟在 hint 后面。
-   放按钮行里会被挤成两行（按钮行 flex-shrink:0，只能压文字），
-   而中文可以在任意字间断行，「微信域名」会被劈成「微信域 / 名」。
-   两者之间只留空隙、不画竖线 —— 窄屏时它会折到第二行开头，一条竖线悬在行首比没有更难看，
-   而橙色的「限制」两个字本身已经够当分隔了。 */
-.limit-note {
-  display: inline-block;
-  margin-left: 8px;
+.check-chip-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-soft);
   color: var(--ink-muted);
-  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
-.limit-note::before {
-  content: '·';
-  margin-right: 6px;
-  color: var(--line-strong);
-  font-weight: 400;
-  letter-spacing: 0;
+.check-chip.tone-warn .check-chip-count {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.check-chip.tone-error .check-chip-count {
+  background: var(--error-soft);
+  color: var(--error);
 }
 
 .view-switch {
   flex-shrink: 0;
 }
 
-/* ---------- 统计条：一行细字，不再是一排色块 ---------- */
+/* ---------- 预览工具栏 ---------- */
 
-/* 头部原本是「20px 标题 / 同字号说明 / 同字号统计」三行，
-   后两行同字号同灰度，读下来是一整块灰，说不上谁主谁次。
-   现在统计用最小一档 12px，并用字重和间距与说明分开。 */
-.stats-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  margin-top: 8px;
-  font-size: var(--fs-xs);
-  color: var(--ink-muted);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.7;
-}
-
-.main-meta-row {
+.preview-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-top: 8px;
+  gap: 12px;
+  padding: 8px 28px;
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome-solid);
+  flex-shrink: 0;
 }
 
-.main-meta-row .stats-bar {
-  margin-top: 0;
-}
-
-.main-meta-row .main-hint {
-  flex: 1;
+.preview-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
-  margin: 0;
-}
-
-.stat-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  /* 值比标签重一档：标签是「图片」「外链」这类索引词，值才是要读的数 */
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
 }
 
-.stat-chip + .stat-chip::before {
-  content: '·';
-  margin: 0 8px;
-  color: var(--line-strong);
-}
-
-.stat-chip .stat-label {
+.preview-toolbar-title svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
   color: var(--ink-muted);
 }
 
-.stat-chip.warn {
+/* 标题永不竖排；窄屏时让主题名先被截断 */
+.preview-toolbar-label {
+  white-space: nowrap;
+}
+
+.preview-toolbar-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+.preview-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* 发布状态收成一个 chip：当前平台在哪一步 + 全局已发几个。
+   原来这四个状态分散在发布轨道、顶栏台账、侧栏勾选和操作条里。 */
+.publish-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  white-space: nowrap;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.publish-chip:hover {
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+}
+
+.publish-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.publish-chip.ok {
+  color: var(--ok);
+}
+
+.publish-chip.ok .publish-chip-dot {
+  background: var(--ok);
+}
+
+.publish-chip.warn {
   color: var(--warn);
 }
-.stat-chip.error {
-  color: var(--error);
-  font-weight: 600;
+
+.publish-chip.warn .publish-chip-dot {
+  background: var(--warn);
 }
-.stat-chip.ok {
-  color: var(--ok);
+
+.publish-chip.note {
+  color: var(--ink);
+}
+
+.publish-chip.note .publish-chip-dot {
+  background: var(--accent);
+}
+
+.publish-chip-count {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 图标式宽度切换：比三块文字省一半横向空间，窄屏不会再换行 */
+.preview-size-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+}
+
+.preview-size-switch svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* 纸面上方 / 下方的小字，对齐 MDskill-Web 的阅读预览 */
+.preview-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 auto 8px;
+  width: 100%;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+.preview-caption span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-footnote {
+  margin: 16px auto 0;
+  max-width: var(--read-w);
+  text-align: center;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
 }
 
 /* ---------- 预览区 ---------- */
@@ -1366,8 +1645,54 @@ button.dispatch-step:hover {
   min-height: 0;
 }
 
+/* 预览区本身可以滚动，必须能被键盘聚焦；焦点环画在内部，
+   避免 2px outline 被滚动容器裁掉。 */
+.preview-scroll:focus-visible {
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
 .stage {
   animation: stage-in var(--dur-slow) var(--ease-out) both;
+}
+
+/* ---------- 预览宽度 ---------- */
+
+/* 自适应时纸面自己撑满；手机/平板把纸固定到目标宽度再等比缩放。
+   缩放量由 PreviewStage 用 ResizeObserver 算，这里只负责几何。 */
+.preview-fit {
+  margin: 0 auto;
+  position: relative;
+}
+
+.preview-paper {
+  transform-origin: top left;
+  will-change: transform;
+}
+
+.preview-stage[data-preview-size="mobile"] .rich-preview {
+  padding: 26px 22px;
+  border-radius: var(--radius-lg);
+}
+
+.preview-stage[data-preview-size="mobile"] .md-preview {
+  padding: 30px 24px 34px;
+  border-radius: var(--radius-lg);
+}
+
+.preview-stage[data-preview-size="tablet"] .rich-preview {
+  padding: 36px 40px;
+}
+
+.preview-stage[data-preview-size="tablet"] .md-preview {
+  padding: 40px 44px 48px;
+}
+
+/* 窄屏上三段切换挤不下时让控件自己换行，不要撑破顶栏 */
+@media (max-width: 760px) {
+  .preview-size-switch button {
+    padding: 6px 9px;
+  }
 }
 
 @keyframes stage-in {
@@ -1470,11 +1795,6 @@ button.dispatch-step:hover {
   background: var(--ok);
 }
 
-.notice-holder {
-  max-width: var(--read-w);
-  margin: 0 auto 14px;
-}
-
 .notice-stack {
   border: 1px solid var(--warn-soft);
   border-left: 3px solid var(--warn);
@@ -1540,16 +1860,17 @@ button.dispatch-step:hover {
   align-items: center;
   gap: 4px;
   font-size: var(--fs-xs);
-  color: inherit;
-  opacity: var(--quiet-link);
+  /* 继承的 warn/error 色再乘 0.75 会掉到 3.x:1；
+     静默感交给 --ink-muted，不再用透明度压。 */
+  color: var(--ink-muted);
   flex-shrink: 0;
   padding: 2px 6px;
   border-radius: var(--radius-xs);
-  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease);
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .notice-more:hover {
-  opacity: 1;
+  color: var(--ink);
   background: var(--hover-2);
 }
 
@@ -1642,12 +1963,6 @@ button.dispatch-step:hover {
   overflow-y: auto;
   word-break: break-word;
   border-top: 1px solid var(--line-soft);
-}
-
-.format-notes .details-body {
-  font-family: var(--font-sans);
-  font-size: var(--fs-xs);
-  line-height: 1.75;
 }
 
 /* ---------- 源码视图 ---------- */
@@ -1953,12 +2268,6 @@ button.dispatch-step:hover {
   border-radius: var(--radius-lg);
   box-shadow: var(--sh-2);
   padding: 22px 24px;
-}
-
-/* 生图工作台是两栏（预览 + 编辑），780 的阅读列宽塞不下：
-   预览被压到 300 出头、表单只剩 320，两边都局促。只在配图平台放开到 1180。 */
-.panel-card.panel-card-wide {
-  max-width: 1180px;
 }
 
 /* ---------- 空状态 ---------- */
@@ -2471,7 +2780,7 @@ button.dispatch-step:hover {
   background: var(--panel);
 }
 
-/* ---------- 发布准备 ---------- */
+/* ---------- 发布检查 ---------- */
 
 .readiness-modal {
   max-width: 620px;
@@ -2649,6 +2958,124 @@ button.dispatch-step:hover {
 
 .readiness-detail.tone-error {
   border-left-color: var(--error);
+}
+
+/* 检查面板的下半部分：统计 / 提示 / 转换说明 / 附加产物。
+   清单回答「能不能发」，这里回答「发出去是什么样」。 */
+.check-platform {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin-top: 6px;
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.check-limit {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--panel-soft);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.check-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.check-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.check-block-head > span:first-child {
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.check-block-note {
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+}
+
+/* 统计用细线网格：标签轻、数字重，扫一眼就能对上 */
+.check-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--line-soft);
+  background: var(--line-soft);
+}
+
+.check-stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--panel);
+}
+
+.check-stat span {
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.check-stat strong {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.check-stat.warn strong {
+  color: var(--warn);
+}
+
+.check-stat.error strong {
+  color: var(--error);
+}
+
+.check-stat.ok strong {
+  color: var(--ok);
+}
+
+.check-notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-notes li {
+  position: relative;
+  padding: 5px 0 5px 14px;
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.check-notes li::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+  color: var(--line-strong);
+}
+
+.check-notes li + li {
+  border-top: 1px solid var(--line-soft);
 }
 
 /* ---------- ⌘K 快速切换 ---------- */
@@ -2920,6 +3347,7 @@ button.dispatch-step:hover {
   border-radius: var(--radius-xs);
   font-size: var(--fs-sm);
   color: var(--ink-muted);
+  white-space: nowrap;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
 }
@@ -2948,9 +3376,12 @@ button.dispatch-step:hover {
   --studio-brand-soft: #eef2f7;
   --studio-brand-line: #c9d7e6;
 
+  /* 卡片工坊占满「编辑 + 预览」两栏：左胶片、中预览、右检查器。
+     三列各自滚动，改文字时预览始终在视野里。 */
   display: grid;
-  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
-  gap: 28px;
+  grid-template-columns: 220px minmax(0, 1fr) 340px;
+  grid-template-areas: 'rail stage inspector';
+  gap: 24px;
   align-items: start;
 }
 
@@ -2960,18 +3391,79 @@ button.dispatch-step:hover {
     --studio-brand-soft: #1e2631;
     --studio-brand-line: #2f4055;
   }
-  /* 深色下强调色是浅蓝，按钮上的白字会糊，换成深字 */
-  .studio .btn-accent,
-  .studio .btn-accent:hover:not(:disabled) {
-    color: #14120f;
-  }
 }
 
-/* 左栏跟着滚动：右栏表单很长，预览与导出按钮不该被滚出视野 */
-.studio-stage {
+/* 左栏：卡片胶片。列表自己滚，底部「加卡 / 重新生成」始终够得着 */
+.studio-rail {
+  grid-area: rail;
   position: sticky;
-  top: 12px;
+  top: 4px;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  max-height: calc(100vh - 218px);
+}
+
+.studio-rail-head,
+.studio-inspector-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.studio-rail .card-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.studio-rail-actions {
+  display: flex;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.studio-rail-actions .add-wrap {
+  flex: 1;
+}
+
+.studio-rail-actions .add-wrap > .btn {
+  width: 100%;
+}
+
+.studio-rail-actions > .btn {
+  flex-shrink: 0;
+}
+
+.studio-rail-hint {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+}
+
+/* 中栏跟着滚动：右栏表单很长，预览与导出按钮不该被滚出视野 */
+.studio-stage {
+  grid-area: stage;
+  position: sticky;
+  top: 4px;
+  min-width: 0;
+}
+
+/* 右栏：整套设置 + 当前卡。表单长，自己在列内滚 */
+.studio-inspector {
+  grid-area: inspector;
+  position: sticky;
+  top: 4px;
+  min-width: 0;
+  max-height: calc(100vh - 218px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .studio-stage-head {
@@ -3112,11 +3604,6 @@ button.dispatch-step:hover {
   color: var(--ink-muted);
 }
 
-.studio-panel {
-  flex: 1;
-  min-width: 0;
-}
-
 /* 本区块内用油墨蓝替换朱红：按钮、聚焦环、选中态 */
 .studio .btn-accent {
   background: var(--studio-brand);
@@ -3133,6 +3620,15 @@ button.dispatch-step:hover {
   box-shadow: none;
 }
 
+/* 深色下强调色变成浅蓝，白字会糊；必须写在基础规则之后，
+   否则同 specificity 的 color:#fff 会把它覆盖掉。 */
+@media (prefers-color-scheme: dark) {
+  .studio .btn-accent,
+  .studio .btn-accent:hover:not(:disabled) {
+    color: #14120f;
+  }
+}
+
 .studio .field-input:focus,
 .studio .field-textarea:focus {
   border-color: var(--studio-brand);
@@ -3141,12 +3637,6 @@ button.dispatch-step:hover {
 
 .studio .segmented button.active {
   color: var(--studio-brand);
-}
-
-.studio .theme-chip.active {
-  border-color: var(--studio-brand-line);
-  color: var(--studio-brand);
-  background: var(--studio-brand-soft);
 }
 
 .studio .card-item.active {
@@ -3159,6 +3649,15 @@ button.dispatch-step:hover {
   margin: 20px 0 12px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+.studio-editor-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
 }
 
 .studio-editor-title {
@@ -3175,6 +3674,42 @@ button.dispatch-step:hover {
   margin-top: 2px;
   font-size: var(--fs-xs);
   color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+/* 配色收成一排色块：8 套一行看全，名称放在 title / aria-label 里。
+   原来每个 chip 都带两个字，340px 宽要占四行。 */
+.studio-theme-row {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.theme-dot {
+  position: relative;
+  height: 30px;
+  padding: 0;
+  border: 1px solid;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.theme-dot span {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.theme-dot:hover {
+  transform: translateY(-1px);
+}
+
+.theme-dot.active {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--studio-brand);
 }
 
 /* 排版分组：细线小卡片，把「字号 / 密度 / 对齐 / 显示」收在一处 */
@@ -3273,8 +3808,8 @@ button.dispatch-step:hover {
 .card-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 9px;
+  gap: 2px;
+  padding: 0 7px 0 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -3282,6 +3817,30 @@ button.dispatch-step:hover {
     box-shadow var(--dur) var(--ease);
   text-align: left;
   width: 100%;
+  /* 横向胶片条里靠 flex-basis 定宽；不写 min-width:0 会被长标题的
+     min-content 撑开，最后一张卡永远露不出来 */
+  min-width: 0;
+}
+
+/* 卡片行本身是 div（拖拽容器），选择是里面一个真正的按钮；
+   删除/上下移是它的兄弟按钮，不再嵌套交互元素。 */
+.card-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 0 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.card-select:focus-visible {
+  outline: 2px solid var(--studio-brand);
+  outline-offset: -2px;
 }
 
 .card-item:hover {
@@ -3321,6 +3880,73 @@ button.dispatch-step:hover {
 .card-item.drop-target {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+/* 上下移：平时收起，悬停/聚焦/当前卡时出现，避免胶片列变成按钮墙 */
+.card-move {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.card-item:hover .card-move,
+.card-item:focus-within .card-move,
+.card-item.active .card-move {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.card-move-btn {
+  width: 20px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--panel);
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.card-move-btn:hover:not(:disabled) {
+  background: var(--panel-soft);
+  border-color: var(--line-strong);
+}
+
+.card-move-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* 新增卡的删除键：平时淡一点，悬停再实，避免误触但不藏起来 */
+.card-item-remove {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  opacity: 0.45;
+  transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.card-item-remove.confirm {
+  width: auto;
+  padding: 0 6px;
+  border: 1px solid var(--error);
+  background: var(--error-soft);
+  color: var(--error);
+  font-size: var(--fs-xs);
+  opacity: 1;
+}
+
+.card-item:hover .card-item-remove,
+.card-item:focus-within .card-item-remove {
+  opacity: 1;
 }
 
 /* 尺寸切换：三个按钮等宽，比下拉更容易一眼看全 */
@@ -3371,6 +3997,7 @@ button.dispatch-step:hover {
 }
 
 .card-item-title {
+  display: block;
   font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--ink);
@@ -3380,6 +4007,7 @@ button.dispatch-step:hover {
 }
 
 .card-item-sub {
+  display: block;
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   white-space: nowrap;
@@ -4054,6 +4682,63 @@ button.dispatch-step:hover {
   flex-shrink: 0;
 }
 
+.theme-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 深色预览开关：和主题选择器同一排，关着的时候是描边，开着才点亮 */
+.dark-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  white-space: nowrap;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.dark-toggle:hover {
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+}
+
+.dark-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--panel-soft);
+}
+
+.dark-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.dark-toggle.active .dark-toggle-dot {
+  opacity: 1;
+}
+
+.dark-ratio {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+
+.dark-ratio.warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 .theme-bar {
   display: flex;
   align-items: center;
@@ -4212,6 +4897,25 @@ button.dispatch-step:hover {
   flex-shrink: 0;
 }
 
+/* 深色预览下才出现：主题墙里直接把「这套在深色下偏弱」标出来，
+   比打开每一套去量对比度快。 */
+.theme-dark-warn {
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  color: var(--warn);
+  border: 1px solid currentColor;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 达标时不抢眼：只在深色主题墙里作为「这套读起来有多稳」的参考 */
+.theme-dark-warn.ok {
+  color: var(--ink-muted);
+  border-color: var(--line);
+}
+
 .theme-check {
   margin-left: auto;
   color: var(--accent);
@@ -4229,15 +4933,6 @@ button.dispatch-step:hover {
 }
 
 /* ---------- 发布台账 · 合规检查 · 图片清单 ---------- */
-
-/* 顶栏入口：已发满 8 个变绿 */
-.ledger-entry {
-  font-variant-numeric: tabular-nums;
-}
-
-.ledger-entry.complete {
-  color: var(--ok);
-}
 
 /* 侧栏的「已发」勾 */
 .nav-check {
@@ -5105,10 +5800,28 @@ button.dispatch-step:hover {
   gap: 8px;
 }
 
+/* 每一条 = 输入行 + 可选的行内提示，提示换行时不挤乱 flex 行 */
+.tail-item-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .tail-item {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.tail-item-warn {
+  margin-left: 26px;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--warn);
+}
+
+.field-input.is-warn {
+  border-color: var(--warn);
 }
 
 .tail-item-idx {
@@ -5183,9 +5896,30 @@ button.dispatch-step:hover {
 
 @media (max-width: 1180px) {
   :root {
-    --sidebar-w: 282px;
+    --sidebar-w: 250px;
+    --editor-w: 340px;
   }
+
+  /* 预览列变窄后，标题和工具不能继续挤在一行：
+     1024 宽下「公众号」曾被压成竖排三个字。 */
+  .head-row {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .head-title {
+    flex: 1 1 100%;
+  }
+
+  .head-tools {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   .main-head,
+  .preview-toolbar,
   .actionbar {
     padding-left: 20px;
     padding-right: 20px;
@@ -5202,9 +5936,16 @@ button.dispatch-step:hover {
   }
 }
 
-@media (max-width: 980px) {
+/* 左栏在 1180 以下变抽屉：1024 宽时三栏会把预览挤到 394px，
+   而抽屉 + 编辑/预览两栏能给预览 644px。981/980 的断点悬崖也随之消失。 */
+@media (max-width: 1180px) {
   .sidebar-toggle {
     display: inline-flex;
+  }
+
+  /* 左栏变成抽屉后不再占网格列，剩下「编辑器 + 预览」两栏 */
+  .app-body {
+    grid-template-columns: var(--editor-w) minmax(0, 1fr);
   }
 
   .sidebar {
@@ -5244,14 +5985,59 @@ button.dispatch-step:hover {
   }
 }
 
+@media (max-width: 420px) {
+  /* 390 宽时同时放「编辑/预览切换 + 已保存 + 台账 + 工具」会挤到换行，
+     品牌只留图标，标题在浏览器标签页里仍然看得到。 */
+  .brand-mark {
+    display: none;
+  }
+}
+
 @media (max-width: 760px) {
   .topbar {
     gap: 8px;
     padding: 0 12px;
   }
 
+  /* 一屏只放得下一栏：编辑 / 预览用栏头的小按钮切，不挤占顶栏 */
+  .app-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-pane {
+    display: none;
+    border-right: 0;
+  }
+
+  .app.mobile-edit .editor-pane {
+    display: flex;
+  }
+
+  .app.mobile-edit .main {
+    display: none;
+  }
+
+  .mobile-pane-link {
+    display: inline-flex;
+  }
+
+  .editor-head,
+  .editor-foot {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .editor-textarea {
+    padding: 16px 14px 24px;
+  }
+
   .brand {
     gap: 7px;
+    flex-shrink: 0;
+  }
+
+  .brand-mark {
+    white-space: nowrap;
   }
 
   .brand-mark {
@@ -5267,6 +6053,7 @@ button.dispatch-step:hover {
   }
 
   .main-head,
+  .preview-toolbar,
   .actionbar {
     padding-left: 14px;
     padding-right: 14px;
@@ -5279,7 +6066,13 @@ button.dispatch-step:hover {
 
   .head-tools {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .preview-size-switch {
+    flex: 0 0 auto;
   }
 
   .head-row {
@@ -5291,17 +6084,8 @@ button.dispatch-step:hover {
     flex: 1 1 100%;
   }
 
-  .main-meta-row {
-    flex-wrap: wrap;
-  }
-
-  .dispatch-rail {
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-
-  .readiness-entry > span:nth-child(2) {
-    display: none;
+  .preview-toolbar-actions {
+    gap: 8px;
   }
 
   .actionbar {
@@ -5427,10 +6211,6 @@ button.dispatch-step:hover {
 
   .brand-mark {
     font-size: var(--fs-sm);
-  }
-
-  .ledger-entry {
-    padding-inline: 7px;
   }
 
   .actionbar {
@@ -5649,16 +6429,51 @@ button.dispatch-step:hover {
   margin-bottom: 14px;
 }
 
-@media (max-width: 980px) {
+/* 三列在 1340 以下放不下：把胶片横过来铺在顶部，预览与检查器留两列。
+   仍然保留「改字时预览在左、设置在右」的对应关系。 */
+@media (max-width: 1340px) {
   .studio {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-areas:
+      'rail rail'
+      'stage inspector';
     gap: 20px;
   }
-  /* 单列时预览在上、编辑在下，sticky 会把它钉死在屏幕上挡住表单 */
-  .studio-stage {
+
+  .studio-rail {
     position: static;
+    max-height: none;
   }
-  /* 头部的换行挪到 1120 断点里去了（那里给了 .head-title 100% 的 flex-basis） */
+
+  .studio-rail .card-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 6px;
+  }
+
+  .studio-rail .card-item {
+    flex: 0 0 210px;
+  }
+
+  .studio-rail-actions {
+    max-width: 300px;
+  }
+
+  .studio-rail-hint {
+    display: none;
+  }
+
+  .studio-inspector {
+    max-height: calc(100vh - 190px);
+  }
+}
+
+@media (max-width: 1180px) {
+  /* 左栏变成抽屉后，卡片工坊独占整个宽度 */
+  .app-body.card-mode {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 760px) {
@@ -5668,6 +6483,63 @@ button.dispatch-step:hover {
 
   .cover-setup-preview {
     width: min(220px, 100%);
+  }
+
+  /* 单列顺序：胶片 → 预览 → 本张卡编辑 → 导出。
+     让 .studio-stage 变成 display:contents，把它的四个孩子提成 flex item，
+     这样导出可以排到检查器后面，不用为了手机端复制一份 DOM。
+     sticky 在单列里会把预览钉住挡住表单，所以全部改静态。 */
+  .studio {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  .studio-stage,
+  .studio-inspector {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .studio-stage {
+    display: contents;
+  }
+
+  .studio-rail { order: 1; margin-bottom: 18px; }
+  .studio-stage-head { order: 2; }
+  .studio-preview { order: 3; }
+  .studio-pager { order: 4; }
+  .studio-inspector { order: 5; margin-top: 18px; }
+  .studio-export { order: 6; margin-top: 18px; }
+
+  .studio-rail-actions {
+    max-width: none;
+  }
+
+  .studio-rail-actions .add-wrap {
+    flex: 0 1 auto;
+  }
+
+  .studio-rail-actions .add-wrap > .btn {
+    width: auto;
+  }
+
+  /* 胶片横条：给当前卡的上下移按钮留出宽度，标题不至于只剩两个字；
+     第二张会稍微露不全，横向滚动本来就是这个断点的预期 */
+  .studio-rail .card-item {
+    flex: 0 0 190px;
+  }
+
+  /* 窄屏的工具栏只剩标题和两个 chip，说明文字让标题竖着断行 */
+  .preview-toolbar-meta {
+    display: none;
+  }
+
+  /* 卡片平台没有编辑器可切，主区必须一直显示 */
+  .app.card-mode.mobile-edit .main {
+    display: flex;
   }
 }
 

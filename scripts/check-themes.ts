@@ -6,7 +6,7 @@
  * - 标签里没有 class / id / data-src，也没有 <pre> / <style>
  *   （只看标签内部：正文代码块里出现 `id="x"` 这种字样是正常的，不能算）
  * - 相比基准主题（paper），任何主题的 HTML 字符数涨幅不超过 20%
- *   —— 涨太多说明样式没上提到外层 <section>，长文会被撑爆 20000 上限
+ *   —— 涨太多说明样式没上提到外层 <section>，长文 HTML 会膨胀、粘贴变慢
  *   编号主题（headingIndex）按标题数给固定豁免：它给每个 H2 多一个编号节点，
  *   这段开销和「样式有没有上提」无关。短文章标题密度高，5 个标题就能把比值
  *   顶过 20%（fixture-html.md 实测 22.3%），不豁免会误报。
@@ -18,9 +18,10 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { POSTS } from './posts-dir'
 import { parseArticle } from '../src/core/parse'
-import { renderHtml } from '../src/core/html-inline'
+import { renderHtml, type HtmlTheme } from '../src/core/html-inline'
 import type { Block } from '../src/core/ir'
-import { wechatThemes } from '../src/themes/wechat'
+import { doubanTheme, wechatThemes } from '../src/themes/wechat'
+import { contrastRatio } from '../src/core/color'
 
 const files = readdirSync(POSTS).filter((f) => f.endsWith('.md') && !f.startsWith('_'))
 const docs = files.map((f) => ({
@@ -31,6 +32,37 @@ const docs = files.map((f) => ({
 console.log(`扫描 ${docs.length} 篇 × ${wechatThemes.length} 套主题`)
 
 const problems: string[] = []
+
+/**
+ * 图注 / 引用 / 参考链接都属于「小字」，对比度必须 ≥ 4.5:1。
+ * 这些颜色会原样复制到公众号，不能只按站内预览的观感放宽。
+ */
+const contrastTargets: [string, HtmlTheme | undefined][] = []
+for (const theme of wechatThemes) {
+  contrastTargets.push([theme.id, theme], [`${theme.id}-dark`, theme.dark])
+}
+contrastTargets.push(['douban', doubanTheme])
+
+let contrastPairs = 0
+for (const [label, theme] of contrastTargets) {
+  if (!theme) continue
+  const bg = theme.root['background-color']
+  if (!bg) continue
+  const pairs: [string, string | undefined][] = [
+    ['图注', theme.caption?.color],
+    ['参考链接', theme.refsItem?.color],
+  ]
+  for (const [name, fg] of pairs) {
+    if (!fg) continue
+    contrastPairs += 1
+    const ratio = contrastRatio(fg, bg)
+    if (ratio < 4.5) {
+      problems.push(`${label} ${name}对比度 ${ratio.toFixed(2)}:1（${fg} on ${bg}），需 ≥ 4.5`)
+    }
+  }
+}
+console.log(`检查 ${contrastPairs} 组主题图注 / 参考链接对比度`)
+
 const BASELINE = 'paper'
 const MAX_GROWTH = 1.2
 /**

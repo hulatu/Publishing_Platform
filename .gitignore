@@ -3,6 +3,13 @@ node_modules/
 dist/
 .tmp/
 
+# Hugo 误输出（本站不是 Hugo 站点，不允许再进 public/）
+.hugo_build.lock
+public/categories/
+public/tags/
+public/index.xml
+public/sitemap.xml
+
 # 系统与编辑器
 .DS_Store
 *.local

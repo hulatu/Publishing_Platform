@@ -43,6 +43,11 @@ export interface RenderOutput {
 export interface ConvertOptions {
   /** 公众号主题 id */
   wechatThemeId: string
+  /**
+   * 用深色变体渲染，只给站内预览用。
+   * 复制 / 导出时不传，产物必须保持亮色主题。
+   */
+  wechatThemeDark?: boolean
   /** 公众号文末组件（关注引导 / 往期推荐 / 版权），只有公众号渲染器会用 */
   tail?: TailConfig
   /** 账号名，替换尾部模板里的 {account} */
@@ -88,7 +93,6 @@ export const convertPlatforms: ConvertPlatform[] = [
     name: '公众号',
     kind: 'convert',
     hint: '全内联样式',
-    limits: '正文上限 20,000 字',
     load: () => import('./wechat').then((m) => m.renderWechat),
   },
   {

@@ -55,6 +55,8 @@ interface Props {
   onCopySource: () => void
   onDownload: () => void
   onExportAll: () => void
+  /** 按 H2 把当前文章拆成多篇导出（不再和字数上限绑定） */
+  onSplitExport: () => void
   onGenerateAll: () => void
   onCopyCurrent: () => void
   onGenerateCurrent: () => void
@@ -66,7 +68,7 @@ interface Props {
 }
 
 export function ActionBar(props: Props) {
-  const { kind, doc, output, currentPrepared, currentPublished, allPublished, platformTotal } = props
+  const { kind, output, currentPrepared, currentPublished, allPublished, platformTotal } = props
   const next = props.nextUnpublished
 
   return (
@@ -114,17 +116,6 @@ export function ActionBar(props: Props) {
 
           <ToolsMenu {...props} />
         </div>
-      ) : null}
-
-      {doc.warnings.length > 0 ? (
-        <details className="details details-inline">
-          <summary>解析提示（{doc.warnings.length}）</summary>
-          <div className="details-body">
-            {doc.warnings.map((w, i) => (
-              <div key={i}>· {w}</div>
-            ))}
-          </div>
-        </details>
       ) : null}
     </div>
   )
@@ -261,6 +252,7 @@ function ToolsMenu({
   onCopySource,
   onDownload,
   onExportAll,
+  onSplitExport,
   onGenerateAll,
 }: Props) {
   /** 菜单项点完就收起：<details> 不会自己关 */
@@ -313,6 +305,15 @@ function ToolsMenu({
               }}
             >
               <span>{zipping ? '正在打包…' : '导出全平台'}</span>
+            </button>
+            <button
+              aria-label="按二级标题拆成多篇导出"
+              onClick={(event) => {
+                closeMenu(event)
+                onSplitExport()
+              }}
+            >
+              <span>按 H2 拆成多篇</span>
             </button>
             <div className="action-more-sep" />
           </>

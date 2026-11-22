@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Doc, DocMeta } from './core/ir'
 import { collectImages } from './core/ir'
-import { charCount } from './core/cjk'
 import { sanitizePreview } from './core/sanitize-preview'
 import { splitSections } from './core/sections'
 import { checkText, scopeOf, stripHtml } from './core/compliance'
@@ -37,12 +36,15 @@ import {
   type RenderOutput,
 } from './renderers'
 import { loadHidden, saveHidden, sortByWidth } from './core/platform-visibility'
-import { WECHAT_WORD_LIMIT } from './renderers/limits'
 import { ThemePicker } from './components/ThemePicker'
-import { wechatThemes } from './themes/wechat'
+import { PreviewStage, type PreviewSize } from './components/PreviewStage'
+import { PreviewSizeSwitch } from './components/PreviewSizeSwitch'
+import { darkContrast, getWechatTheme, wechatThemes } from './themes/wechat'
+import { formatRatio } from './core/color'
 import { resolveProvider } from './ai/provider'
 import { emptyAIState, isRewriteId, rewriteIds, type AIState, type RewriteId } from './ai/types'
 import { useAIJobs } from './hooks/useAIJobs'
+import { useAppUpdate } from './hooks/useAppUpdate'
 import { useCopyActions } from './hooks/useCopyActions'
 import { useLedger } from './hooks/useLedger'
 import { useReadiness } from './hooks/useReadiness'
@@ -51,7 +53,9 @@ import { DEFAULT_SITE_NAME } from './cards/build'
 import { cardThemes } from './cards/themes'
 import { SAMPLE_ARTICLE } from './core/sample'
 
-import { ImportPanel, type ImportPanelHandle } from './components/ImportPanel'
+import { splitFrontMatter } from './core/frontmatter'
+import { EditorPane, type EditorPaneHandle } from './components/EditorPane'
+import { MetaEditor } from './components/MetaEditor'
 import { ActionBar } from './components/ActionBar'
 import { PlatformNav } from './components/PlatformNav'
 import { Sheet, type SheetId } from './components/Sheet'
@@ -102,7 +106,7 @@ const PlatformPalette = lazy(() =>
 const RecoverySheet = lazy(() =>
   import('./components/RecoverySheet').then((m) => ({ default: m.RecoverySheet })),
 )
-import { NoticeStack, type NoticeItem } from './components/NoticeStack'
+import type { NoticeItem } from './components/NoticeStack'
 import { ToastLayer, useToasts } from './components/Toast'
 
 type Kind = 'convert' | 'rewrite' | 'card'
@@ -116,6 +120,28 @@ function kindOf(id: string): Kind {
 const THEME_KEY = 'ad.wechat-theme'
 const ACCOUNT_KEY = 'ad.wechat-account'
 const CARD_THEME_KEY = 'ad.card-theme'
+const PREVIEW_SIZE_KEY = 'ad.preview-size.v1'
+const WECHAT_DARK_KEY = 'ad.wechat-dark-preview.v1'
+
+/** 预览宽度：只影响站内看稿，不影响产物 */
+function readPreviewSize(): PreviewSize {
+  try {
+    const saved = localStorage.getItem(PREVIEW_SIZE_KEY)
+    if (saved === 'mobile' || saved === 'tablet' || saved === 'auto') return saved
+  } catch {
+    // 隐私模式下读不到，按自适应
+  }
+  return 'auto'
+}
+
+/** 微信深色预览开关。默认关：它改变的是「预览怎么显示」，不是文章本身 */
+function readWechatDark(): boolean {
+  try {
+    return localStorage.getItem(WECHAT_DARK_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 /** 公众号账号名，替换文末模板里的 {account} */
 function readStoredAccount(): string {
@@ -160,6 +186,7 @@ function loadParseModule(): Promise<ParseModule> {
 }
 
 export default function App() {
+  const { updateReady, applyUpdate } = useAppUpdate()
   const [doc, setDoc] = useState<Doc | null>(null)
   const [fileName, setFileName] = useState('')
   const [platform, setPlatform] = useState('wechat')
@@ -217,15 +244,43 @@ export default function App() {
   /** 公众号文末三块（账号级配置，和文章无关，所以存在 localStorage 而不是 doc 里） */
   const [tail, setTail] = useState<TailConfig>(readTailConfig)
   const [account, setAccount] = useState(readStoredAccount)
-  /** 点击发布轨道的「草稿」时，通知侧栏里的文章信息展开 */
-  const [metaEditorSignal, setMetaEditorSignal] = useState(0)
   /** 导入时的完整原文（含 front matter），草稿要连正文一起存才恢复得回来 */
   const [sourceText, setSourceText] = useState('')
+  /** 中间栏正在编辑的正文（不含 front matter） */
+  const [bodyDraft, setBodyDraft] = useState('')
+  /** 正文已改动、还没跑完防抖解析 */
+  const [bodyDirty, setBodyDirty] = useState(false)
+  /** 原文的 front matter 前缀，编辑正文后重新拼回完整原文存草稿 */
+  const [sourcePrefix, setSourcePrefix] = useState('')
+  /** 窄屏一次只显示一栏：编辑或预览 */
+  const [mobilePane, setMobilePane] = useState<'edit' | 'preview'>('edit')
   const [drafts, setDrafts] = useState<DraftSnapshot[]>(listDrafts)
   /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
+  /** 预览纸宽度：自适应 / 手机 390 / 平板 820 */
+  const [previewSize, setPreviewSize] = useState<PreviewSize>(readPreviewSize)
+  /** 公众号深色模式预览：只换预览主题，复制仍然用亮色 */
+  const [wechatDark, setWechatDark] = useState(readWechatDark)
+
+  const changePreviewSize = useCallback((size: PreviewSize) => {
+    setPreviewSize(size)
+    try {
+      localStorage.setItem(PREVIEW_SIZE_KEY, size)
+    } catch {
+      // 写不进去不影响本次使用
+    }
+  }, [])
+
+  const changeWechatDark = useCallback((on: boolean) => {
+    setWechatDark(on)
+    try {
+      localStorage.setItem(WECHAT_DARK_KEY, on ? '1' : '0')
+    } catch {
+      // 同上
+    }
+  }, [])
   const scrollRef = useRef<HTMLDivElement>(null)
-  const importPanelRef = useRef<ImportPanelHandle>(null)
+  const editorPaneRef = useRef<EditorPaneHandle>(null)
   const mainTitleRef = useRef<HTMLHeadingElement>(null)
   /** 已加载的解析模块：load / restoreDraft 里先加载、再 setDoc，所以 previewHtml 的 useMemo 跑到时它一定已经在了 */
   const parseModRef = useRef<ParseModule | null>(null)
@@ -327,7 +382,12 @@ export default function App() {
       setDoc(parsed)
       setFileName(name)
       setSourceText(source)
+      const fm = splitFrontMatter(source)
+      setSourcePrefix(fm.found ? source.slice(0, source.length - fm.body.length) : '')
+      setBodyDraft(parsed.rawMd)
+      setBodyDirty(false)
       setArticleKey(key)
+      setMobilePane('preview')
 
       if (saved && parsed.blocks.length > 0 && saved.fingerprint === fp && draftValue(saved).worth) {
         adoptAI({
@@ -354,6 +414,49 @@ export default function App() {
   const updateMeta = useCallback((patch: Partial<DocMeta>) => {
     setDoc((d) => (d ? { ...d, meta: { ...d.meta, ...patch } } : d))
   }, [])
+
+  /**
+   * 正文编辑。
+   *
+   * 文本先即时落 state，解析延后 350ms —— 否则每敲一个字都要重排整篇，
+   * 长文会明显卡顿。sourceText 同步更新，保证草稿不会漏掉最后几个字。
+   */
+  const editBody = useCallback(
+    (next: string) => {
+      setBodyDraft(next)
+      setBodyDirty(true)
+      setSourceText(sourcePrefix + next)
+    },
+    [sourcePrefix],
+  )
+
+  useEffect(() => {
+    if (!doc || !bodyDirty) return
+    const mod = parseModRef.current
+    if (!mod) return
+
+    const timer = window.setTimeout(() => {
+      try {
+        const parsed = mod.parseArticle({
+          source: sourcePrefix + bodyDraft,
+          fileName: fileName || 'untitled.md',
+        })
+        // 只换正文。meta 以左栏 / 原 front matter 为准 ——
+        // 编辑正文时不应把用户在「文章信息」里改过的标题冲回原值。
+        setDoc((prev) =>
+          prev
+            ? { ...prev, blocks: parsed.blocks, rawMd: bodyDraft, warnings: parsed.warnings }
+            : prev,
+        )
+      } catch (e) {
+        toast(`正文解析失败：${e instanceof Error ? e.message : String(e)}`, 'error')
+      } finally {
+        setBodyDirty(false)
+      }
+    }, 350)
+
+    return () => window.clearTimeout(timer)
+  }, [bodyDraft, bodyDirty, doc, fileName, sourcePrefix, toast])
 
   /* ---------------- 渲染 ---------------- */
 
@@ -434,11 +537,29 @@ export default function App() {
   }, [doc, platform, themeId, kind, tail, account, renderFns, renderLoadError])
 
   /**
-   * 公众号超限判定：按**字数**，和微信编辑器口径一致。
-   * 别再拿 HTML 字符数去比 —— 内联样式会让 1.1 万字的稿子变成 5.9 万字符，
-   * 那样每篇都会被误判超限。
+   * 深色预览产物。
+   *
+   * 单独算一份，不覆盖 output：复制、导出、字数统计、台账都继续用亮色那一份。
+   * 深色只是「读者在微信里可能看到的样子」，不是我们交给平台的产物。
    */
-  const overLimit = Boolean(output && platform === 'wechat' && charCount(output.text) > WECHAT_WORD_LIMIT)
+  const previewOutput = useMemo(() => {
+    if (!wechatDark || platform !== 'wechat' || kind !== 'convert' || !doc) return output
+    const render = renderFns[platform]
+    if (!render) return output
+    try {
+      return render(doc, { wechatThemeId: themeId, tail, account, wechatThemeDark: true })
+    } catch {
+      return output
+    }
+  }, [wechatDark, output, platform, kind, doc, renderFns, themeId, tail, account])
+
+  /** 当前主题在深色下最弱的一项对比度，显示在开关旁边 */
+  const darkInfo = useMemo(() => darkContrast(getWechatTheme(themeId, true)), [themeId])
+  /** 深色纸面用主题自己的底色，避免外层白卡在深色正文四周留一圈白框 */
+  const darkSurface = useMemo(
+    () => getWechatTheme(themeId, true).root['background-color'],
+    [themeId],
+  )
 
   /** Markdown 平台的阅读预览：和转换器共用同一套前置处理 */
   const previewHtml = useMemo(() => {
@@ -460,17 +581,30 @@ export default function App() {
    */
   const richPreviewHtml = useMemo(
     () =>
-      sanitizePreview(output?.html ?? '').replace(
+      sanitizePreview(previewOutput?.html ?? '').replace(
         /<img\b(?![^>]*\bloading=)/g,
         '<img loading="lazy" decoding="async"',
       ),
-    [output],
+    [previewOutput],
   )
 
   /** 能切「预览 / 源码」的平台：md 走渲染预览，公众号走富文本预览 */
   const canPreview = Boolean(
     output && (output.format === 'markdown' ? previewHtml : output.format === 'html' && output.html),
   )
+
+  /** 预览工具栏与纸面说明只在「真的在看排版」时出现 */
+  const showPaperChrome = Boolean(doc && kind === 'convert' && viewMode === 'preview' && canPreview)
+  const previewModeLabel =
+    previewSize === 'mobile' ? '手机 · 390 px' : previewSize === 'tablet' ? '平板 · 820 px' : '自适应阅读'
+  const previewMetaLabel =
+    platform === 'wechat'
+      ? getWechatTheme(themeId, wechatDark).name
+      : output?.format === 'markdown'
+        ? 'Markdown'
+        : output?.format === 'html'
+          ? 'HTML'
+          : ''
 
   const { notices, formatNotes } = useMemo<{ notices: NoticeItem[]; formatNotes: string[] }>(() => {
     if (!output) return { notices: [], formatNotes: [] }
@@ -585,7 +719,12 @@ export default function App() {
       setDoc({ ...parsed, meta: d.meta })
       setFileName(d.fileName)
       setSourceText(d.source)
+      const fm = splitFrontMatter(d.source)
+      setSourcePrefix(fm.found ? d.source.slice(0, d.source.length - fm.body.length) : '')
+      setBodyDraft(parsed.rawMd)
+      setBodyDirty(false)
       setArticleKey(d.key)
+      setMobilePane('preview')
       adoptAI({
         digest: d.digest,
         platformStates: d.platformStates,
@@ -755,6 +894,15 @@ export default function App() {
         ? Boolean(currentAI.result)
         : Boolean(doc)
 
+  /** 预览工具栏里的一个状态 chip：当前平台处于哪一步 + 全局已发几个 */
+  const publishChip = currentPublished
+    ? { label: '已发布', tone: 'ok', hint: '这个平台已标记为发布' }
+    : currentPrepared
+      ? { label: '待发布', tone: 'warn', hint: '已复制，等待在平台里确认发布' }
+      : currentGenerated
+        ? { label: '已生成', tone: 'note', hint: '产物已生成，可以复制' }
+        : { label: '未生成', tone: 'muted', hint: '还没有生成当前平台的产物' }
+
   /** 当前平台发布完成后，沿侧栏可见顺序找下一个未发布平台，末尾回到开头。 */
   const nextUnpublished = useMemo(() => {
     const visible = sortByWidth(
@@ -779,19 +927,6 @@ export default function App() {
   }, [output, platform, platformStates])
 
   const allPublished = ledgerDone === platformTotal
-
-  /**
-   * 主界面只保留真正影响发布判断的字数。
-   * HTML 体积、图片数、外链数等实现细节仍在渲染产物的 stats 里，
-   * 需要时由发布准备和对应面板承接，不再长期占据主标题下方。
-   */
-  const summaryStats = useMemo(() => {
-    if (!doc || !output) return []
-    if (platform === 'wechat') {
-      return output.stats.filter((stat) => stat.label === '正文' || stat.label === '含文末')
-    }
-    return [{ label: '正文', value: `${charCount(output.text).toLocaleString()} 字符` }]
-  }, [doc, output, platform])
 
   const markCurrentPublished = useCallback(() => {
     markLedgerPublished(platform)
@@ -858,6 +993,8 @@ export default function App() {
   const selectPlatform = useCallback((id: string) => {
     setPlatform(id)
     setSidebarOpen(false)
+    // 窄屏上点平台 = 想看这个平台长什么样，直接切到预览
+    setMobilePane('preview')
     requestAnimationFrame(() => mainTitleRef.current?.focus({ preventScroll: true }))
   }, [])
 
@@ -939,7 +1076,7 @@ export default function App() {
   }, [sidebarOpen])
 
   return (
-    <div className={`app ${sidebarOpen ? 'sidebar-open' : ''}`}>
+    <div className={`app ${sidebarOpen ? 'sidebar-open' : ''} mobile-${mobilePane} ${kind === 'card' ? 'card-mode' : ''}`}>
       {/* ================= 顶栏 ================= */}
       <header className="topbar">
         <button
@@ -958,6 +1095,23 @@ export default function App() {
         </div>
 
         <div className="topbar-spacer" />
+
+        {updateReady ? (
+          <button
+            className="update-chip"
+            onClick={() => {
+              if (saveStatus === 'saving') {
+                toast('正在保存草稿，稍等一秒再刷新', 'info')
+                return
+              }
+              applyUpdate()
+            }}
+            title="新版本已下载，点击刷新后生效"
+          >
+            <span className="update-chip-dot" aria-hidden />
+            新版本
+          </button>
+        ) : null}
 
         {doc ? (
           <button
@@ -982,19 +1136,6 @@ export default function App() {
                       hour12: false,
                     })}`
                   : '已保存'}
-          </button>
-        ) : null}
-
-        {doc ? (
-          <button
-            className={`btn btn-sm btn-quiet ledger-entry ${ledgerDone === platformTotal ? 'complete' : ''}`}
-            onClick={() => {
-              setLedgerFocusPlatform('')
-              setSheet('ledger')
-            }}
-            title="发布台账：记录这篇文章发到哪几个平台、什么时候、链接是什么"
-          >
-            {allPublished ? `已完成 ${platformTotal}/${platformTotal}` : `台账 ${ledgerDone}/${platformTotal}`}
           </button>
         ) : null}
 
@@ -1050,19 +1191,69 @@ export default function App() {
         </details>
       </header>
 
-      <div className="app-body">
-        {/* ================= 侧栏 ================= */}
+      <div className={`app-body ${kind === 'card' ? 'card-mode' : ''}`}>
+        {/* ================= 左栏：文章与选项 ================= */}
         <aside className="sidebar">
-          <ImportPanel
-            ref={importPanelRef}
-            currentName={fileName}
-            meta={doc?.meta}
-            onMetaChange={updateMeta}
-            metaOpenSignal={metaEditorSignal}
-            onLoad={load}
-            onError={(m) => toast(m, 'error')}
-            onNotice={(m) => toast(m, 'info')}
-          />
+          <div className="side-section">
+            <div className="side-title">
+              <span>文章</span>
+              {doc ? <span className="count">{fileName.slice(0, 22)}</span> : null}
+            </div>
+            {doc ? (
+              <>
+                <button
+                  className="file-row"
+                  onClick={() => {
+                    setMobilePane('edit')
+                    requestAnimationFrame(() => editorPaneRef.current?.focus())
+                  }}
+                  title="在中间栏编辑正文"
+                >
+                  <span className="file-row-main">
+                    <span className="file-row-title">{doc.meta.title || fileName}</span>
+                    <span className="file-row-filename">{fileName}</span>
+                  </span>
+                  <span className="file-row-swap">编辑</span>
+                </button>
+                <MetaEditor
+                  meta={doc.meta}
+                  onChange={updateMeta}
+                  embedded
+                />
+              </>
+            ) : (
+              <p className="side-empty">在中间栏粘贴 Markdown，或拖入 .md 文件。</p>
+            )}
+          </div>
+
+          {doc && kind === 'convert' && platform === 'wechat' ? (
+            <div className="side-section side-options">
+              <div className="side-title">
+                <span>公众号排版</span>
+              </div>
+              <ThemePicker value={themeId} onChange={setThemeId} dark={wechatDark} />
+              <div className="dark-toggle-row">
+                <button
+                  className={`dark-toggle ${wechatDark ? 'active' : ''}`}
+                  onClick={() => changeWechatDark(!wechatDark)}
+                  aria-pressed={wechatDark}
+                  title={`预览微信深色模式下的观感。最弱对比度：${darkInfo.worst} ${formatRatio(darkInfo.min)}:1`}
+                >
+                  <span className="dark-toggle-dot" aria-hidden />
+                  深色预览
+                </button>
+                {wechatDark ? (
+                  <span
+                    className={`dark-ratio ${darkInfo.min < 4.5 ? 'warn' : ''}`}
+                    title={`深色模式下最弱的是${darkInfo.worst}`}
+                  >
+                    {formatRatio(darkInfo.min)}:1
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <PlatformNav
             active={platform}
             onSelect={selectPlatform}
@@ -1073,6 +1264,23 @@ export default function App() {
             onQuickSwitch={() => setSheet('palette')}
           />
         </aside>
+
+        {/* ================= 中栏：正文编辑器 ================= */}
+        {kind !== 'card' ? (
+          <EditorPane
+            ref={editorPaneRef}
+            doc={doc}
+            fileName={fileName}
+            value={bodyDraft}
+            dirty={bodyDirty}
+            onChange={editBody}
+            onLoad={load}
+            onError={(m) => toast(m, 'error')}
+            onNotice={(m) => toast(m, 'info')}
+            onSample={() => void load(SAMPLE_ARTICLE, '示例文章.md')}
+            onShowPreview={() => setMobilePane('preview')}
+          />
+        ) : null}
         {sidebarOpen ? (
           <button
             className="sidebar-scrim"
@@ -1082,135 +1290,135 @@ export default function App() {
         ) : null}
 
         {/* ================= 主区域 ================= */}
-        <main className="main">
-          <div className="main-head">
-            <div className="head-row">
-              <div className="head-title">
+        <main className={`main ${kind === 'card' ? 'card-main' : ''}`}>
+          {kind !== 'card' ? (
+            <div className="main-head">
+              <div className="head-row">
+                <div className="head-title">
+                  <h1
+                    className="main-title"
+                    ref={mainTitleRef}
+                    tabIndex={-1}
+                    aria-keyshortcuts="BracketLeft BracketRight"
+                    title="按 [ / ] 切换平台"
+                  >
+                    {currentPlatformMeta?.name}
+                  </h1>
+                </div>
+
+                <div className="head-tools">
+                  <button
+                    className="mobile-pane-link"
+                    onClick={() => {
+                      setMobilePane('edit')
+                      requestAnimationFrame(() => editorPaneRef.current?.focus())
+                    }}
+                  >
+                    ← 编辑
+                  </button>
+                  {canPreview ? (
+                    <div className="segmented view-switch">
+                      <button
+                        className={viewMode === 'preview' ? 'active' : ''}
+                        onClick={() => setViewMode('preview')}
+                      >
+                        预览
+                      </button>
+                      <button
+                        className={viewMode === 'source' ? 'active' : ''}
+                        onClick={() => setViewMode('source')}
+                      >
+                        源码
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ---------- 预览工具栏（卡片模式兼任页面 header） ---------- */}
+          <div className="preview-toolbar">
+            <div className="preview-toolbar-title">
+              {kind !== 'card' ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  aria-hidden
+                >
+                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" strokeLinejoin="round" />
+                  <circle cx="12" cy="12" r="2.6" />
+                </svg>
+              ) : null}
+              {kind === 'card' ? (
                 <h1
-                  className="main-title"
+                  className="card-toolbar-title"
                   ref={mainTitleRef}
                   tabIndex={-1}
                   aria-keyshortcuts="BracketLeft BracketRight"
                   title="按 [ / ] 切换平台"
                 >
-                  {currentPlatformMeta?.name}
+                  配图卡片
                 </h1>
-              </div>
-
-              <div className="head-tools">
-                {doc ? (
-                  <button
-                    className={`readiness-entry tone-${readiness.tone}`}
-                    onClick={() => setSheet('readiness')}
-                    title="查看标题、正文、合规与素材的发布准备状态"
-                  >
-                    <span className="readiness-dot" aria-hidden />
-                    <span>发布准备</span>
-                    {readiness.done < readiness.required.length ? (
-                      <strong>
-                        {readiness.done}/{readiness.required.length}
-                      </strong>
-                    ) : null}
-                  </button>
-                ) : null}
-                {canPreview ? (
-                  <div className="segmented view-switch">
-                    <button
-                      className={viewMode === 'preview' ? 'active' : ''}
-                      onClick={() => setViewMode('preview')}
-                    >
-                      预览
-                    </button>
-                    <button
-                      className={viewMode === 'source' ? 'active' : ''}
-                      onClick={() => setViewMode('source')}
-                    >
-                      源码
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            {doc ? (
-              <ol className="dispatch-rail" aria-label="当前平台的发布进度">
-                <li className="done">
-                  <button
-                    className="dispatch-step"
-                    onClick={() => {
-                      setMetaEditorSignal((value) => value + 1)
-                      setSidebarOpen(true)
-                    }}
-                  >
-                    草稿
-                  </button>
-                </li>
-                <li className={currentGenerated ? 'done' : 'current'}>
-                  <button
-                    className="dispatch-step"
-                    onClick={() => {
-                      scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-                      if (canPreview) setViewMode('preview')
-                    }}
-                  >
-                    已生成
-                  </button>
-                </li>
-                <li className={currentPrepared || currentPublished ? 'done' : currentGenerated ? 'current' : ''}>
-                  <button
-                    className="dispatch-step"
-                    onClick={() => {
-                      setLedgerFocusPlatform(platform)
-                      setSheet('ledger')
-                    }}
-                  >
-                    待发布
-                  </button>
-                </li>
-                <li className={currentPublished ? 'current published' : ''}>
-                  <button
-                    className="dispatch-step"
-                    onClick={() => {
-                      setLedgerFocusPlatform(platform)
-                      setSheet('ledger')
-                    }}
-                  >
-                    已发布
-                  </button>
-                </li>
-              </ol>
-            ) : null}
-
-            <div className="main-meta-row">
-              <p className="main-hint">
-                {currentPlatformMeta?.hint}
-                {currentPlatformMeta?.limits ? (
-                  <span
-                    className="limit-note"
-                    title={`${currentPlatformMeta.name}的平台限制`}
-                  >
-                    {currentPlatformMeta.limits}
-                  </span>
-                ) : null}
-              </p>
-              {doc && summaryStats.length > 0 ? (
-                <div className="stats-bar">
-                  {summaryStats.map((s, i) => (
-                    <span key={i} className={`stat-chip ${s.level ?? ''}`}>
-                      <span className="stat-label">{s.label}</span>
-                      {s.value}
-                    </span>
-                  ))}
-                </div>
+              ) : (
+                <span className="preview-toolbar-label">
+                  {viewMode === 'source' ? '产物源码' : '实时预览'}
+                </span>
+              )}
+              {kind === 'card' ? (
+                <span className="preview-toolbar-meta">排序 · 改字 · 配色 · 导出</span>
+              ) : previewMetaLabel ? (
+                <span className="preview-toolbar-meta">{previewMetaLabel}</span>
               ) : null}
-              {doc && kind === 'convert' && platform === 'wechat' ? (
-                <ThemePicker value={themeId} onChange={setThemeId} />
+            </div>
+            <div className="preview-toolbar-actions">
+              {doc ? (
+                <button
+                  className={`check-chip tone-${readiness.tone}`}
+                  onClick={() => setSheet('readiness')}
+                  title="发布检查：标题、正文、合规、素材、统计与转换提示"
+                  aria-label={`发布检查，${readiness.done}/${readiness.required.length} 项就绪`}
+                >
+                  <span className="check-chip-dot" aria-hidden />
+                  <span className="check-chip-label">检查</span>
+                  {readiness.done < readiness.required.length ? (
+                    <span className="check-chip-count">
+                      {readiness.required.length - readiness.done}
+                    </span>
+                  ) : null}
+                </button>
+              ) : null}
+              {doc ? (
+                <button
+                  className={`publish-chip ${publishChip.tone}`}
+                  onClick={() => {
+                    setLedgerFocusPlatform(platform)
+                    setSheet('ledger')
+                  }}
+                  title={`${kind === 'card' ? '发布台账' : publishChip.hint} · 打开发布台账`}
+                >
+                  <span className="publish-chip-dot" aria-hidden />
+                  <span className="publish-chip-label">{kind === 'card' ? '台账' : publishChip.label}</span>
+                  <span className="publish-chip-count">
+                    {ledgerDone}/{platformTotal}
+                  </span>
+                </button>
+              ) : null}
+              {canPreview && viewMode === 'preview' ? (
+                <PreviewSizeSwitch value={previewSize} onChange={changePreviewSize} />
               ) : null}
             </div>
           </div>
 
           {/* ---------- 预览区 ---------- */}
-          <div className="preview-scroll" ref={scrollRef}>
+          <div
+            className="preview-scroll"
+            ref={scrollRef}
+            tabIndex={0}
+            aria-label={kind === 'card' ? '卡片工坊内容' : '预览内容'}
+          >
             {!doc ? (
               <div className="empty-state">
                 <div className="empty-art" aria-hidden>
@@ -1220,12 +1428,12 @@ export default function App() {
                 </div>
                 <div className="empty-text">先导入一篇博客文章</div>
                 <div className="empty-hint">
-                  在左侧「文章」区拖入、选择或粘贴 Markdown 文件。
+                  在中间栏粘贴 Markdown，或拖入、选择一个 .md 文件。
                 </div>
                 <div className="empty-actions">
                   <button
                     className="btn btn-accent empty-primary"
-                    onClick={() => importPanelRef.current?.chooseFile()}
+                    onClick={() => editorPaneRef.current?.chooseFile()}
                   >
                     选择 Markdown 文件
                   </button>
@@ -1244,51 +1452,29 @@ export default function App() {
               </div>
             ) : (
               <>
-                {notices.length > 0 ? (
-                  <div className="notice-holder">
-                    <NoticeStack
-                      items={notices}
-                      action={
-                        overLimit ? (
-                          <button className="btn btn-sm btn-accent" onClick={doSplitExport}>
-                            按 H2 拆篇导出
-                          </button>
-                        ) : undefined
-                      }
-                    />
-                  </div>
-                ) : null}
-
-                {formatNotes.length > 0 ? (
-                  <details className="details format-notes">
-                    <summary>转换说明（{formatNotes.length}）</summary>
-                    <div className="details-body">
-                      {formatNotes.map((note, i) => (
-                        <div key={i}>· {note}</div>
-                      ))}
-                    </div>
-                  </details>
-                ) : null}
-
-                {output?.extras?.map((extra, i) => (
-                  <details key={i} className="details">
-                    <summary>
-                      {extra.title}（{extra.items.length}）
-                    </summary>
-                    <div className="details-body">
-                      {extra.items.map((item, j) => (
-                        <div key={j}>{item}</div>
-                      ))}
-                    </div>
-                  </details>
-                ))}
-
-                <div className="stage" key={`${platform}-${viewMode}`}>
+                <PreviewStage
+                  key={`${platform}-${viewMode}`}
+                  size={viewMode === 'preview' && canPreview ? previewSize : 'auto'}
+                  caption={
+                    showPaperChrome
+                      ? { left: '文章效果', right: previewModeLabel }
+                      : undefined
+                  }
+                  footnote={showPaperChrome ? '好内容，值得好排版。' : undefined}
+                >
                   {kind === 'convert' ? (
                     output ? (
                     viewMode === 'preview' && canPreview ? (
                       output.format === 'html' && output.html ? (
-                        <div className="rich-preview" dangerouslySetInnerHTML={{ __html: richPreviewHtml }} />
+                        <div
+                          className="rich-preview"
+                          style={
+                            wechatDark && platform === 'wechat' && darkSurface
+                              ? { background: darkSurface, borderColor: darkSurface }
+                              : undefined
+                          }
+                          dangerouslySetInnerHTML={{ __html: richPreviewHtml }}
+                        />
                       ) : (
                         <div className="md-preview-wrap" dangerouslySetInnerHTML={{ __html: previewHtml }} />
                       )
@@ -1328,7 +1514,7 @@ export default function App() {
                       </Suspense>
                     </div>
                   ) : (
-                    <div className={kind === 'card' ? 'panel-card panel-card-wide' : 'panel-card'}>
+                    <div className="card-workspace">
                       <Suspense fallback={<p>加载中…</p>}>
                       <CardStudio
                         doc={doc}
@@ -1344,13 +1530,13 @@ export default function App() {
                       </Suspense>
                     </div>
                   )}
-                </div>
+                </PreviewStage>
               </>
             )}
           </div>
 
           {/* ---------- 操作条 ---------- */}
-          {doc ? (
+          {doc && kind !== 'card' ? (
             <ActionBar
               kind={kind}
               doc={doc}
@@ -1378,6 +1564,7 @@ export default function App() {
               onCopySource={doCopySource}
               onDownload={doDownload}
               onExportAll={() => void doExportAllPlatforms()}
+              onSplitExport={() => void doSplitExport()}
               onGenerateAll={() => void generateAll()}
               onCopyCurrent={copyCurrentResult}
               onGenerateCurrent={() => void generateCurrent()}
@@ -1532,6 +1719,13 @@ export default function App() {
             title={doc.meta.title}
             platformName={currentPlatformMeta?.name ?? platform}
             items={readiness.items}
+            hint={currentPlatformMeta?.hint}
+            limits={currentPlatformMeta?.limits}
+            stats={output?.stats}
+            notices={notices}
+            notes={formatNotes}
+            parseWarnings={doc.warnings}
+            extras={output?.extras}
           />
         </Sheet>
       ) : null}

@@ -28,12 +28,5 @@ createRoot(root).render(
   </StrictMode>,
 )
 
-// 离线壳。只在生产构建里注册 —— 开发时 SW 会缓存 Vite 的模块请求，
-// 改代码不生效，排查起来能浪费半小时。
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {
-      // 注册失败不影响在线使用，静默即可
-    })
-  })
-}
+// Service Worker 的注册 / 更新提示统一放在 App 的 useAppUpdate 里：
+// 新版本不再自动 skipWaiting，而是等用户点“新版本”后刷新。

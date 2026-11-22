@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import type { DocMeta } from '../core/ir'
 
 interface Props {
@@ -6,8 +6,6 @@ interface Props {
   onChange: (patch: Partial<DocMeta>) => void
   /** 嵌在文章导入区里时不再单独形成一个带分隔线的侧栏区块 */
   embedded?: boolean
-  /** 主区域发布轨道发出的展开信号 */
-  openSignal?: number
 }
 
 function toText(arr: string[]): string {
@@ -21,15 +19,11 @@ function fromText(text: string): string[] {
     .filter(Boolean)
 }
 
-export function MetaEditor({ meta, onChange, embedded = false, openSignal = 0 }: Props) {
+export function MetaEditor({ meta, onChange, embedded = false }: Props) {
   /** 默认收起：标题在主区顶部已经能看到，侧栏空间优先给平台导航 */
   const [open, setOpen] = useState(false)
   /** 字段 id：读屏靠 label 的 htmlFor 找到对应输入框，光有视觉标签等于没标签 */
   const fid = useId()
-
-  useEffect(() => {
-    if (openSignal > 0) setOpen(true)
-  }, [openSignal])
 
   return (
     <div className={embedded ? 'meta-embed' : 'side-section'}>

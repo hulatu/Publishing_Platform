@@ -92,9 +92,9 @@ function Harness() {
 
     const t = setTimeout(() => {
       if (open === 'ledger') {
-        document.querySelector<HTMLButtonElement>('.ledger-entry')?.click()
+        document.querySelector<HTMLButtonElement>('.publish-chip')?.click()
       } else if (open in readinessAction) {
-        document.querySelector<HTMLButtonElement>('.readiness-entry')?.click()
+        document.querySelector<HTMLButtonElement>('.check-chip')?.click()
         const action = readinessAction[open]
         if (action) {
           setTimeout(() => {

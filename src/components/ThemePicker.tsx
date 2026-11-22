@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react'
 import { renderHtml } from '../core/html-inline'
 import type { HtmlTheme } from '../core/html-inline'
 import type { Block } from '../core/ir'
-import { getWechatTheme, wechatThemes } from '../themes/wechat'
+import { getWechatTheme, darkContrast, wechatThemes } from '../themes/wechat'
 import { Modal } from './Modal'
 
 /**
@@ -54,20 +54,25 @@ const SAMPLE: Block[] = [
 /** 样例渲染出来的原始宽度，缩放比以此为准 */
 const SAMPLE_WIDTH = 558
 
-function previewOf(theme: HtmlTheme): string {
-  return renderHtml(SAMPLE, { theme, linkMode: 'refs', target: 'wechat' }).html
+function previewOf(theme: HtmlTheme, dark: boolean): string {
+  return renderHtml(SAMPLE, { theme: dark ? (theme.dark ?? theme) : theme, linkMode: 'refs', target: 'wechat' }).html
 }
 
 interface ThumbProps {
   theme: HtmlTheme
   html: string
   active: boolean
+  dark: boolean
   onSelect: () => void
 }
 
-function ThemeThumb({ theme, html, active, onSelect }: ThumbProps) {
+function ThemeThumb({ theme, html, active, dark, onSelect }: ThumbProps) {
   const frameRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0.33)
+  // 量的是深色变体：直接拿亮色主题去算，会把「亮色下图注对比度偏低」
+  // 误报成深色问题 —— 12 套主题会全部挂上「深色偏弱」。
+  const weak = dark ? darkContrast(theme.dark ?? theme) : null
+  const frameBg = dark ? theme.dark?.swatch?.bg : theme.swatch?.bg
 
   useEffect(() => {
     const el = frameRef.current
@@ -89,7 +94,12 @@ function ThemeThumb({ theme, html, active, onSelect }: ThumbProps) {
       aria-label={`${theme.name}，${theme.group}，${theme.hint}`}
       aria-pressed={active}
     >
-      <div className="theme-frame" ref={frameRef} aria-hidden="true">
+      <div
+        className="theme-frame"
+        ref={frameRef}
+        aria-hidden="true"
+        style={frameBg ? { background: frameBg } : undefined}
+      >
         <div
           className="theme-scaled"
           style={{ transform: `scale(${scale})` }}
@@ -100,6 +110,14 @@ function ThemeThumb({ theme, html, active, onSelect }: ThumbProps) {
         <div className="theme-name-row">
           <span className="theme-name">{theme.name}</span>
           <span className="theme-tag">{theme.group}</span>
+          {weak ? (
+            <span
+              className={`theme-dark-warn ${weak.min >= 4.5 ? 'ok' : ''}`}
+              title={`深色下最弱的是${weak.worst}：${weak.min.toFixed(1)}:1`}
+            >
+              {weak.min >= 4.5 ? `${weak.min.toFixed(1)}:1` : '深色偏弱'}
+            </span>
+          ) : null}
           {active ? <span className="theme-check">✓</span> : null}
         </div>
         <span className="theme-hint">{theme.hint}</span>
@@ -111,18 +129,21 @@ function ThemeThumb({ theme, html, active, onSelect }: ThumbProps) {
 interface Props {
   value: string
   onChange: (id: string) => void
+  /** 主题墙跟随公众号深色预览：缩略图也用 dark 变体渲染 */
+  dark?: boolean
 }
 
-export function ThemePicker({ value, onChange }: Props) {
+export function ThemePicker({ value, onChange, dark = false }: Props) {
   const [open, setOpen] = useState(false)
-  const current = getWechatTheme(value)
+  const current = getWechatTheme(value, dark)
 
-  // 12 张真实预览不必在导入文章时就渲染：第一次打开主题墙再算，之后保留。
+  // 12 张真实预览不必在导入文章时就渲染：第一次打开主题墙再算。
+  // 深色开关切换后重算 —— 现场对比「同一主题在两种模式下的样子」比看两个数字有用。
   const [previews, setPreviews] = useState<Map<string, string>>(() => new Map())
   useEffect(() => {
-    if (!open || previews.size > 0) return
-    setPreviews(new Map(wechatThemes.map((t) => [t.id, previewOf(t)])))
-  }, [open, previews.size])
+    if (!open) return
+    setPreviews(new Map(wechatThemes.map((t) => [t.id, previewOf(t, dark)])))
+  }, [open, dark])
 
   return (
     <>
@@ -163,6 +184,7 @@ export function ThemePicker({ value, onChange }: Props) {
                     theme={t}
                     html={previews.get(t.id) ?? ''}
                     active={value === t.id}
+                    dark={dark}
                     onSelect={() => onChange(t.id)}
                   />
                 ))}

@@ -10,9 +10,10 @@
  * 几条和正文一样的微信硬约束：
  * - 只能内联样式，不能有 class / id / <style>
  * - 不能用 ::before / ::after（会被整条剥离），要装饰就画真实节点
- * - 外链 <a> 在未认证号正文里会失效，所以往期推荐只写标题，
- *   链接留给用户在编辑器里用「超链接」挂
- * - 这些文字会跟着正文一起计入 20000 字上限，所以每块都尽量短
+ * - **只有 mp.weixin.qq.com 的文章链接能在正文里保留成可点击的 <a>**；
+ *   其他域名（包括自己的博客）粘贴后会被微信整条剥离。所以往期推荐里
+ *   公众号文章链接输出成 <a>，其余链接退回纯标题，由 wechat.ts 给出提示。
+ * - 这些文字会拼在正文后面，所以每块都尽量短
  */
 
 import type { HtmlTheme, StyleMap } from './html-inline'
@@ -34,6 +35,38 @@ export interface TailConfig {
 
 /** 模板里可用的占位符：{account} 账号名，{year} 当前年份 */
 export const TAIL_VARS = ['{account}', '{year}']
+
+/**
+ * 往期推荐里能被微信保留成可点击链接的地址。
+ *
+ * 微信正文只认 mp.weixin.qq.com 的文章页（`/s/…` 短链或 `/s?__biz=…` 长链），
+ * 其他域名粘贴后会被整条剥离。返回规范化后的 https 地址，不合法返回 null。
+ *
+ * 顺手修掉三种常见写法：带不带协议、`//` 开头、`http://`。
+ */
+export function wechatArticleUrl(raw: string): string | null {
+  let s = raw.trim()
+  if (!s) return null
+  if (s.startsWith('//')) s = `https:${s}`
+  else if (!/^https?:\/\//i.test(s)) {
+    // 只给域名也行，但必须是公众号文章域，别的地址补了协议也没用
+    if (!/^mp\.weixin\.qq\.com\//i.test(s)) return null
+    s = `https://${s}`
+  }
+
+  let url: URL
+  try {
+    url = new URL(s)
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  if (url.hostname.toLowerCase() !== 'mp.weixin.qq.com') return null
+  // `/s` 和 `/s/xxx` 才是文章页；主页、话题页等不是「图文消息链接」，会被判不合法
+  if (url.pathname !== '/s' && !url.pathname.startsWith('/s/')) return null
+  url.protocol = 'https:'
+  return url.toString()
+}
 
 export const defaultTailConfig: TailConfig = {
   follow: {
@@ -147,7 +180,9 @@ export interface TailRenderResult {
   text: string
   /** 实际用到的往期条目数 */
   historyCount: number
-  /** 有链接但没法渲染成 <a> 的条目数，用于提示 */
+  /** 输出成可点击 <a> 的公众号文章链接条数 */
+  linkedCount: number
+  /** 有链接但没法渲染成 <a> 的条目数（非公众号文章 / 地址不合法），用于提示 */
   droppedLinks: number
 }
 
@@ -157,6 +192,7 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
   /** 和 blocks 一一对应的纯文本，顺序必须完全一致 */
   const texts: string[] = []
   let historyCount = 0
+  let linkedCount = 0
   let droppedLinks = 0
 
   if (cfg.follow.on && cfg.follow.text.trim()) {
@@ -193,20 +229,36 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
   }
 
   if (cfg.history.on) {
-    const items = cfg.history.items.filter((i) => i.title.trim())
+    const items = cfg.history.items
+      .filter((i) => i.title.trim())
+      .map((item) => ({
+        title: item.title.trim(),
+        href: wechatArticleUrl(item.url),
+        hasUrl: Boolean(item.url.trim()),
+      }))
     if (items.length > 0) {
       historyCount = items.length
-      droppedLinks = items.filter((i) => i.url.trim()).length
+      linkedCount = items.filter((i) => i.href).length
+      droppedLinks = items.filter((i) => i.hasUrl && !i.href).length
       const rows = items
-        .map(
-          (item, i) =>
+        .map((item, i) => {
+          // 公众号文章链接写成 <a>：粘贴到公众号后仍是可点击的蓝字。
+          // 其他链接不写 href —— 写了也会被微信剥离，只会让用户误以为能点。
+          const label = item.href
+            ? `<a href="${escapeHtml(item.href)}"${attr({
+                color: p.accent,
+                'text-decoration': 'underline',
+              })}>${escapeHtml(item.title)}</a>`
+            : escapeHtml(item.title)
+          return (
             `<section${attr({
               'font-size': '14px',
               'line-height': '1.9',
               color: p.muted,
               'letter-spacing': '0.2px',
-            })}>${i + 1}. ${escapeHtml(item.title.trim())}</section>`,
-        )
+            })}>${i + 1}. ${label}</section>`
+          )
+        })
         .join('')
       blocks.push(
         `<section${attr({ margin: '2em 0 0', 'padding-top': '16px', 'border-top': `1px solid ${p.line}` })}>` +
@@ -223,7 +275,13 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
           `</section>`,
       )
       texts.push(
-        [cfg.history.title.trim(), ...items.map((item, i) => `${i + 1}. ${item.title.trim()}`)]
+        [
+          cfg.history.title.trim(),
+          ...items.map((item, i) =>
+            // 纯文本通道里链接没法可点击，把地址带上，降级时至少还能手动挂
+            item.href ? `${i + 1}. ${item.title}（${item.href}）` : `${i + 1}. ${item.title}`,
+          ),
+        ]
           .filter(Boolean)
           .join('\n'),
       )
@@ -245,5 +303,5 @@ export function buildTailHtml(cfg: TailConfig, theme: HtmlTheme, account: string
     texts.push(applyVars(cfg.copyright.text, account))
   }
 
-  return { html: blocks.join(''), text: texts.join('\n\n'), historyCount, droppedLinks }
+  return { html: blocks.join(''), text: texts.join('\n\n'), historyCount, linkedCount, droppedLinks }
 }

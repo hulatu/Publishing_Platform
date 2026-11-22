@@ -18,7 +18,9 @@ function appVersion(): string {
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim()
   } catch {
-    return 'dev'
+    // 没有 git 时不能回退成固定字符串：否则每次构建的 SW 缓存名都一样，
+    // activate 不会清旧缓存，用户会一直拿到上一版。
+    return `dev-${Date.now().toString(36)}`
   }
 }
 

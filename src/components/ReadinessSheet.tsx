@@ -1,11 +1,15 @@
 /**
- * 发布准备
+ * 发布检查
  *
- * 把标题、正文、合规、素材这些发布前信息收进一个清单。
- * 主界面只显示「已就绪 / 总数」，缺项时再展开处理，避免顶部一排入口同时抢注意力。
+ * 一篇文章发布前要看的东西都在这里：标题 / 正文 / 合规 / 素材是清单，
+ * 转换统计、平台提示、格式说明、外链与文末这类附加产物按块列在下面。
+ *
+ * 主界面只留预览工具栏里的一个小 chip —— 预览区上方不再长期占一行
+ * 「全内联样式 · 正文 224 字」，需要数字时再打开这面板。
  */
 
 import { Modal } from './Modal'
+import { NoticeStack, type NoticeItem } from './NoticeStack'
 
 export type ReadinessTone = 'ok' | 'note' | 'warn' | 'error'
 
@@ -20,7 +24,7 @@ export interface ReadinessItem {
   label: string
   summary: string
   tone: ReadinessTone
-  /** 补充项不参与发布准备分数，但仍需要一个固定入口 */
+  /** 补充项不参与发布检查分数，但仍需要一个固定入口 */
   optional?: boolean
   actionLabel?: string
   onAction?: () => void
@@ -33,6 +37,20 @@ interface Props {
   title: string
   platformName: string
   items: ReadinessItem[]
+  /** 当前平台一句话定位，原来挂在主标题下面 */
+  hint?: string
+  /** 平台硬限制，和 hint 一起收进面板 */
+  limits?: string
+  /** 渲染产物的统计：字数、HTML 体积、图片数、外链数…… */
+  stats?: { label: string; value: string; level?: 'ok' | 'warn' | 'error' }[]
+  /** 需要人看一眼的转换提示 */
+  notices?: NoticeItem[]
+  /** 中性转换说明：不是问题，只是「做了什么」 */
+  notes?: string[]
+  /** 解析阶段的提示，原来在操作条里 */
+  parseWarnings?: string[]
+  /** 附加产物：文末、参考链接、话题标签等 */
+  extras?: { title: string; items: string[] }[]
 }
 
 const TONE_LABEL: Record<ReadinessTone, string> = {
@@ -42,7 +60,20 @@ const TONE_LABEL: Record<ReadinessTone, string> = {
   error: '需处理',
 }
 
-export function ReadinessSheet({ open, onClose, title, platformName, items }: Props) {
+export function ReadinessSheet({
+  open,
+  onClose,
+  title,
+  platformName,
+  items,
+  hint,
+  limits,
+  stats,
+  notices,
+  notes,
+  parseWarnings,
+  extras,
+}: Props) {
   const requiredItems = items.filter((item) => !item.optional)
   const optionalItems = items.filter((item) => item.optional)
   const ready = requiredItems.filter((item) => item.tone === 'ok').length
@@ -56,13 +87,19 @@ export function ReadinessSheet({ open, onClose, title, platformName, items }: Pr
       : '所有项目已就绪，可以复制发布'
 
   return (
-    <Modal open={open} onClose={onClose} label="发布准备" className="readiness-modal">
+    <Modal open={open} onClose={onClose} label="发布检查" className="readiness-modal">
       <div className="modal-head">
         <div>
-          <div className="modal-title">发布准备</div>
+          <div className="modal-title">发布检查</div>
           <div className="ledger-sub">
             {platformName} · {title || '未命名文章'}
           </div>
+          {hint || limits ? (
+            <div className="check-platform">
+              {hint ? <span>{hint}</span> : null}
+              {limits ? <span className="check-limit">{limits}</span> : null}
+            </div>
+          ) : null}
         </div>
         <button className="icon-btn" onClick={onClose} aria-label="关闭">
           ×
@@ -119,6 +156,75 @@ export function ReadinessSheet({ open, onClose, title, platformName, items }: Pr
             </div>
           ))}
         </div>
+
+        {stats && stats.length > 0 ? (
+          <section className="check-block">
+            <div className="check-block-head">
+              <span>转换结果</span>
+              <span className="check-block-note">复制出去的实际数字</span>
+            </div>
+            <div className="check-stats">
+              {stats.map((stat, index) => (
+                <div className={`check-stat ${stat.level ?? ''}`} key={`${stat.label}-${index}`}>
+                  <span>{stat.label}</span>
+                  <strong>{stat.value}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {notices && notices.length > 0 ? (
+          <section className="check-block">
+            <div className="check-block-head">
+              <span>提示</span>
+              <span className="check-block-note">不影响复制，发布前看一眼</span>
+            </div>
+            <NoticeStack items={notices} />
+          </section>
+        ) : null}
+
+        {notes && notes.length > 0 ? (
+          <section className="check-block">
+            <div className="check-block-head">
+              <span>转换说明</span>
+              <span className="check-block-note">{notes.length} 条</span>
+            </div>
+            <ul className="check-notes">
+              {notes.map((note, index) => (
+                <li key={index}>{note}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {parseWarnings && parseWarnings.length > 0 ? (
+          <section className="check-block">
+            <div className="check-block-head">
+              <span>解析提示</span>
+              <span className="check-block-note">{parseWarnings.length} 条</span>
+            </div>
+            <ul className="check-notes">
+              {parseWarnings.map((warning, index) => (
+                <li key={index}>{warning}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {extras?.map((extra, index) => (
+          <section className="check-block" key={`${extra.title}-${index}`}>
+            <div className="check-block-head">
+              <span>{extra.title}</span>
+              <span className="check-block-note">{extra.items.length} 条</span>
+            </div>
+            <ul className="check-notes">
+              {extra.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{item}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
 
     </Modal>

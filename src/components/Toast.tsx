@@ -126,7 +126,13 @@ export function ToastLayer({
   onResume: (id: number) => void
 }) {
   return (
-    <div className="toast-layer" aria-live="polite" aria-atomic="false" aria-label="操作通知">
+    <div
+      className="toast-layer"
+      role="region"
+      aria-live="polite"
+      aria-atomic="false"
+      aria-label="操作通知"
+    >
       {items.map((t) => (
         <div
           key={t.id}

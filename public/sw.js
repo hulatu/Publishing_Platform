@@ -25,11 +25,15 @@ const SHELL_URLS = ['./', './index.html', './site.webmanifest']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(SHELL)
-      .then((cache) => cache.addAll(SHELL_URLS))
-      .then(() => self.skipWaiting()),
+    // 不在这里 skipWaiting：写作工具经常一开就是一整天，
+    // 新 SW 立刻接管会删掉旧版本缓存，旧页面随后懒加载的 chunk 可能就 404 了。
+    // 等页面提示「新版本可用」，用户点刷新时再通过 message 切换。
+    caches.open(SHELL).then((cache) => cache.addAll(SHELL_URLS)),
   )
+})
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
 })
 
 self.addEventListener('activate', (event) => {
@@ -49,6 +53,14 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return
+
+  // 图片代理（含体检）是动态结果，而且单张上限 20 MB：
+  // 不能进 Cache Storage，否则 runtime 缓存会无限长大，体检结论也会过期。
+  if (url.pathname.startsWith('/api/')) return
+
+  // SW 脚本本身、Range 请求（视频 / 音频拖动）交给浏览器网络层。
+  if (url.pathname === '/sw.js') return
+  if (req.headers.has('range')) return
 
   // 导航：先网络，失败才吃缓存
   if (req.mode === 'navigate') {

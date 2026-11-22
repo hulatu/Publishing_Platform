@@ -47,3 +47,8 @@ jobs:
 
       - name: 构建
         run: npm run build
+
+      - name: 体积预算
+        # 首屏 ≤ 180 KB gzip，任一懒加载 chunk ≤ 60 KB，JS+CSS 总量 ≤ 512 KB。
+        # 必须在构建之后跑，读 dist/index.html 和 dist/assets。
+        run: npm run check:bundle

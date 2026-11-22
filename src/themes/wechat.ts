@@ -9,7 +9,7 @@
  * - 不能用 `::before` / `::after`，所以 H2 编号只能靠渲染时注入真实 <span>
  * - `box-shadow`、`linear-gradient` 不稳定，一律不用
  * - 不能用 class，所有样式必须内联；外层 <section> 承载全局样式靠继承省字符
- * - 正文上限 20000 字，但 HTML 体积越大粘贴越慢，所以共用项尽量上提到 root
+ * - HTML 体积越大粘贴越慢，所以共用项尽量上提到 root
  *
  * 中文正文的两个经验：
  * - 加粗不要用纯黑，用强调色 + 600 字重，纯黑加粗在中文里显得笨重
@@ -18,6 +18,7 @@
  */
 
 import type { HtmlTheme, StyleMap } from '../core/html-inline'
+import { contrastRatio, mixColor, parseColor, rgbToHsl, withLightness } from '../core/color'
 
 // 字体名一律用单引号：这些字符串最终会进 style="..." 属性，
 // 双引号会把属性提前闭合（见 html-inline.ts 里 attr() 的注释）
@@ -70,6 +71,114 @@ interface ThemeSpec {
   lineHeight?: string
   letterSpacing?: string
   pSize?: string
+}
+
+/* ------------------------------------------------------------------ */
+/* 深色预览                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 把亮色主题的 palette 推导成「微信深色模式下的观感」。
+ *
+ * 微信客户端会自己转换颜色，这里不是复刻它的逐条规则，而是复刻结果：
+ * - 浅纸底压到 10% 亮度，保留一点原色偏（米黄还是暖黑，纯白就是中性黑）
+ * - 正文/标题提到 78% / 92%，保证长文可读
+ * - 彩色强调色保留色相，亮度钳到 68% 左右；纯黑强调色回到浅灰
+ * - 浅色底（引用、色块标题、表头）按强调色混进暗底，不再是一块发光的白
+ *
+ * 这样做的另一个好处：主题的结构（标题形态、引用形态）完全复用，不用
+ * 再维护一份「深色版主题」；改亮色主题时深色自动跟着变。
+ */
+function darkPalette(p: Palette): Palette {
+  const bg = withLightness(p.bg, 10, 12)
+  const text = withLightness(p.text, 78, 10)
+  const heading = withLightness(p.heading, 92, 8)
+  const secondary = withLightness(p.secondary, 66, 8)
+  const accent = darkAccent(p.accent)
+  const accentSoft = mixColor(accent, bg, 0.18)
+  const accentInk = withLightness(accent, 90, 40)
+  const line = mixColor(text, bg, 0.22)
+  const softBg = mixColor(text, bg, 0.09)
+  const codeBg = mixColor(text, bg, 0.13)
+  const codeText = withLightness(p.codeText, 82, 8)
+
+  return {
+    bg,
+    text,
+    heading,
+    secondary,
+    accent,
+    accentSoft,
+    accentInk,
+    line,
+    softBg,
+    codeBg,
+    codeText,
+  }
+}
+
+/** 彩色强调色保留色相，只把亮度抬到暗底上看得清的位置；无彩色则回到浅灰 */
+function darkAccent(raw: string): string {
+  const rgb = parseColor(raw)
+  if (!rgb) return '#d8d8d8'
+  const [, saturation] = rgbToHsl(rgb)
+  // 纯黑/深灰（如「素页」「铅字」的强调色）没有色相可保留。
+  // 亮度抬到 68% 会变成一块闷闷的中灰，直接给 82% 的浅灰更接近深色编辑器里的强调文字。
+  return withLightness(raw, saturation < 10 ? 82 : 68, saturation < 10 ? 0 : 70)
+}
+
+export interface ContrastPair {
+  label: string
+  ratio: number
+}
+
+/**
+ * 一套主题在深色下的最差文字对比度。
+ *
+ * `transparent` 的表头/引用底按根底色算 —— 它们实际就是透出正文纸面。
+ * 返回 `worst` 便于直接把「哪一项最弱」显示在界面上，不用再猜。
+ */
+export function darkContrast(theme: HtmlTheme): { min: number; worst: string; pairs: ContrastPair[] } {
+  const rootBg = theme.root['background-color'] ?? '#ffffff'
+  const rootInk = theme.root.color ?? '#000000'
+  const pairs: ContrastPair[] = []
+
+  const add = (label: string, fg: string | undefined, bg: string) => {
+    if (!fg) return
+    const ratio = contrastRatio(fg, bg)
+    pairs.push({ label, ratio })
+  }
+
+  const bgOf = (style: StyleMap | undefined): string => {
+    const value = style?.['background-color']
+    return value && value !== 'transparent' ? value : rootBg
+  }
+
+  add('正文', rootInk, rootBg)
+  for (const level of [2, 3, 4] as const) {
+    const style = theme.heading[level]
+    add(`H${level}`, style?.color ?? rootInk, bgOf(style))
+  }
+  add('引用', theme.quoteP.color ?? rootInk, bgOf(theme.quote))
+  add('图注', theme.caption.color ?? rootInk, rootBg)
+  add('代码', theme.codeBlock.color ?? rootInk, bgOf(theme.codeBlock))
+  add('行内代码', theme.inlineCode.color ?? rootInk, bgOf(theme.inlineCode))
+  add('表头', theme.th.color ?? rootInk, bgOf(theme.th))
+  add('参考链接', theme.refsItem.color ?? rootInk, rootBg)
+  add('脚注', theme.fnItem.color ?? rootInk, rootBg)
+  add('强调', theme.strong.color ?? rootInk, rootBg)
+  add('链接', theme.link.color ?? rootInk, rootBg)
+
+  const weakest = pairs.reduce<ContrastPair | null>(
+    (min, item) => (min === null || item.ratio < min.ratio ? item : min),
+    null,
+  )
+
+  return {
+    min: weakest?.ratio ?? 21,
+    worst: weakest?.label ?? '正文',
+    pairs,
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -235,7 +344,17 @@ function buildCode(spec: ThemeSpec): { codeBlock: StyleMap; inlineCode: StyleMap
 
 function buildTable(spec: ThemeSpec): { table: StyleMap; th: StyleMap; td: StyleMap } {
   const p = spec.palette
-  const table: StyleMap = { width: '100%', 'border-collapse': 'collapse', 'font-size': '14px', margin: '0 0 1.5em' }
+  // 多列表格在手机宽度下最容易出事：长 URL / 英文单词会把某一列顶宽，
+  // 整张表跟着溢出。微信会剥掉 overflow-x，所以不能靠横向滚动兜底，
+  // 只能让单元格自己断词（见 README 里「不能用 <pre>」同源的约束）。
+  const table: StyleMap = {
+    width: '100%',
+    'border-collapse': 'collapse',
+    'font-size': '14px',
+    'line-height': '1.5',
+    'word-break': 'break-word',
+    margin: '0 0 1.5em',
+  }
 
   if (spec.table === 'minimal') {
     return {
@@ -247,12 +366,14 @@ function buildTable(spec: ThemeSpec): { table: StyleMap; th: StyleMap; td: Style
         'font-weight': '600',
         color: p.heading,
         'text-align': 'left',
+        'vertical-align': 'top',
       },
       td: {
         border: 'none',
         'border-bottom': `1px solid ${p.line}`,
         padding: '10px 8px',
         'text-align': 'left',
+        'vertical-align': 'top',
       },
     }
   }
@@ -266,11 +387,13 @@ function buildTable(spec: ThemeSpec): { table: StyleMap; th: StyleMap; td: Style
       'font-weight': '600',
       color: p.heading,
       'text-align': 'left',
+      'vertical-align': 'top',
     },
     td: {
       border: `1px solid ${p.line}`,
       padding: '8px 10px',
       'text-align': 'left',
+      'vertical-align': 'top',
     },
   }
 }
@@ -279,7 +402,7 @@ function buildTable(spec: ThemeSpec): { table: StyleMap; th: StyleMap; td: Style
 /* 组装                                                                */
 /* ------------------------------------------------------------------ */
 
-function makeTheme(spec: ThemeSpec): HtmlTheme {
+function buildTheme(spec: ThemeSpec): HtmlTheme {
   const p = spec.palette
   const { quote, quoteP } = buildQuote(spec)
   const { codeBlock, inlineCode } = buildCode(spec)
@@ -403,6 +526,25 @@ function makeTheme(spec: ThemeSpec): HtmlTheme {
   return theme
 }
 
+/**
+ * 一套主题 = 亮色 + 预计算的深色。
+ *
+ * 深色不是另写一份 ThemeSpec，而是换一份 palette 再跑同一套 build 函数。
+ * 这样「标题形态、引用形态、代码块明暗」这些结构开关不会在两份配置里漂移。
+ */
+function makeTheme(spec: ThemeSpec): HtmlTheme {
+  const theme = buildTheme(spec)
+  const palette = darkPalette(spec.palette)
+  const dark = buildTheme({ ...spec, palette })
+
+  dark.id = `${spec.id}__dark`
+  dark.name = `${spec.name}·深色`
+  dark.swatch = { bg: palette.bg, accent: palette.accent, ink: palette.text }
+  theme.dark = dark
+
+  return theme
+}
+
 /* ------------------------------------------------------------------ */
 /* 主题清单                                                            */
 /* ------------------------------------------------------------------ */
@@ -420,7 +562,7 @@ export const paperTheme = makeTheme({
     bg: '#ffffff',
     text: '#3f3f3f',
     heading: '#1a1a1a',
-    secondary: '#7a7a7a',
+    secondary: '#747474',
     accent: '#c0392b',
     accentSoft: '#f7e9e7',
     accentInk: '#8f2c21',
@@ -446,7 +588,7 @@ const plainTheme = makeTheme({
     bg: '#ffffff',
     text: '#2f2f2f',
     heading: '#111111',
-    secondary: '#8c8c8c',
+    secondary: '#747474',
     accent: '#2f2f2f',
     accentSoft: '#f2f2f2',
     accentInk: '#111111',
@@ -470,7 +612,7 @@ const inkTheme = makeTheme({
     bg: '#ffffff',
     text: '#33383d',
     heading: '#15181c',
-    secondary: '#7c858d',
+    secondary: '#6c747c',
     accent: '#33475b',
     accentSoft: '#e8edf2',
     accentInk: '#263646',
@@ -498,7 +640,7 @@ const serifTheme = makeTheme({
     bg: '#fffefb',
     text: '#332f2a',
     heading: '#1c1a17',
-    secondary: '#8a8175',
+    secondary: '#797267',
     accent: '#8c6a4a',
     accentSoft: '#f3ece3',
     accentInk: '#6d5138',
@@ -525,7 +667,7 @@ export const sepiaTheme = makeTheme({
     bg: '#fbf8f3',
     text: '#4a443c',
     heading: '#2e2a24',
-    secondary: '#8a7f70',
+    secondary: '#786e61',
     accent: '#8b5e3c',
     accentSoft: '#f0e6d8',
     accentInk: '#6b4526',
@@ -553,7 +695,7 @@ const pressTheme = makeTheme({
     bg: '#fdfcf8',
     text: '#26241f',
     heading: '#0f0e0c',
-    secondary: '#7d776c',
+    secondary: '#767066',
     accent: '#1a1a1a',
     accentSoft: '#eeece5',
     accentInk: '#1a1a1a',
@@ -577,7 +719,7 @@ const blockTheme = makeTheme({
     bg: '#ffffff',
     text: '#333a42',
     heading: '#1b2833',
-    secondary: '#7b8794',
+    secondary: '#697582',
     accent: '#2c5f8a',
     accentSoft: '#e6eef5',
     accentInk: '#1f4666',
@@ -601,7 +743,7 @@ const indexTheme = makeTheme({
     bg: '#ffffff',
     text: '#3b3733',
     heading: '#1f1c19',
-    secondary: '#8a8178',
+    secondary: '#7b736b',
     accent: '#d97706',
     accentSoft: '#fdf3e3',
     accentInk: '#a85c04',
@@ -625,7 +767,7 @@ const mintTheme = makeTheme({
     bg: '#fcfdfc',
     text: '#31403a',
     heading: '#16241e',
-    secondary: '#7a8a83',
+    secondary: '#687670',
     accent: '#2f8f6f',
     accentSoft: '#e4f2ec',
     accentInk: '#1f6b52',
@@ -649,7 +791,7 @@ export const navyTheme = makeTheme({
     bg: '#ffffff',
     text: '#3a3a3a',
     heading: '#1b3a5c',
-    secondary: '#7b8794',
+    secondary: '#697582',
     accent: '#1b3a5c',
     accentSoft: '#e7eef5',
     accentInk: '#15304d',
@@ -675,7 +817,7 @@ const slateTheme = makeTheme({
     bg: '#fbfbfc',
     text: '#34383d',
     heading: '#1a1d21',
-    secondary: '#79808a',
+    secondary: '#6c727b',
     accent: '#3d4451',
     accentSoft: '#eceef1',
     accentInk: '#2a2f38',
@@ -700,7 +842,7 @@ const morandiTheme = makeTheme({
     bg: '#fdfcfa',
     text: '#4a423d',
     heading: '#2f2a26',
-    secondary: '#948a83',
+    secondary: '#7a716a',
     accent: '#a8836f',
     accentSoft: '#f3eae4',
     accentInk: '#8a6a58',
@@ -731,8 +873,15 @@ export const themeGroups: { name: ThemeGroup; themes: HtmlTheme[] }[] = (
   ['极简', '书卷', '色块', '商务'] as ThemeGroup[]
 ).map((name) => ({ name, themes: wechatThemes.filter((t) => t.group === name) }))
 
-export function getWechatTheme(id: string): HtmlTheme {
-  return wechatThemes.find((t) => t.id === id) ?? paperTheme
+/**
+ * 取主题。
+ *
+ * `dark` 只用于站内预览：复制到公众号的 HTML 必须用亮色主题，
+ * 深色是微信客户端在读者侧自己转换出来的。
+ */
+export function getWechatTheme(id: string, dark = false): HtmlTheme {
+  const base = wechatThemes.find((t) => t.id === id) ?? paperTheme
+  return dark && base.dark ? base.dark : base
 }
 
 /** 豆瓣用：更朴素，贴近豆瓣日记的默认观感 */
@@ -749,7 +898,7 @@ export const doubanTheme: HtmlTheme = makeTheme({
     bg: '#ffffff',
     text: '#333333',
     heading: '#111111',
-    secondary: '#888888',
+    secondary: '#747474',
     accent: '#3377aa',
     accentSoft: '#eaf1f7',
     accentInk: '#2b6491',

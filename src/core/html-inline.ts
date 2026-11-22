@@ -65,6 +65,13 @@ export interface HtmlTheme {
    * 真实 <span> 注入；不设此项则不加编号。
    */
   headingIndex?: { format: 'pad' | 'plain'; style: StyleMap }
+  /**
+   * 微信深色模式预览用的派生主题。
+   *
+   * 由 themes/wechat.ts 在创建主题时预计算，只用于站内预览 ——
+   * 复制出去的 HTML 仍然用亮色主题，深色是微信客户端自己做的转换。
+   */
+  dark?: HtmlTheme
 }
 
 /* ------------------------------------------------------------------ */
@@ -443,7 +450,7 @@ function renderRefs(ctx: Ctx): string {
   const items = ctx.refs
     .map(
       (r, i) =>
-        `<section${attr(theme.refsItem)}>[${i + 1}] ${escapeHtml(r.text)}<br><span style="color:#8a8a8a;word-break:break-all;">${escapeHtml(r.href)}</span></section>`,
+        `<section${attr(theme.refsItem)}>[${i + 1}] ${escapeHtml(r.text)}<br><span style="color:${theme.refsItem.color ?? '#6f6759'};word-break:break-all;">${escapeHtml(r.href)}</span></section>`,
     )
     .join('')
   return title + items

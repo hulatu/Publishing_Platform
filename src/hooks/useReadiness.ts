@@ -1,7 +1,7 @@
 /**
- * 发布准备清单
+ * 发布检查清单
  *
- * 「发布准备」那个圆点里展开的几条：标题与标签、正文与排版、合规检查、
+ * 「发布检查」那个 chip 里展开的几条：标题与标签、正文与排版、合规检查、
  * 发布素材、封面图，公众号还多一条文末。原来是 App.tsx 里 150 行 useMemo，
  * 混着四种平台的判断和五种语气（ok / note / warn / error）。
  *
@@ -15,7 +15,6 @@ import type { Doc } from '../core/ir'
 import type { ComplianceHit } from '../core/compliance'
 import { charCount } from '../core/cjk'
 import { activeBlocks, type TailConfig } from '../core/tail'
-import { WECHAT_WORD_LIMIT } from '../renderers/limits'
 import type { RenderOutput } from '../renderers'
 import type { SheetId } from '../components/Sheet'
 import type { ReadinessItem, ReadinessTone } from '../components/ReadinessSheet'
@@ -80,23 +79,15 @@ export function useReadiness(opts: Options): Readiness {
 
     if (kind === 'convert') {
       const words = output ? charCount(output.text) : 0
-      const pct = Math.round((words / WECHAT_WORD_LIMIT) * 100)
-      const bodyTone: ReadinessTone = !output
-        ? 'note'
-        : platform === 'wechat' && words > WECHAT_WORD_LIMIT
-          ? 'error'
-          : platform === 'wechat' && pct > 85
-            ? 'warn'
-            : 'ok'
       list.push({
         id: 'body',
         label: '正文与排版',
         summary: !output
           ? '正在生成当前平台的产物'
           : platform === 'wechat'
-            ? `${words.toLocaleString()} / ${WECHAT_WORD_LIMIT.toLocaleString()} 字`
+            ? `${words.toLocaleString()} 字`
             : `${words.toLocaleString()} 字符`,
-        tone: bodyTone,
+        tone: output ? 'ok' : 'note',
       })
     } else if (kind === 'rewrite') {
       list.push({
@@ -118,8 +109,8 @@ export function useReadiness(opts: Options): Readiness {
       list.push({
         id: 'body',
         label: '配图卡片',
-        summary: '卡片工坊已就绪，导出前确认文字与比例',
-        tone: 'note',
+        summary: '卡片工坊已就绪 · 导出前确认文字与比例',
+        tone: 'ok',
       })
     }
 
@@ -180,7 +171,7 @@ export function useReadiness(opts: Options): Readiness {
         id: 'tail',
         label: '公众号文末',
         summary:
-          enabled > 0 ? `已启用 ${enabled}/3 块 · 会计入 20000 字上限` : '关注引导、往期推荐、版权声明',
+          enabled > 0 ? `已启用 ${enabled}/3 块` : '关注引导、往期推荐、版权声明',
         tone: 'note',
         optional: true,
         actionLabel: '编辑文末',
