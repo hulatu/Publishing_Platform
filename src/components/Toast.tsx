@@ -125,19 +125,50 @@ export function ToastLayer({
   onPause: (id: number) => void
   onResume: (id: number) => void
 }) {
+  /**
+   * 读屏播报走两个常驻、视觉隐藏的区域，看得见的提示自己不再当 live region。
+   *
+   * 原来外层 .toast-layer 是 aria-live="polite"，里面每一条又是 role=status / alert ——
+   * 嵌套的 live region 在 NVDA / JAWS 里会把同一句念两遍。而且「带着内容插进来」的
+   * role=status 并不是每个读屏都会念；常驻的区域、内容后变，才稳定。
+   * 错误走 alert（打断式），其余走 status。同一帧里来了几条就拼成一句念。
+   * 先清空、下一帧再写：同一句话连着出现两次（比如连点两次复制），读屏也会再念一次。
+   * ⚠️ 这个组件挂在 App 根上、不会卸载，所以没有给 rAF 写卸载清理。
+   */
+  const [polite, setPolite] = useState('')
+  const [assertive, setAssertive] = useState('')
+  const announced = useRef(new Set<number>())
+  const pending = useRef<{ polite: string[]; assertive: string[] }>({ polite: [], assertive: [] })
+  const frame = useRef(0)
+
+  useEffect(() => {
+    const live = new Set(items.map((t) => t.id))
+    for (const id of announced.current) if (!live.has(id)) announced.current.delete(id)
+    const fresh = items.filter((t) => !announced.current.has(t.id))
+    if (fresh.length === 0) return
+    for (const t of fresh) {
+      announced.current.add(t.id)
+      ;(t.kind === 'error' ? pending.current.assertive : pending.current.polite).push(t.text)
+    }
+    if (frame.current) return
+    if (pending.current.assertive.length) setAssertive('')
+    if (pending.current.polite.length) setPolite('')
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0
+      const { polite: p, assertive: a } = pending.current
+      pending.current = { polite: [], assertive: [] }
+      if (a.length) setAssertive(a.join(' '))
+      if (p.length) setPolite(p.join(' '))
+    })
+  }, [items])
+
   return (
-    <div
-      className="toast-layer"
-      role="region"
-      aria-live="polite"
-      aria-atomic="false"
-      aria-label="操作通知"
-    >
+    <>
+    <div className="toast-layer" role="region" aria-label="操作通知">
       {items.map((t) => (
         <div
           key={t.id}
           className={`toast ${t.kind === 'error' ? 'error' : t.kind === 'success' ? 'success' : ''}`}
-          role={t.kind === 'error' ? 'alert' : 'status'}
           onMouseEnter={() => onPause(t.id)}
           onMouseLeave={() => onResume(t.id)}
           onFocus={() => onPause(t.id)}
@@ -157,5 +188,12 @@ export function ToastLayer({
         </div>
       ))}
     </div>
+    <div className="sr-only" role="status" aria-live="polite">
+      {polite}
+    </div>
+    <div className="sr-only" role="alert" aria-live="assertive">
+      {assertive}
+    </div>
+    </>
   )
 }

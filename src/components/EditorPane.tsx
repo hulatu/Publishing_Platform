@@ -52,6 +52,12 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
   const textRef = useRef<HTMLTextAreaElement>(null)
   const [emptyText, setEmptyText] = useState('')
   const [over, setOver] = useState(false)
+  /**
+   * 按过 Esc 之后，下一次 Tab 交还给浏览器 —— 用来离开编辑器。
+   * 原来 Tab 一律插空格、Shift+Tab 也没放行，键盘进了正文框就出不来（WCAG 2.1.2）。
+   * 做法与 GitHub / CodeMirror 一致：Tab 仍是缩进，Esc 之后的那一次 Tab 才移走焦点。
+   */
+  const releaseTabRef = useRef(false)
 
   useImperativeHandle(ref, () => ({
     chooseFile: () => fileRef.current?.click(),
@@ -92,9 +98,28 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
     await readFile(md)
   }
 
-  /** Tab 插入两个空格，不把焦点带出编辑器 */
+  /**
+   * Tab 插入两个空格。
+   * - Shift+Tab 从不拦截：总要有一个方向能离开编辑器。
+   * - 先按 Esc 再按 Tab：这一次 Tab 不插空格，焦点照常移到下一个控件。
+   * - 输入法组字时什么都不做（组字期间的按键归输入法）。
+   */
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key !== 'Tab' || e.altKey || e.metaKey || e.ctrlKey) return
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    if (e.key === 'Escape') {
+      releaseTabRef.current = true
+      return
+    }
+    if (e.key !== 'Tab' || e.altKey || e.metaKey || e.ctrlKey) {
+      // 单按 Shift 是 Shift+Tab 的前半拍，不算「按了别的键」
+      if (e.key !== 'Shift') releaseTabRef.current = false
+      return
+    }
+    if (e.shiftKey) return
+    if (releaseTabRef.current) {
+      releaseTabRef.current = false
+      return
+    }
     e.preventDefault()
     const el = e.currentTarget
     const { selectionStart, selectionEnd } = el
@@ -153,6 +178,10 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
             spellCheck={false}
             placeholder="正文 Markdown…"
             aria-label="正文 Markdown"
+            aria-describedby="editor-tab-hint"
+            onBlur={() => {
+              releaseTabRef.current = false
+            }}
           />
         ) : (
           <textarea
@@ -164,6 +193,10 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
             spellCheck={false}
             placeholder={'把 Markdown 全文粘贴到这里，包含 --- 包裹的 front matter 也可以…'}
             aria-label="粘贴 Markdown"
+            aria-describedby="editor-tab-hint"
+            onBlur={() => {
+              releaseTabRef.current = false
+            }}
           />
         )}
       </div>
@@ -192,6 +225,10 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
             <span className="editor-foot-hint">支持 .md / .markdown / .txt</span>
           </>
         )}
+        {/* 只在编辑器有焦点时显示（CSS）；隐藏时 aria-describedby 照样能读到 */}
+        <span id="editor-tab-hint" className="editor-foot-key">
+          Tab 缩进；先按 Esc 再按 Tab 可离开编辑器
+        </span>
       </div>
 
       <input

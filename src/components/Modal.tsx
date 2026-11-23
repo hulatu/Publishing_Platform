@@ -82,6 +82,8 @@ export function Modal({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // 输入法组字时的 Esc 是「取消组字」：原来会连弹层一起关掉，刚填的内容也没了
+        if (event.isComposing || event.keyCode === 229) return
         event.preventDefault()
         event.stopPropagation()
         closeRef.current()

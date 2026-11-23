@@ -2,6 +2,7 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { cardPlatform, convertPlatforms, rewritePlatforms } from '../renderers'
 import { sortByWidth } from '../core/platform-visibility'
 import type { ArticleLedger } from '../core/ledger'
+import { ariaShortcut, shortcutLabel } from '../core/keys'
 
 type JobStatus = 'idle' | 'running' | 'done' | 'error'
 
@@ -221,10 +222,11 @@ export function PlatformNav({
           <button
             className="nav-kbd"
             onClick={onQuickSwitch}
-            title="快速切换平台（⌘K）"
+            title={`快速切换平台（${shortcutLabel('K')}）`}
             aria-label="快速切换平台"
+            aria-keyshortcuts={ariaShortcut('K')}
           >
-            ⌘K
+            {shortcutLabel('K')}
           </button>
           <button
             className={`nav-filter-btn ${hiddenCount > 0 ? 'has-hidden' : ''}`}
