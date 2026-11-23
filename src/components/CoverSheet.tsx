@@ -234,6 +234,8 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
+                // 输入法组字时的回车是「上屏」，不是「搜索」
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
                 if (e.key === 'Enter') void runSearch(query, 1)
               }}
               placeholder="英文关键词更容易命中，比如 laptop desk"
@@ -245,7 +247,7 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
               disabled={status === 'loading' || !query.trim()}
             >
               {status === 'loading' ? <span className="spinner" /> : null}
-              {status === 'loading' ? '搜索中' : '找 3 张'}
+              {status === 'loading' ? '搜索中…' : '找 3 张'}
             </button>
           </div>
 

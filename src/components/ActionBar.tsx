@@ -11,6 +11,7 @@
 import type { MouseEvent, ReactNode, RefObject } from 'react'
 import type { Doc } from '../core/ir'
 import type { RenderOutput } from '../renderers'
+import { shortcutLabel } from '../core/keys'
 
 export type ActionKind = 'convert' | 'rewrite' | 'card'
 
@@ -165,7 +166,7 @@ function ConvertActions({
         <button
           className="btn btn-accent"
           onClick={onCopyPrimary}
-          title="复制当前平台产物（⌘Enter）"
+          title={`复制当前平台产物（${shortcutLabel('Enter')}）`}
         >
           {output.copyMode === 'rich'
             ? '复制富文本'
@@ -215,7 +216,7 @@ function RewriteActions({
         <button
           className="btn btn-accent"
           onClick={onCopyCurrent}
-          title={`复制${rewriteCopyLabel ?? ''}（⌘Enter）`}
+          title={`复制${rewriteCopyLabel ?? ''}（${shortcutLabel('Enter')}）`}
         >
           复制{platformName}文案
         </button>

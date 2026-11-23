@@ -36,6 +36,8 @@ import {
   type RenderOutput,
 } from './renderers'
 import { loadHidden, saveHidden, sortByWidth } from './core/platform-visibility'
+import { loadPlatform, platformFromHash, savePlatform } from './core/last-platform'
+import { isKey } from './core/keys'
 import { ThemePicker } from './components/ThemePicker'
 import { PreviewStage, type PreviewSize } from './components/PreviewStage'
 import { PreviewSizeSwitch } from './components/PreviewSizeSwitch'
@@ -189,10 +191,13 @@ export default function App() {
   const { updateReady, applyUpdate } = useAppUpdate()
   const [doc, setDoc] = useState<Doc | null>(null)
   const [fileName, setFileName] = useState('')
-  const [platform, setPlatform] = useState('wechat')
+  /** 刷新、新开标签页都回到上次的平台；地址栏 #p=<id> 优先（见 core/last-platform.ts） */
+  const [platform, setPlatform] = useState(() => loadPlatform(allPlatforms.map((p) => p.id), 'wechat'))
   /** 侧栏隐藏了哪些平台。只是显示偏好，不影响渲染、台账和生成 */
   const [hidden, setHidden] = useState(() => loadHidden(allPlatforms.map((p) => p.id)))
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null)
   /**
    * 当前打开的弹层。原来这里是 12 个独立布尔 —— 于是「开 B 之前先关 A」
    * 得靠每个调用点自己记得，漏一次就是两个遮罩叠在一起。
@@ -352,6 +357,22 @@ export default function App() {
       (hidden.has(cardPlatform.id) ? undefined : cardPlatform)
     if (pick) setPlatform(pick.id)
   }, [hidden, platform])
+
+  /** 记住当前平台（localStorage + 地址栏 #p=）。用 replaceState，不往历史里塞记录 */
+  useEffect(() => {
+    savePlatform(platform)
+  }, [platform])
+
+  /** 手改地址栏的 #p=，或者打开别人发来的带 #p= 的链接（同一标签页里） */
+  useEffect(() => {
+    const known = new Set(allPlatforms.map((p) => p.id))
+    const onHash = () => {
+      const id = platformFromHash(window.location.hash, known)
+      if (id) setPlatform(id)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   const kind = kindOf(platform)
   /** 当前平台的发布页地址；卡片平台没有 */
@@ -1027,6 +1048,8 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // 输入法组字时的按键归输入法：[ ] / ⌘K / ⌘Enter 都不该在组字中触发
+      if (event.isComposing || event.keyCode === 229) return
       const mod = event.metaKey || event.ctrlKey
       if (!mod) {
         const target = event.target instanceof HTMLElement ? event.target : null
@@ -1036,11 +1059,11 @@ export default function App() {
           !typing &&
           !event.altKey &&
           !document.querySelector('[role="dialog"]') &&
-          (event.key === '[' || event.key === ']')
+          (isKey(event, '[', 'BracketLeft') || isKey(event, ']', 'BracketRight'))
         ) {
           event.preventDefault()
           const current = visiblePlatformOrder.findIndex((item) => item.id === platform)
-          const delta = event.key === ']' ? 1 : -1
+          const delta = isKey(event, ']', 'BracketRight') ? 1 : -1
           const next =
             visiblePlatformOrder[
               (Math.max(0, current) + delta + visiblePlatformOrder.length) % visiblePlatformOrder.length
@@ -1050,7 +1073,7 @@ export default function App() {
         return
       }
 
-      if (event.key.toLowerCase() === 'k') {
+      if (isKey(event, 'k', 'KeyK')) {
         event.preventDefault()
         if (!document.querySelector('[role="dialog"]')) setSheet('palette')
         return
@@ -1066,13 +1089,60 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [doc, copyCurrentResult, visiblePlatformOrder, platform, selectPlatform])
 
+  /**
+   * 窄屏侧栏抽屉（≤1180px，与 global.css 的抽屉断点一致）。
+   *
+   * 原来抽屉打开后焦点留在顶栏按钮上，读屏和键盘用户不知道抽屉在哪；遮罩后面的编辑器和预览
+   * 仍然能 Tab 进去、能点；关掉后焦点也没人管。现在：
+   * - 打开：焦点移到当前平台那一项（没有就是抽屉里第一个控件）；
+   * - 遮罩盖住的编辑器 / 主区域设为 inert（顶栏没被遮住，保持可用 —— 「平台」按钮就是关闭键）；
+   * - 关闭：焦点还在抽屉里的话还给「平台」按钮。选了平台的那次关闭，
+   *   selectPlatform 紧接着会把焦点放到主区域标题，那条优先。
+   * - 窗口拉宽到不再是抽屉时自动收起，免得 inert 留在桌面布局上。
+   */
   useEffect(() => {
     if (!sidebarOpen) return
+    const drawer = window.matchMedia('(max-width: 1180px)')
+    if (!drawer.matches) {
+      setSidebarOpen(false)
+      return
+    }
+    const sidebar = sidebarRef.current
+    // 打开时就记下「平台」按钮：清理函数运行时 ref 可能已指向别处（react-hooks/exhaustive-deps 警告）
+    const toggle = sidebarToggleRef.current
+    const covered = [
+      ...document.querySelectorAll<HTMLElement>('.app-body > :not(.sidebar):not(.sidebar-scrim)'),
+    ]
+    const previous = covered.map((el) => ({ el, inert: el.inert }))
+    for (const el of covered) el.inert = true
+
+    const frame = requestAnimationFrame(() => {
+      const target =
+        sidebar?.querySelector<HTMLElement>('.nav-item[aria-current="page"]') ??
+        sidebar?.querySelector<HTMLElement>('button:not([disabled]), input, textarea, select, a[href]')
+      target?.focus()
+    })
+
     const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return
       if (event.key === 'Escape') setSidebarOpen(false)
     }
+    const closeWhenWide = (event: MediaQueryListEvent) => {
+      if (!event.matches) setSidebarOpen(false)
+    }
     document.addEventListener('keydown', closeOnEscape)
-    return () => document.removeEventListener('keydown', closeOnEscape)
+    drawer.addEventListener('change', closeWhenWide)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', closeOnEscape)
+      drawer.removeEventListener('change', closeWhenWide)
+      for (const { el, inert } of previous) el.inert = inert
+      const active = document.activeElement
+      if (!active || active === document.body || sidebar?.contains(active)) {
+        toggle?.focus({ preventScroll: true })
+      }
+    }
   }, [sidebarOpen])
 
   return (
@@ -1080,9 +1150,11 @@ export default function App() {
       {/* ================= 顶栏 ================= */}
       <header className="topbar">
         <button
+          ref={sidebarToggleRef}
           className="sidebar-toggle"
           onClick={() => setSidebarOpen((value) => !value)}
           aria-expanded={sidebarOpen}
+          aria-controls="app-sidebar"
           aria-label={sidebarOpen ? '收起平台列表' : '展开平台列表'}
         >
           <span aria-hidden>{sidebarOpen ? '×' : '☰'}</span>
@@ -1193,7 +1265,7 @@ export default function App() {
 
       <div className={`app-body ${kind === 'card' ? 'card-mode' : ''}`}>
         {/* ================= 左栏：文章与选项 ================= */}
-        <aside className="sidebar">
+        <aside className="sidebar" id="app-sidebar" ref={sidebarRef}>
           <div className="side-section">
             <div className="side-title">
               <span>文章</span>
@@ -1281,12 +1353,10 @@ export default function App() {
             onShowPreview={() => setMobilePane('preview')}
           />
         ) : null}
+        {/* 遮罩只给鼠标 / 触屏点：原来是个按钮，Tab 会在它身上多停一下。
+            键盘和读屏用 Esc 或顶栏的「平台」按钮关闭 */}
         {sidebarOpen ? (
-          <button
-            className="sidebar-scrim"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="关闭平台列表"
-          />
+          <div className="sidebar-scrim" aria-hidden="true" onClick={() => setSidebarOpen(false)} />
         ) : null}
 
         {/* ================= 主区域 ================= */}
