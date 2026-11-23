@@ -1108,6 +1108,8 @@ export default function App() {
       return
     }
     const sidebar = sidebarRef.current
+    // 打开时就记下「平台」按钮：清理函数运行时 ref 可能已指向别处（react-hooks/exhaustive-deps 警告）
+    const toggle = sidebarToggleRef.current
     const covered = [
       ...document.querySelectorAll<HTMLElement>('.app-body > :not(.sidebar):not(.sidebar-scrim)'),
     ]
@@ -1138,7 +1140,7 @@ export default function App() {
       for (const { el, inert } of previous) el.inert = inert
       const active = document.activeElement
       if (!active || active === document.body || sidebar?.contains(active)) {
-        sidebarToggleRef.current?.focus({ preventScroll: true })
+        toggle?.focus({ preventScroll: true })
       }
     }
   }, [sidebarOpen])
