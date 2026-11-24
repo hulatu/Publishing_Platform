@@ -124,7 +124,7 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
           <>
             <div className="modal-body rev-body">
               {published.length === 0 ? (
-                <div className="check-empty" style={{ padding: '36px 0' }}>
+                <div className="check-empty check-empty-lg">
                   还没标记任何平台为已发。先在「台账」里标记，再回来填数据 ——
                   没发布过的平台填了阅读量也没有意义。
                 </div>
@@ -195,7 +195,7 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
               )}
 
               {pending > 0 && published.length > 0 ? (
-                <div className="field-hint" style={{ marginTop: 12 }}>
+                <div className="field-hint mt-3">
                   还有 {pending} 个平台没标记发布，标记后才会出现在这里。
                 </div>
               ) : null}
@@ -206,7 +206,7 @@ export function ReviewSheet({ open, onClose, articleTitle, ledger, summaries, on
           <>
             <div className="modal-body rev-body">
               {summaries.length === 0 ? (
-                <div className="check-empty" style={{ padding: '36px 0' }}>
+                <div className="check-empty check-empty-lg">
                   还没有任何一篇填过数据。切到「本篇」抄几个数字进来，这里就会出现对比。
                 </div>
               ) : (

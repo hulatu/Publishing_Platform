@@ -351,7 +351,7 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
 
           {tab === 'export' ? (
             <>
-              <div className="notice notice-info" style={{ marginBottom: 14 }}>
+              <div className="notice notice-info mb-4">
                 <span className="notice-mark">i</span>
                 <span>
                   按正文出现顺序编号，打包成 zip，里面附一份「图片清单.txt」对上位置。
@@ -361,7 +361,7 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
               </div>
 
               {images.length === 0 ? (
-                <div className="check-empty" style={{ padding: '30px 0' }}>
+                <div className="check-empty check-empty-md">
                   这篇文章里没有图片。
                 </div>
               ) : (
@@ -369,14 +369,14 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
               )}
 
               {error ? (
-                <div className="notice notice-warn" style={{ marginTop: 12 }}>
+                <div className="notice notice-warn mt-3">
                   <span className="notice-mark">!</span>
                   <span>打包失败：{error}。图片已下载完成但压缩出错，可以逐张「打开原图」另存。</span>
                 </div>
               ) : null}
 
               {failed > 0 ? (
-                <div className="notice notice-warn" style={{ marginTop: 12 }}>
+                <div className="notice notice-warn mt-3">
                   <span className="notice-mark">!</span>
                   <span>
                     {failed} 张没导出来：图片可能不允许跨域下载，或原图已经失效。
@@ -386,7 +386,7 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
               ) : null}
 
               {notes.length > 0 ? (
-                <div className="notice notice-warn" style={{ marginTop: 12 }}>
+                <div className="notice notice-warn mt-3">
                   <span className="notice-mark">!</span>
                   <span>
                     {notes.length} 张按原样导出，没有处理：
@@ -401,8 +401,7 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
             <>
               {/* 体检结论。有错就红、只有提醒就黄、干净才绿 —— 别一律用同一种颜色 */}
               <div
-                className={`notice ${summary.errors > 0 ? 'notice-error' : summary.warns > 0 ? 'notice-warn' : 'notice-ok'}`}
-                style={{ marginBottom: 12 }}
+                className={`notice ${summary.errors > 0 ? 'notice-error' : summary.warns > 0 ? 'notice-warn' : 'notice-ok'} mb-3`}
               >
                 <span className="notice-mark">{summary.errors > 0 ? '!' : summary.warns > 0 ? '!' : '✓'}</span>
                 <span>
@@ -414,14 +413,14 @@ export function ImageList({ open, onClose, images, title, platform, platformLabe
               </div>
 
               {noProxy ? (
-                <div className="notice notice-info" style={{ marginBottom: 12 }}>
+                <div className="notice notice-info mb-3">
                   <span className="notice-mark">i</span>
                   <span>当前只能检查图片能否打开；体积、格式和比例暂未检测。</span>
                 </div>
               ) : null}
 
               {images.length === 0 ? (
-                <div className="check-empty" style={{ padding: '30px 0' }}>
+                <div className="check-empty check-empty-md">
                   这篇文章里没有图片。
                 </div>
               ) : (

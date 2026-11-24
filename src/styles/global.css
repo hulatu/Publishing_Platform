@@ -50,6 +50,34 @@
   --error: #b3261e;
   --error-soft: #fdeeec;
 
+  /* ------------------------------------------------------------------
+     白纸预览的固定配色。文章预览模拟的是「读者最终看到的浅色文章页」，
+     所以深色模式下这张纸仍然是白的；纸内所有前景/背景都不随 UI 主题翻转。
+     值与浅色主题的基础 token 对齐，浅色下视觉零变化。
+
+     这组 token 不放在深色 @media 里重复声明 —— 纸面在两种主题下是同一套值。
+     scripts/check-paper.ts 会守住前景/背景对比度，并检查 .md-preview /
+     .rich-preview / .tail-preview 都把这些 token 局部映射进了纸面。
+     ------------------------------------------------------------------ */
+  --paper-bg: #ffffff;
+  --paper-body: #24211e;
+  --paper-ink: #1b1917;
+  --paper-ink-soft: #4a4642;
+  --paper-ink-muted: #6f6759;
+  --paper-strong: #12100e;
+  --paper-line: #e7e1d8;
+  --paper-line-soft: #efeae2;
+  --paper-line-strong: #d5cdc1;
+  --paper-panel-soft: #f7f4ef;
+  --paper-panel-inset: #efeae1;
+  --paper-accent: #c0392b;
+  --paper-accent-deep: #a52f23;
+  --paper-accent-soft: #fdf2f0;
+  --paper-accent-line: #eecdc7;
+  --paper-code: #8a3a2e;
+  --paper-pre-bg: #1e1c1a;
+  --paper-pre-ink: #e6e0d6;
+
   /* 排版 */
   --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', sans-serif;
@@ -108,6 +136,55 @@
      改写/配图面板全用这一个值 —— 原先分别是 780 / 780 / 780 / 720 / 760 / 820，
      同一列里出现三个宽度，往下滚的时候左右边缘一跳一跳的。 */
   --read-w: 780px;
+
+  /* ------------------------------------------------------------------
+     间距阶梯。--space-N = N × 4px，全站 UI 的 margin / padding / gap 只走这一套。
+
+     --space-0 是唯一的例外：2px 留给「图标贴合、角标内衬」这类细微档，
+     再小就不是间距而是发丝线了。
+     1px 不设 token：它只用于边框、分隔线和光学补偿（例如胶囊内边距），
+     归进阶梯反而会让控件高度多出 2px。scripts/check-spacing.ts 会守住这条线。
+
+     文章正文的 em 间距（.md-preview 的 1.4em / 1.6em…）是排版节奏，不是 UI 间距，
+     不在这套阶梯里，检查脚本也只扫 px。
+
+     3 档以上不常用的值（36 / 44 / 52 / 88 …）也保留 token：
+     预览纸在不同宽度下本来就落在这些档位上，直接用数字会再次散开。
+     ------------------------------------------------------------------ */
+  --space-0: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-11: 44px;
+  --space-12: 48px;
+  --space-13: 52px;
+  --space-14: 56px;
+  --space-16: 64px;
+  --space-22: 88px;
+  --space-24: 96px;
+  --space-28: 112px;
+
+  /* ------------------------------------------------------------------
+     布局间距。三栏的「文字左边缘」必须落在同一条竖线上：
+     侧栏、中栏、顶栏用 --pad-pane，右栏阅读区用 --pad-read。
+     断点只改这两个变量，不再逐个选择器覆盖 padding —— 之前 1180 和 760
+     两处各写一份 20/14，改漏一处就出现「编辑器和预览差 6px」。
+     ------------------------------------------------------------------ */
+  --pad-pane: var(--space-4);
+  --pad-read: var(--space-7);
+  /* 三栏头部同高。中栏头部、右栏页标题、卡片页头都取这个值，
+     横向分隔线才会在 y 轴同一条线上。 */
+  --pane-head-h: 58px;
+  /* 自定义滚动条的宽度（见下方 ::-webkit-scrollbar）。
+     滚动容器右侧的内边距要减掉它，内容才和旁边不滚动的行对齐。 */
+  --scrollbar-w: 11px;
 
   /* 投影：三档，只给真正浮起来的元素 */
   --sh-1: 0 1px 2px rgba(32, 27, 22, 0.05);
@@ -286,8 +363,9 @@ select {
 
 /* 滚动条：细、无轨道色，悬停才变深 */
 ::-webkit-scrollbar {
-  width: 11px;
-  height: 11px;
+  /* 与 --scrollbar-w 同源：滚动容器的右内边距靠它扣减，两处不能各写一个数 */
+  width: var(--scrollbar-w);
+  height: var(--scrollbar-w);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -333,15 +411,16 @@ select {
 /* 卡片页没有单独的 .main-head：预览工具栏兼任页面 header，
    「配图卡片」直接作为 h1，省掉重复的一层标题。 */
 .card-main .preview-toolbar {
-  padding-top: 12px;
-  padding-bottom: 12px;
+  /* 卡片页没有 .main-head，这条工具栏就是页标题：和别页的 58px 头部同高 */
+  min-height: var(--pane-head-h);
 }
 
 .card-toolbar-title {
   margin: 0;
   color: var(--ink);
   font-family: var(--font-serif);
-  font-size: var(--fs-xl);
+  /* 它和 .main-title 都是页面 h1（卡片页的工具栏兼任页头），同一档字号 */
+  font-size: var(--fs-2xl);
   font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1.25;
@@ -351,7 +430,7 @@ select {
 .card-main .preview-scroll {
   /* 卡片页没有底部操作条，不需要 96px 的 toast 让位；
      20px 刚好让 1440×900 下不出现只有几像素的假滚动条 */
-  padding-bottom: 20px;
+  padding-bottom: var(--space-5);
 }
 
 .card-workspace {
@@ -368,9 +447,10 @@ select {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-4);
   height: 58px;
-  padding: 0 20px;
+  /* 与侧栏 / 编辑栏的文字左边缘对齐；窄屏断点只改 --pad-pane */
+  padding: 0 var(--pad-pane);
   background: var(--chrome);
   backdrop-filter: saturate(180%) blur(14px);
   border-bottom: 1px solid var(--line);
@@ -382,8 +462,8 @@ select {
 .sidebar-toggle {
   display: none;
   align-items: center;
-  gap: 7px;
-  padding: 7px 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel);
@@ -394,7 +474,7 @@ select {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .brand-icon {
@@ -421,8 +501,8 @@ select {
 .save-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 7px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-pill);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
@@ -458,8 +538,8 @@ select {
 .update-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 9px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--accent-line);
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
@@ -507,7 +587,7 @@ select {
   right: 0;
   z-index: 40;
   width: 168px;
-  padding: 6px;
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -518,7 +598,7 @@ select {
   width: 100%;
   display: flex;
   align-items: center;
-  padding: 9px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   text-align: left;
   font-size: var(--fs-sm);
@@ -573,8 +653,14 @@ select {
   overflow: hidden;
 }
 
+/* 窄屏抽屉打开时焦点先落在整个侧栏上（读屏先读名称），外圈不再画焦点环：
+   抽屉本身就是可见的焦点区域，和弹层容器一样处理 */
+.sidebar:focus {
+  outline: none;
+}
+
 .side-section {
-  padding: 14px 16px;
+  padding: var(--space-4) var(--pad-pane);
   border-bottom: 1px solid var(--line-soft);
   flex-shrink: 0;
 }
@@ -583,12 +669,16 @@ select {
   border-bottom: none;
 }
 
-/* 平台导航吃掉剩余高度并自己滚动 —— 它永远可见，不会被导入区挤到折叠线以下 */
+/* 平台导航吃掉剩余高度并自己滚动 —— 它永远可见，不会被导入区挤到折叠线以下。
+   滚动条会吃掉 11px 宽，所以右侧内边距先扣掉它，导航行的右边缘才能和上面
+   的 file-row 对齐；scrollbar-gutter 保证列表短到不用滚时也预留这 11px。 */
 .nav-section {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: 20px;
+  padding-bottom: var(--space-5);
+  padding-right: calc(var(--pad-pane) - var(--scrollbar-w));
+  scrollbar-gutter: stable;
 }
 
 .side-title {
@@ -600,7 +690,7 @@ select {
   letter-spacing: 0.16em;
   color: var(--ink-muted);
   text-transform: uppercase;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .side-title .count {
@@ -615,15 +705,15 @@ select {
 .side-title-right {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .nav-filter-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
+  gap: var(--space-1);
+  padding: var(--space-0) var(--space-2);
   border-radius: var(--radius-pill);
   border: 1px solid transparent;
   font-size: var(--fs-xs);
@@ -648,7 +738,7 @@ select {
 }
 
 .nav-kbd {
-  padding: 2px 6px;
+  padding: var(--space-0) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   background: var(--panel);
@@ -671,14 +761,14 @@ select {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   line-height: 1;
-  padding: 1px 4px;
+  padding: 1px var(--space-1);
   border-radius: var(--radius-pill);
   background: var(--ink);
   color: var(--on-ink);
 }
 
 .nav-empty {
-  padding: 12px 2px;
+  padding: var(--space-3) var(--space-0);
   font-size: var(--fs-xs);
   line-height: 1.8;
   color: var(--ink-muted);
@@ -695,9 +785,9 @@ select {
 .file-row {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
   width: 100%;
-  padding: 7px 9px;
+  padding: var(--space-2) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -715,7 +805,7 @@ select {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 .file-row-title {
@@ -755,13 +845,13 @@ select {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
   /* 它是个 <button>：按钮默认按内容收缩，这里要撑满侧栏宽度 */
   width: 100%;
   font: inherit;
   color: inherit;
   text-align: center;
-  padding: 20px 12px 18px;
+  padding: var(--space-5) var(--space-3) var(--space-5);
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
   background: var(--panel);
@@ -783,7 +873,7 @@ select {
 
 .dropzone-icon {
   color: var(--ink-muted);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   transition: color var(--dur) var(--ease), transform var(--dur) var(--ease);
   display: flex;
 }
@@ -804,9 +894,9 @@ select {
 }
 
 .paste-toggle {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   width: 100%;
-  padding: 7px 0;
+  padding: var(--space-2) 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel);
@@ -824,8 +914,8 @@ select {
 .import-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 .import-actions .paste-toggle {
@@ -837,10 +927,10 @@ select {
 }
 
 .paste-area {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   width: 100%;
   min-height: 140px;
-  padding: 9px 11px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   font-family: var(--font-mono);
@@ -859,25 +949,25 @@ select {
 
 .paste-actions {
   display: flex;
-  gap: 6px;
-  margin-top: 7px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 /* ---------- 文章信息（可折叠） ---------- */
 
 .meta-embed {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 
 .side-collapse {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   width: 100%;
   text-align: left;
   /* 负 margin 抵掉内边距：整行可点，但文字仍与上方 file-row / 下方分组标题左对齐 */
-  padding: 3px 4px;
-  margin: -3px -4px;
+  padding: var(--space-1) var(--space-1);
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-1));
   border-radius: var(--radius-sm);
   color: var(--ink-muted);
   transition: background var(--dur) var(--ease);
@@ -905,7 +995,7 @@ select {
   min-width: 0;
   /* 竖线把「文章信息」这个标签和文章标题分开 ——
      之前两者只隔 7px 空格，读起来是「文章信息为什么我停掉了…」一整句 */
-  padding-left: 8px;
+  padding-left: var(--space-2);
   border-left: 1px solid var(--line-strong);
   font-size: var(--fs-xs);
   color: var(--ink-soft);
@@ -932,14 +1022,14 @@ select {
 }
 
 .side-collapse-body {
-  margin-top: 12px;
+  margin-top: var(--space-3);
   animation: slide-down var(--dur-slow) var(--ease-out) both;
 }
 
 /* ---------- 表单 ---------- */
 
 .field {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .field:last-child {
@@ -949,21 +1039,21 @@ select {
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .field-label {
   display: block;
   font-size: var(--fs-sm);
   color: var(--ink-muted);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   letter-spacing: 0.02em;
 }
 
 .field-input,
 .field-textarea {
   width: 100%;
-  padding: 7px 9px;
+  padding: var(--space-2) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel);
@@ -993,7 +1083,7 @@ select {
 }
 
 .field-hint {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   font-size: var(--fs-sm);
   color: var(--ink-muted);
   line-height: 1.6;
@@ -1007,13 +1097,13 @@ select {
 .tag-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin: -2px 0 10px;
+  gap: var(--space-1);
+  margin: calc(-1 * var(--space-0)) 0 var(--space-3);
 }
 
 .tag {
   font-size: var(--fs-xs);
-  padding: 1px 7px;
+  padding: 1px var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--panel-inset);
   color: var(--ink-soft);
@@ -1022,17 +1112,17 @@ select {
 /* ---------- 平台导航 ---------- */
 
 .nav-group + .nav-group {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 /* 分组标题同时是折叠开关：整行可点，右侧显示「组里几个」或当前所在平台名 */
 .nav-group-label {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   width: 100%;
-  padding: 2px 3px 2px 2px;
-  margin-bottom: 6px;
+  padding: var(--space-0) var(--space-1) var(--space-0) var(--space-0);
+  margin-bottom: var(--space-2);
   border-radius: var(--radius-xs);
   font-size: var(--fs-xs);
   letter-spacing: 0.14em;
@@ -1060,7 +1150,7 @@ select {
 .nav-group-fold {
   flex-shrink: 0;
   max-width: 92px;
-  padding: 1px 6px;
+  padding: 1px var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--panel-inset);
   color: var(--ink-muted);
@@ -1079,17 +1169,17 @@ select {
 
 /* 收起后组与组之间不需要那么大空隙 */
 .nav-group.is-collapsed + .nav-group {
-  margin-top: 10px;
+  margin-top: var(--space-3);
 }
 
 .nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
   width: 100%;
   min-height: 44px;
-  padding: 7px 8px;
+  padding: var(--space-2) var(--space-2);
   border-radius: var(--radius);
   text-align: left;
   transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
@@ -1144,7 +1234,7 @@ select {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 .nav-item-name {
@@ -1163,7 +1253,7 @@ select {
 .side-options {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: var(--space-2);
 }
 
 .side-options .theme-bar-wrap {
@@ -1173,7 +1263,7 @@ select {
 .dark-toggle-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -1209,17 +1299,21 @@ select {
 .editor-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex-wrap: wrap;
-  padding: 14px 16px 11px;
-  border-bottom: 1px solid var(--line-soft);
+  /* 与右栏页标题同高：两条横向分隔线落在同一条水平线上。
+     内容垂直居中，不再用 14/11 这种上下不对称的内边距去凑光学对齐。 */
+  min-height: var(--pane-head-h);
+  padding: var(--space-2) var(--pad-pane);
+  /* 与右栏页标题同一条线，也用同一档颜色 —— 否则线在同一高度上深浅忽然变一次 */
+  border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
 
 .editor-head-main {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   flex: 1;
   flex-wrap: wrap;
@@ -1258,7 +1352,7 @@ select {
 .editor-head-tools {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
@@ -1276,7 +1370,9 @@ select {
   resize: none;
   outline: none;
   background: transparent;
-  padding: 18px 18px 24px;
+  /* 左右与头部、脚部同一个内边距：正文第一列的左边缘和「正文」「换一篇」
+     落在同一条竖线上，不再差 2px。 */
+  padding: var(--space-5) var(--pad-pane) var(--space-6);
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
   line-height: 1.8;
@@ -1297,9 +1393,9 @@ select {
 .editor-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
-  padding: 10px 16px 12px;
+  padding: var(--space-3) var(--pad-pane) var(--space-3);
   border-top: 1px solid var(--line-soft);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
@@ -1333,7 +1429,7 @@ select {
 .mobile-pane-link {
   display: none;
   align-items: center;
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -1360,16 +1456,22 @@ select {
   background: var(--main-bg);
 }
 
+/* 与中栏头部同高、同一条底边线。标题和「预览/源码」在 58px 里垂直居中；
+   不再让头部随标题的 25px 行高单独算一套 padding。 */
 .main-head {
-  padding: 16px 28px 13px;
+  display: flex;
+  align-items: center;
+  min-height: var(--pane-head-h);
+  padding: var(--space-2) var(--pad-read);
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
 
 .head-row {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
 }
 
 .head-title {
@@ -1387,8 +1489,16 @@ select {
   color: var(--ink);
 }
 
+/* 页面标题只是 selectPlatform 的程序化焦点落点：读屏靠它播报新平台名，
+   它不是可交互控件，所以不画焦点框。真正可交互的按钮 / 链接 / 输入框
+   仍走全局 :focus-visible，这一条只覆盖这两个 h1。 */
+.main-title:focus,
+.card-toolbar-title:focus {
+  outline: none;
+}
+
 .main-hint {
-  margin: 3px 0 0;
+  margin: var(--space-1) 0 0;
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   line-height: 1.5;
@@ -1397,10 +1507,8 @@ select {
 .head-tools {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex-shrink: 0;
-  /* 与标题首行（20px / 行高 25px）光学居中：chips 高约 23px，往下让 1px 刚好 */
-  padding-top: 1px;
 }
 
 /* 卡片平台没有预览/源码切换，工具位是空的，不要留一条空隙 */
@@ -1413,8 +1521,8 @@ select {
 .check-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 9px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -1462,7 +1570,7 @@ select {
 
 .check-chip-count {
   min-width: 16px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border-radius: var(--radius-pill);
   background: var(--panel-soft);
   color: var(--ink-muted);
@@ -1493,8 +1601,11 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 28px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--pad-read);
+  /* 固定高度：转换平台有「预览宽度」三段控件、改写平台没有，
+     不定高的话切平台时下面整列会上下跳 4px */
+  min-height: 48px;
   border-bottom: 1px solid var(--line);
   background: var(--chrome-solid);
   flex-shrink: 0;
@@ -1503,7 +1614,7 @@ select {
 .preview-toolbar-title {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   min-width: 0;
   font-size: var(--fs-sm);
   color: var(--ink-soft);
@@ -1533,7 +1644,7 @@ select {
 .preview-toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex-shrink: 0;
 }
 
@@ -1542,8 +1653,8 @@ select {
 .publish-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 9px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -1595,12 +1706,14 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-/* 图标式宽度切换：比三块文字省一半横向空间，窄屏不会再换行 */
-.preview-size-switch button {
+/* 图标式宽度切换：比三块文字省一半横向空间，窄屏不会再换行。
+   选择器带上 .segmented：它比后面的 .segmented button（8px 12px）更具体，
+   否则图标按钮会被撑到 35px 高，预览工具栏从 48 变成 52，切平台时下面跳 4px。 */
+.segmented.preview-size-switch button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 5px 9px;
+  padding: var(--space-1) var(--space-2);
 }
 
 .preview-size-switch svg {
@@ -1614,8 +1727,8 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin: 0 auto 8px;
+  gap: var(--space-3);
+  margin: 0 auto var(--space-2);
   width: 100%;
   font-size: var(--fs-xs);
   color: var(--ink-muted);
@@ -1626,7 +1739,7 @@ select {
 }
 
 .preview-footnote {
-  margin: 16px auto 0;
+  margin: var(--space-4) auto 0;
   max-width: var(--read-w);
   text-align: center;
   font-size: var(--fs-xs);
@@ -1640,8 +1753,10 @@ select {
   flex: 1;
   overflow-y: auto;
   /* 底部 96px：toast 浮在操作条上方约 58px，会盖住预览区最下面几行；
-     多留的内边距让最后一行能滚到 toast 上面去，而不是永远被盖住。 */
-  padding: 20px 28px 96px;
+     多留的内边距让最后一行能滚到 toast 上面去，而不是永远被盖住。
+     右侧扣掉滚动条宽度：纸面、工具条、底部操作条右边缘才对齐。 */
+  padding: var(--space-5) calc(var(--pad-read) - var(--scrollbar-w)) var(--space-24) var(--pad-read);
+  scrollbar-gutter: stable;
   min-height: 0;
 }
 
@@ -1671,28 +1786,21 @@ select {
 }
 
 .preview-stage[data-preview-size="mobile"] .rich-preview {
-  padding: 26px 22px;
+  padding: var(--space-7) var(--space-6);
   border-radius: var(--radius-lg);
 }
 
 .preview-stage[data-preview-size="mobile"] .md-preview {
-  padding: 30px 24px 34px;
+  padding: var(--space-8) var(--space-6) var(--space-9);
   border-radius: var(--radius-lg);
 }
 
 .preview-stage[data-preview-size="tablet"] .rich-preview {
-  padding: 36px 40px;
+  padding: var(--space-9) var(--space-10);
 }
 
 .preview-stage[data-preview-size="tablet"] .md-preview {
-  padding: 40px 44px 48px;
-}
-
-/* 窄屏上三段切换挤不下时让控件自己换行，不要撑破顶栏 */
-@media (max-width: 760px) {
-  .preview-size-switch button {
-    padding: 6px 9px;
-  }
+  padding: var(--space-10) var(--space-11) var(--space-12);
 }
 
 @keyframes stage-in {
@@ -1725,8 +1833,8 @@ select {
 .notice {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-soft);
@@ -1818,8 +1926,8 @@ select {
 .notice-line {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   font-size: var(--fs-sm);
   line-height: 1.6;
   color: var(--warn);
@@ -1858,13 +1966,13 @@ select {
 .notice-more {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--fs-xs);
   /* 继承的 warn/error 色再乘 0.75 会掉到 3.x:1；
      静默感交给 --ink-muted，不再用透明度压。 */
   color: var(--ink-muted);
   flex-shrink: 0;
-  padding: 2px 6px;
+  padding: var(--space-0) var(--space-2);
   border-radius: var(--radius-xs);
   transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
@@ -1880,7 +1988,7 @@ select {
 
 .notice-list {
   margin: 0;
-  padding: 2px 12px 9px 12px;
+  padding: var(--space-0) var(--space-3) var(--space-2) var(--space-3);
   list-style: none;
   border-top: 1px dashed var(--dash);
   animation: slide-down var(--dur) var(--ease-out) both;
@@ -1889,8 +1997,8 @@ select {
 .notice-item {
   display: flex;
   align-items: baseline;
-  gap: 9px;
-  padding: 4px 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
   font-size: var(--fs-xs);
   line-height: 1.65;
   color: var(--ink-soft);
@@ -1904,7 +2012,7 @@ select {
 
 .details {
   max-width: var(--read-w);
-  margin: 0 auto 12px;
+  margin: 0 auto var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -1920,8 +2028,8 @@ select {
 .details summary {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 11px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   font-size: var(--fs-xs);
   /* 用 --ink-muted 时整条读起来像输入框里的占位符（边框 + 浅底 + 灰字），
      而它其实是个可以点开的折叠项 */
@@ -1954,7 +2062,7 @@ select {
 }
 
 .details-body {
-  padding: 8px 11px 10px;
+  padding: var(--space-2) var(--space-3) var(--space-3);
   font-size: var(--fs-xs);
   font-family: var(--font-mono);
   line-height: 1.85;
@@ -1980,8 +2088,8 @@ select {
 .source-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--line-soft);
   background: var(--panel-soft);
 }
@@ -2008,9 +2116,36 @@ select {
   word-break: break-word;
   color: var(--ink-soft);
   margin: 0;
-  padding: 20px 22px;
+  padding: var(--space-5) var(--space-6);
   max-height: 68vh;
   overflow: auto;
+}
+
+/* ------------------------------------------------------------------
+   .md-preview / .rich-preview / .tail-preview 都是「文章纸面」。
+   深色模式只改 UI，不改纸面；这里把纸内会读到的通用 token 局部固定到
+   paper 值，让未来新增的子元素也不会不小心继承深色 UI 的 --ink / --line /
+   --accent。纸面本身永远是浅纸。
+   ------------------------------------------------------------------ */
+.md-preview,
+.rich-preview,
+.tail-preview {
+  --ink: var(--paper-ink);
+  --ink-soft: var(--paper-ink-soft);
+  --ink-muted: var(--paper-ink-muted);
+  --line: var(--paper-line);
+  --line-soft: var(--paper-line-soft);
+  --line-strong: var(--paper-line-strong);
+  --panel: var(--paper-bg);
+  --panel-soft: var(--paper-panel-soft);
+  --panel-inset: var(--paper-panel-inset);
+  --accent: var(--paper-accent);
+  --accent-deep: var(--paper-accent-deep);
+  --accent-soft: var(--paper-accent-soft);
+  --accent-line: var(--paper-accent-line);
+  background: var(--paper-bg);
+  border-color: var(--paper-line);
+  color: var(--paper-body);
 }
 
 /* ---------- 公众号富文本预览 ---------- */
@@ -2020,11 +2155,10 @@ select {
      780 下正文行宽 716px，16px 中文约 44 字/行，仍在舒适区间。 */
   max-width: var(--read-w);
   margin: 0 auto;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid var(--paper-line);
   border-radius: var(--radius-lg);
   box-shadow: var(--sh-2);
-  padding: 34px 32px;
+  padding: var(--space-9) var(--space-8);
   overflow-wrap: break-word;
 }
 
@@ -2043,12 +2177,12 @@ select {
 .md-preview {
   /* 阅读预览模拟的是「读者看到的文章页」，是一张纸。
      里面的字号/颜色全是按纸白排的，深色模式下不能跟着翻，否则深底 + 深字直接看不见。 */
-  background: #ffffff;
-  border: 1px solid var(--line);
+  background: var(--paper-bg);
+  border: 1px solid var(--paper-line);
   border-radius: var(--radius-lg);
   box-shadow: var(--sh-2);
-  padding: 44px 52px 52px;
-  color: #24211e;
+  padding: var(--space-11) var(--space-13) var(--space-13);
+  color: var(--paper-body);
   font-size: var(--fs-lg);
   line-height: 1.85;
   letter-spacing: 0.015em;
@@ -2061,7 +2195,7 @@ select {
 
 .md-preview p {
   margin: 0 0 1.15em;
-  color: #24211e;
+  color: var(--paper-body);
   text-wrap: pretty;
 }
 
@@ -2070,7 +2204,7 @@ select {
 .md-preview h3,
 .md-preview h4 {
   font-family: var(--font-serif);
-  color: var(--ink);
+  color: var(--paper-ink);
   letter-spacing: 0.01em;
   line-height: 1.4;
   /* 标题不断「孤字」：两行标题宁可两行差不多长，也别第二行只剩一两个字 */
@@ -2086,7 +2220,7 @@ select {
   font-size: var(--fs-2xl);
   margin: 1.9em 0 0.72em;
   padding-bottom: 0.34em;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--paper-line);
 }
 
 .md-preview h3 {
@@ -2101,7 +2235,7 @@ select {
 
 .md-preview strong {
   font-weight: 600;
-  color: #12100e;
+  color: var(--paper-strong);
 }
 
 .md-preview em {
@@ -2109,16 +2243,16 @@ select {
 }
 
 .md-preview a {
-  color: var(--accent);
+  color: var(--paper-accent);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
-  text-decoration-color: var(--accent-line);
+  text-decoration-color: var(--paper-accent-line);
   transition: text-decoration-color var(--dur) var(--ease);
 }
 
 .md-preview a:hover {
-  text-decoration-color: var(--accent);
+  text-decoration-color: var(--paper-accent);
 }
 
 .md-preview ul,
@@ -2132,14 +2266,14 @@ select {
 }
 
 .md-preview li::marker {
-  color: var(--ink-muted);
+  color: var(--paper-ink-muted);
 }
 
 .md-preview blockquote {
   margin: 1.4em 0;
   padding: 0.1em 0 0.1em 1.1em;
-  border-left: 2px solid var(--line-strong);
-  color: var(--ink-soft);
+  border-left: 2px solid var(--paper-line-strong);
+  color: var(--paper-ink-soft);
 }
 
 .md-preview blockquote p:last-child {
@@ -2149,16 +2283,16 @@ select {
 .md-preview code {
   font-family: var(--font-mono);
   font-size: 0.87em;
-  background: var(--panel-inset);
+  background: var(--paper-panel-inset);
   padding: 0.12em 0.36em;
   border-radius: var(--radius-xs);
-  color: #8a3a2e;
+  color: var(--paper-code);
 }
 
 .md-preview pre {
   margin: 1.4em 0;
-  padding: 16px 18px;
-  background: #1e1c1a;
+  padding: var(--space-4) var(--space-5);
+  background: var(--paper-pre-bg);
   border-radius: var(--radius);
   overflow-x: auto;
   line-height: 1.72;
@@ -2166,7 +2300,7 @@ select {
 
 .md-preview pre code {
   background: none;
-  color: #e6e0d6;
+  color: var(--paper-pre-ink);
   font-size: var(--fs-sm);
   padding: 0;
 }
@@ -2186,13 +2320,13 @@ select {
 .md-preview img.is-broken,
 .rich-preview img.is-broken {
   min-height: 120px;
-  background: var(--panel-inset);
-  border: 1px dashed var(--line-strong);
+  background: var(--paper-panel-inset);
+  border: 1px dashed var(--paper-line-strong);
   box-shadow: none;
-  padding: 16px;
+  padding: var(--space-4);
   font-size: var(--fs-sm);
   line-height: 1.6;
-  color: var(--ink-muted);
+  color: var(--paper-ink-muted);
   text-align: center;
   align-content: center;
 }
@@ -2209,17 +2343,17 @@ select {
 }
 
 .md-preview figcaption {
-  margin-top: 10px;
+  margin-top: var(--space-3);
   font-size: 0.82em;
   line-height: 1.6;
   letter-spacing: 0.02em;
-  color: var(--ink-muted);
+  color: var(--paper-ink-muted);
   text-align: center;
 }
 
 .md-preview hr {
   border: none;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--paper-line);
   width: 42%;
   margin: 2.4em auto;
 }
@@ -2233,22 +2367,22 @@ select {
 
 .md-preview th,
 .md-preview td {
-  border: 1px solid var(--line);
-  padding: 7px 10px;
+  border: 1px solid var(--paper-line);
+  padding: var(--space-2) var(--space-3);
   text-align: left;
 }
 
 .md-preview th {
-  background: var(--panel-soft);
+  background: var(--paper-panel-soft);
   font-weight: 600;
 }
 
 .md-preview .footnotes {
   margin-top: 2.6em;
   padding-top: 1.1em;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--paper-line);
   font-size: var(--fs-md);
-  color: var(--ink-muted);
+  color: var(--paper-ink-muted);
 }
 
 .md-preview .footnotes ol {
@@ -2267,7 +2401,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--sh-2);
-  padding: 22px 24px;
+  padding: var(--space-6) var(--space-6);
 }
 
 /* ---------- 空状态 ---------- */
@@ -2279,16 +2413,16 @@ select {
   justify-content: center;
   height: 100%;
   min-height: 340px;
-  gap: 4px;
+  gap: var(--space-1);
   text-align: center;
-  padding: 24px;
+  padding: var(--space-6);
 }
 
 .empty-art {
   position: relative;
   width: 78px;
   height: 96px;
-  margin-bottom: 22px;
+  margin-bottom: var(--space-6);
 }
 
 .empty-art span {
@@ -2349,7 +2483,7 @@ select {
   color: var(--ink-muted);
   max-width: 330px;
   line-height: 1.8;
-  margin-top: 5px;
+  margin-top: var(--space-1);
 }
 
 .empty-primary {
@@ -2360,13 +2494,13 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
-  margin-top: 18px;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
 }
 
 /* 首次进入的说明入口：放在空状态说明下面，不抢主操作的注意力 */
 .empty-help {
-  margin-top: 14px;
+  margin-top: var(--space-4);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   text-decoration: none;
@@ -2383,7 +2517,7 @@ select {
 .publish-now {
   border-color: var(--line);
   font-size: var(--fs-xs);
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-3);
   text-decoration: none;
 }
 
@@ -2399,8 +2533,8 @@ select {
 .actionbar {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 12px 28px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--pad-read);
   border-top: 1px solid var(--line);
   background: var(--chrome-solid);
   backdrop-filter: saturate(180%) blur(12px);
@@ -2421,7 +2555,7 @@ select {
 .actionbar-complete {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   color: var(--ok);
   font-size: var(--fs-sm);
   font-weight: 600;
@@ -2430,7 +2564,7 @@ select {
 .actionbar-tools {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
 }
 
 .action-more {
@@ -2458,7 +2592,7 @@ select {
   bottom: calc(100% + 8px);
   z-index: 30;
   width: 252px;
-  padding: 6px;
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -2470,9 +2604,9 @@ select {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--space-0);
   width: 100%;
-  padding: 9px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--ink);
   font-size: var(--fs-sm);
@@ -2490,15 +2624,15 @@ select {
 
 .action-more-sep {
   height: 1px;
-  margin: 6px 4px;
+  margin: var(--space-2) var(--space-1);
   background: var(--line-soft);
 }
 
 .action-more-check {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
-  padding: 9px 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--ink-soft);
   font-size: var(--fs-sm);
@@ -2510,12 +2644,12 @@ select {
 }
 
 .action-more-check input {
-  margin-top: 3px;
+  margin-top: var(--space-1);
   cursor: pointer;
 }
 
 .palette-foot kbd {
-  padding: 2px 5px;
+  padding: var(--space-0) var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   background: var(--panel-soft);
@@ -2530,8 +2664,8 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 7px 14px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-sm);
   font-size: var(--fs-sm);
   border: 1px solid var(--line-strong);
@@ -2543,7 +2677,8 @@ select {
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--panel);
+  /* 白按钮在白底上只靠阴影几乎看不出悬停；压深一档底色给明确反馈 */
+  background: var(--panel-soft);
   border-color: var(--line-strong);
   color: var(--ink);
   box-shadow: var(--sh-1);
@@ -2588,7 +2723,7 @@ select {
 }
 
 .btn-sm {
-  padding: 6px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: var(--fs-sm);
 }
 
@@ -2616,7 +2751,7 @@ select {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   z-index: 200;
   pointer-events: none;
 }
@@ -2632,8 +2767,8 @@ select {
 .toast {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-lg);
   background: var(--toast-bg);
   backdrop-filter: blur(10px);
@@ -2653,7 +2788,7 @@ select {
   justify-content: center;
   width: 20px;
   height: 20px;
-  margin-left: 2px;
+  margin-left: var(--space-0);
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
@@ -2702,7 +2837,7 @@ select {
   align-items: center;
   justify-content: center;
   z-index: 150;
-  padding: 24px;
+  padding: var(--space-6);
   animation: fade-in var(--dur) var(--ease) both;
 }
 
@@ -2746,7 +2881,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 15px 20px;
+  padding: var(--space-4) var(--space-5);
   position: sticky;
   top: 0;
   background: var(--panel);
@@ -2766,15 +2901,15 @@ select {
 .modal-body {
   /* 底部多留 10px：弹窗底栏是 sticky 的，最后一行内容（比如「清空 Key」）
      滚到底时会被它盖住一半，多留的内边距让它能完整滚上来。 */
-  padding: 18px 20px 28px;
+  padding: var(--space-5) var(--space-5) var(--space-7);
 }
 
 .modal-foot {
-  padding: 13px 20px;
+  padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--line);
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   position: sticky;
   bottom: 0;
   background: var(--panel);
@@ -2787,14 +2922,14 @@ select {
 }
 
 .readiness-body {
-  padding-top: 16px;
+  padding-top: var(--space-4);
 }
 
 .readiness-overview {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-soft);
@@ -2813,7 +2948,7 @@ select {
 .readiness-score {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 72px;
   color: var(--ink-muted);
   font-family: var(--font-mono);
@@ -2846,12 +2981,12 @@ select {
 }
 
 .readiness-list {
-  margin-top: 16px;
+  margin-top: var(--space-4);
   border-top: 1px solid var(--line-soft);
 }
 
 .readiness-optional-label {
-  padding-top: 16px;
+  padding-top: var(--space-4);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   font-weight: 600;
@@ -2861,16 +2996,16 @@ select {
 .readiness-item {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
-  gap: 11px;
+  gap: var(--space-3);
   align-items: start;
-  padding: 14px 0;
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
 .readiness-mark {
   width: 7px;
   height: 7px;
-  margin-top: 7px;
+  margin-top: var(--space-2);
   border-radius: 50%;
   background: var(--ok);
 }
@@ -2890,7 +3025,7 @@ select {
 .readiness-item-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .readiness-item-label {
@@ -2913,7 +3048,7 @@ select {
 }
 
 .readiness-item-summary {
-  margin-top: 3px;
+  margin-top: var(--space-1);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   line-height: 1.65;
@@ -2925,18 +3060,18 @@ select {
 }
 
 .readiness-details {
-  margin-top: 8px;
-  padding: 2px 0;
+  margin-top: var(--space-2);
+  padding: var(--space-0) 0;
 }
 
 .readiness-detail {
-  padding: 7px 9px;
+  padding: var(--space-2) var(--space-2);
   border-left: 2px solid var(--line-strong);
   background: var(--panel-soft);
 }
 
 .readiness-detail + .readiness-detail {
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .readiness-detail > span {
@@ -2946,7 +3081,7 @@ select {
 }
 
 .readiness-detail p {
-  margin: 2px 0 0;
+  margin: var(--space-0) 0 0;
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   line-height: 1.6;
@@ -2966,15 +3101,15 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px 8px;
-  margin-top: 6px;
+  gap: var(--space-2) var(--space-2);
+  margin-top: var(--space-2);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   line-height: 1.5;
 }
 
 .check-limit {
-  padding: 1px 6px;
+  padding: 1px var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel-soft);
@@ -2983,8 +3118,8 @@ select {
 }
 
 .check-block {
-  margin-top: 18px;
-  padding-top: 16px;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--line-soft);
 }
 
@@ -2992,8 +3127,8 @@ select {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 9px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .check-block-head > span:first-child {
@@ -3020,8 +3155,8 @@ select {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   background: var(--panel);
 }
 
@@ -3060,7 +3195,7 @@ select {
 
 .check-notes li {
   position: relative;
-  padding: 5px 0 5px 14px;
+  padding: var(--space-1) 0 var(--space-1) var(--space-4);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   line-height: 1.65;
@@ -3088,8 +3223,8 @@ select {
 .palette-search-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 17px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
   border-bottom: 1px solid var(--line);
 }
 
@@ -3114,7 +3249,7 @@ select {
 }
 
 .palette-search-wrap kbd {
-  padding: 2px 5px;
+  padding: var(--space-0) var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   color: var(--ink-muted);
@@ -3125,16 +3260,16 @@ select {
 .palette-list {
   max-height: min(58vh, 440px);
   overflow-y: auto;
-  padding: 6px;
+  padding: var(--space-2);
 }
 
 .palette-row {
   display: grid;
   grid-template-columns: 116px minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   width: 100%;
-  padding: 10px 11px;
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--ink);
   text-align: left;
@@ -3169,7 +3304,7 @@ select {
 }
 
 .palette-empty {
-  padding: 36px 18px;
+  padding: var(--space-9) var(--space-5);
   color: var(--ink-muted);
   font-size: var(--fs-sm);
   line-height: 1.7;
@@ -3179,8 +3314,8 @@ select {
 .palette-foot {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  padding: 9px 17px;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--line);
   background: var(--panel-soft);
   color: var(--ink-muted);
@@ -3196,14 +3331,14 @@ select {
 .recovery-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .recovery-row {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-soft);
@@ -3212,7 +3347,7 @@ select {
 .recovery-mark {
   width: 7px;
   height: 7px;
-  margin-top: 5px;
+  margin-top: var(--space-1);
   border-radius: 50%;
   background: var(--line-strong);
   flex-shrink: 0;
@@ -3241,7 +3376,7 @@ select {
 }
 
 .recovery-row p {
-  margin: 2px 0 0;
+  margin: var(--space-0) 0 0;
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   line-height: 1.65;
@@ -3252,7 +3387,7 @@ select {
 }
 
 .recovery-note {
-  padding: 4px 2px;
+  padding: var(--space-1) var(--space-0);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   line-height: 1.7;
@@ -3261,14 +3396,14 @@ select {
 /* ---------- 平台筛选面板 ---------- */
 
 .filter-group + .filter-group {
-  margin-top: 18px;
+  margin-top: var(--space-5);
 }
 
 .filter-group-label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
   font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.14em;
@@ -3278,8 +3413,8 @@ select {
 .filter-row {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 7px 8px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background var(--dur) var(--ease);
@@ -3336,14 +3471,14 @@ select {
 
 .segmented {
   display: inline-flex;
-  padding: 2px;
+  padding: var(--space-0);
   background: var(--panel-inset);
   border-radius: var(--radius-sm);
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 .segmented button {
-  padding: 6px 12px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-xs);
   font-size: var(--fs-sm);
   color: var(--ink-muted);
@@ -3381,7 +3516,7 @@ select {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr) 340px;
   grid-template-areas: 'rail stage inspector';
-  gap: 24px;
+  gap: var(--space-6);
   align-items: start;
 }
 
@@ -3409,8 +3544,8 @@ select {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .studio-rail .card-list {
@@ -3418,12 +3553,12 @@ select {
   min-height: 0;
   max-height: none;
   overflow-y: auto;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .studio-rail-actions {
   display: flex;
-  gap: 7px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
@@ -3440,7 +3575,7 @@ select {
 }
 
 .studio-rail-hint {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--ink-muted);
   font-size: var(--fs-xs);
 }
@@ -3462,7 +3597,7 @@ select {
   max-height: calc(100vh - 218px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 4px;
+  padding-right: var(--space-1);
   scrollbar-gutter: stable;
 }
 
@@ -3470,8 +3605,8 @@ select {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .studio-stage-label {
@@ -3507,8 +3642,8 @@ select {
 .studio-pager {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 10px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .pager-btn {
@@ -3552,8 +3687,8 @@ select {
 
 /* 导出面板：安静的小卡片，贴着预览下方 */
 .studio-export {
-  margin-top: 14px;
-  padding: 13px 14px 12px;
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-soft);
@@ -3563,8 +3698,8 @@ select {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 9px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .studio-export-title {
@@ -3583,14 +3718,14 @@ select {
 }
 
 .studio-export .check-row {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .studio-export-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 11px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .studio-export-actions .btn-accent {
@@ -3598,7 +3733,7 @@ select {
 }
 
 .studio-export-note {
-  margin: 9px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: var(--fs-xs);
   line-height: 1.65;
   color: var(--ink-muted);
@@ -3646,14 +3781,14 @@ select {
 
 /* 当前卡的编辑区：和上方「整套图设置」拉一条线分开 */
 .studio-editor-head {
-  margin: 20px 0 12px;
-  padding-top: 14px;
+  margin: var(--space-5) 0 var(--space-3);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--line);
 }
 
 .studio-editor-kicker {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   font-weight: 600;
@@ -3671,7 +3806,7 @@ select {
 
 .studio-editor-hint {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--space-0);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   line-height: 1.6;
@@ -3682,7 +3817,7 @@ select {
 .studio-theme-row {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .theme-dot {
@@ -3714,8 +3849,8 @@ select {
 
 /* 排版分组：细线小卡片，把「字号 / 密度 / 对齐 / 显示」收在一处 */
 .studio-group {
-  margin: 14px 0 12px;
-  padding: 12px 13px 13px;
+  margin: var(--space-4) 0 var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel-soft);
@@ -3726,7 +3861,7 @@ select {
 }
 
 .studio-group-title {
-  margin-bottom: 9px;
+  margin-bottom: var(--space-2);
   font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.16em;
@@ -3740,22 +3875,22 @@ select {
 
 .studio-seg button {
   flex: 1;
-  padding: 5px 4px;
+  padding: var(--space-1) var(--space-1);
 }
 
 .flag-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  margin-top: 10px;
-  padding-top: 10px;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--line-soft);
 }
 
 .check-inline {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   font-size: var(--fs-xs);
   color: var(--ink-soft);
   cursor: pointer;
@@ -3770,14 +3905,14 @@ select {
 .stat-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .stat-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .stat-row .stat-value {
@@ -3796,20 +3931,20 @@ select {
 .card-list {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: var(--space-2);
   /* 按小节出图后卡片可能有十几张，列表自己滚，别把下面的控件顶出屏幕 */
   max-height: 330px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 2px;
-  margin-bottom: 14px;
+  padding-right: var(--space-0);
+  margin-bottom: var(--space-4);
 }
 
 .card-item {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 7px 0 0;
+  gap: var(--space-0);
+  padding: 0 var(--space-2) 0 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -3827,10 +3962,10 @@ select {
 .card-select {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex: 1;
   min-width: 0;
-  padding: 7px 0 7px 9px;
+  padding: var(--space-2) 0 var(--space-2) var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
@@ -3857,7 +3992,7 @@ select {
 .card-grip {
   flex-shrink: 0;
   width: 8px;
-  margin-left: -4px;
+  margin-left: calc(-1 * var(--space-1));
   font-size: var(--fs-xs);
   line-height: 1;
   letter-spacing: -1px;
@@ -3886,7 +4021,7 @@ select {
 .card-move {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
   flex-shrink: 0;
   opacity: 0;
   pointer-events: none;
@@ -3936,7 +4071,7 @@ select {
 
 .card-item-remove.confirm {
   width: auto;
-  padding: 0 6px;
+  padding: 0 var(--space-2);
   border: 1px solid var(--error);
   background: var(--error-soft);
   color: var(--error);
@@ -3962,8 +4097,8 @@ select {
   position: relative;
   display: flex;
   align-items: stretch;
-  gap: 4px;
-  padding: 6px 6px 6px 5px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-1);
   width: 34px;
   height: 45px;
   border-radius: var(--radius-xs);
@@ -4016,7 +4151,7 @@ select {
 }
 
 .card-item-mark {
-  margin-left: 6px;
+  margin-left: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
@@ -4035,7 +4170,7 @@ select {
   left: 0;
   z-index: 20;
   min-width: 96px;
-  padding: 4px;
+  padding: var(--space-1);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -4047,7 +4182,7 @@ select {
 
 .add-menu button {
   text-align: left;
-  padding: 6px 9px;
+  padding: var(--space-2) var(--space-2);
   font-size: var(--fs-sm);
   color: var(--ink-soft);
   border-radius: var(--radius-sm);
@@ -4063,15 +4198,15 @@ select {
 
 .theme-row {
   display: flex;
-  gap: 7px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .theme-chip {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 10px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   font-size: var(--fs-xs);
@@ -4105,15 +4240,15 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   background: var(--panel);
 }
 
 .ai-result-head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 8px 13px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   background: var(--panel-soft);
   border-bottom: 1px solid var(--line-soft);
 }
@@ -4127,7 +4262,7 @@ select {
 }
 
 .ai-result-body {
-  padding: 13px;
+  padding: var(--space-3);
   font-size: var(--fs-md);
   line-height: 1.85;
   white-space: pre-wrap;
@@ -4138,15 +4273,15 @@ select {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 7px;
-  padding: 9px 13px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--line-soft);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
 }
 
 .thread-item {
-  padding: 12px 13px;
+  padding: var(--space-3) var(--space-3);
   border-bottom: 1px solid var(--line-soft);
   transition: background var(--dur) var(--ease);
 }
@@ -4162,8 +4297,8 @@ select {
 .thread-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .thread-no {
@@ -4193,14 +4328,14 @@ select {
 .ai-panel {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--space-5);
 }
 
 .connect-banner {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 13px 15px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--accent-line);
   border-radius: var(--radius);
   background: linear-gradient(180deg, var(--accent-soft-hover), var(--accent-soft));
@@ -4215,7 +4350,7 @@ select {
   font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--accent);
-  margin-bottom: 3px;
+  margin-bottom: var(--space-1);
 }
 
 .connect-banner-sub {
@@ -4231,15 +4366,15 @@ select {
 .ai-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-bottom: 14px;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--line-soft);
 }
 
 .ai-toolbar-left {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
 }
 
 .ai-toolbar-label {
@@ -4272,15 +4407,15 @@ select {
 .digest-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   background: var(--panel-soft);
 }
 
 .digest-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex: 1;
   min-width: 0;
   text-align: left;
@@ -4316,12 +4451,12 @@ select {
 
 .digest-bar-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .digest-body {
-  padding: 14px;
+  padding: var(--space-4);
   border-top: 1px solid var(--line-soft);
   animation: slide-down var(--dur) var(--ease-out) both;
 }
@@ -4329,8 +4464,8 @@ select {
 .digest-stream {
   max-height: 150px;
   overflow-y: auto;
-  padding: 8px 10px;
-  margin-bottom: 12px;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
   background: var(--panel-soft);
   border-radius: var(--radius-sm);
   font-size: var(--fs-xs);
@@ -4341,27 +4476,27 @@ select {
 }
 
 .digest-oneliner {
-  padding-bottom: 14px;
-  margin-bottom: 14px;
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
   border-bottom: 1px dashed var(--line);
 }
 
 .digest-oneliner-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 5px;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
   font-size: var(--fs-xs);
 }
 
 .digest-list {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: var(--space-4);
 }
 
 .digest-item {
-  padding-left: 11px;
+  padding-left: var(--space-3);
   border-left: 2px solid var(--line-soft);
   transition: border-color var(--dur) var(--ease);
 }
@@ -4374,8 +4509,8 @@ select {
 .digest-head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .digest-num {
@@ -4418,20 +4553,20 @@ select {
 .digest-item-foot {
   display: flex;
   justify-content: flex-end;
-  margin-top: 2px;
+  margin-top: var(--space-0);
 }
 
 /* ---------- 平台文案段 ---------- */
 
 .ai-stage {
-  padding-top: 2px;
+  padding-top: var(--space-0);
 }
 
 .ai-stage-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 /* 这里原本还有一个 .ai-stage-no（①/② 圆圈角标），只被 ② 用过，
@@ -4444,7 +4579,7 @@ select {
 .ai-stage-status {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
 }
@@ -4464,7 +4599,7 @@ select {
 /* 和前面的「已生成 N 字符」拉开一点：直接贴着读成「328 字符 6s」很挤 */
 .ai-elapsed::before {
   content: '·';
-  margin-right: 5px;
+  margin-right: var(--space-1);
   color: var(--line-strong);
 }
 
@@ -4475,8 +4610,8 @@ select {
 .ai-stream {
   max-height: 190px;
   overflow-y: auto;
-  padding: 10px 12px;
-  margin-bottom: 12px;
+  padding: var(--space-3) var(--space-3);
+  margin-bottom: var(--space-3);
   background: var(--panel-soft);
   border-radius: var(--radius-sm);
   font-size: var(--fs-xs);
@@ -4488,7 +4623,7 @@ select {
 
 /* 还没有文案时的占位：不抢主按钮的戏 */
 .stage-empty {
-  padding: 30px 20px;
+  padding: var(--space-8) var(--space-5);
   text-align: center;
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
@@ -4498,8 +4633,8 @@ select {
 /* 空态示例：没生成时先让用户看到「生成后会长这样」。
    灰底 + 左侧红线，和正文里的引用块一个意思 —— 一眼知道这是示例，不是结果。 */
 .stage-sample {
-  margin-top: 16px;
-  padding: 12px 14px;
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   text-align: left;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -4510,7 +4645,7 @@ select {
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   letter-spacing: 0.04em;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 .stage-sample-text {
   font-size: var(--fs-sm);
@@ -4523,11 +4658,11 @@ select {
 .preset-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .preset-chip {
-  padding: 6px 14px;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   font-size: var(--fs-sm);
@@ -4556,10 +4691,15 @@ select {
   line-height: 1.6;
 }
 
+/* 设置面板里各段之间的统一间距（标题段和底部危险区共用） */
+.settings-block {
+  margin-top: var(--space-5);
+}
+
 .settings-advanced,
 .settings-unsplash,
 .settings-data {
-  margin-top: 16px;
+  margin-top: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-soft);
@@ -4572,8 +4712,8 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   color: var(--ink-soft);
   font-size: var(--fs-sm);
   cursor: pointer;
@@ -4601,14 +4741,14 @@ select {
 .settings-advanced-body,
 .settings-data-body,
 .settings-unsplash-body {
-  padding: 12px;
+  padding: var(--space-3);
   background: var(--panel);
 }
 
 .settings-data-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .settings-advanced-body .field:last-child,
@@ -4618,7 +4758,7 @@ select {
 
 .key-row {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .key-row .field-input {
@@ -4633,8 +4773,8 @@ select {
 .check-row {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
   font-size: var(--fs-xs);
   color: var(--ink-soft);
   line-height: 1.6;
@@ -4642,7 +4782,7 @@ select {
 }
 
 .check-row input {
-  margin: 2px 0 0;
+  margin: var(--space-0) 0 0;
   flex-shrink: 0;
   accent-color: var(--accent);
 }
@@ -4650,14 +4790,14 @@ select {
 .ping-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 14px;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 
 .link-btn {
   color: var(--accent);
   font-size: inherit;
-  padding: 0 2px;
+  padding: 0 var(--space-0);
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-color: var(--accent-line);
@@ -4670,7 +4810,7 @@ select {
 }
 
 .field-label .link-btn {
-  margin-left: 6px;
+  margin-left: var(--space-2);
   font-size: var(--fs-xs);
 }
 
@@ -4685,7 +4825,7 @@ select {
 .theme-bar-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -4693,8 +4833,8 @@ select {
 .dark-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -4742,9 +4882,9 @@ select {
 .theme-bar {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   width: auto;
-  padding: 5px 9px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -4761,7 +4901,7 @@ select {
 .theme-swatches {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
   flex-shrink: 0;
 }
 
@@ -4801,19 +4941,19 @@ select {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 22px 14px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6) var(--space-4);
   border-bottom: 1px solid var(--line);
 }
 
 .theme-sheet-sub {
-  margin-top: 3px;
+  margin-top: var(--space-1);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
 }
 
 .theme-sheet-body {
-  padding: 16px 22px 20px;
+  padding: var(--space-4) var(--space-6) var(--space-5);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -4822,7 +4962,7 @@ select {
 .theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .theme-card {
@@ -4868,15 +5008,15 @@ select {
 .theme-meta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 7px 9px 8px;
+  gap: var(--space-0);
+  padding: var(--space-2) var(--space-2) var(--space-2);
   border-top: 1px solid var(--line-soft);
 }
 
 .theme-name-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -4893,7 +5033,7 @@ select {
   color: var(--ink-muted);
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   flex-shrink: 0;
 }
 
@@ -4902,7 +5042,7 @@ select {
 .theme-dark-warn {
   font-size: var(--fs-xs);
   line-height: 1.6;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border-radius: var(--radius-xs);
   color: var(--warn);
   border: 1px solid currentColor;
@@ -4944,7 +5084,7 @@ select {
 
 .nav-prepared {
   flex-shrink: 0;
-  padding: 1px 5px;
+  padding: 1px var(--space-1);
   border-radius: var(--radius-xs);
   background: var(--warn-soft);
   color: var(--warn);
@@ -4957,10 +5097,20 @@ select {
 }
 
 .check-empty {
-  padding: 16px 12px;
+  padding: var(--space-4) var(--space-3);
   font-size: var(--fs-xs);
   line-height: 1.8;
   color: var(--ink-muted);
+}
+
+/* 弹层正文里的空态：纵向留白只有两档。
+   原来 6 个调用点各写一份 inline padding（30 / 36），既散又容易改漏。 */
+.check-empty-lg {
+  padding: var(--space-9) 0;
+}
+
+.check-empty-md {
+  padding: var(--space-8) 0;
 }
 
 /* ---------- 台账弹层 ---------- */
@@ -4970,7 +5120,7 @@ select {
 }
 
 .ledger-sub {
-  margin-top: 3px;
+  margin-top: var(--space-1);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
 }
@@ -4980,15 +5130,15 @@ select {
 }
 
 .ledger-filters {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-4);
 }
 
 .ledger-complete {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border: 1px solid var(--ok-soft);
   border-radius: var(--radius);
   background: var(--ok-soft);
@@ -5001,29 +5151,29 @@ select {
 .ledger-row {
   display: grid;
   grid-template-columns: 104px 74px 94px minmax(0, 1fr) 88px;
-  gap: 10px;
+  gap: var(--space-3);
   align-items: center;
 }
 
 .ledger-columns {
-  padding: 0 0 6px;
+  padding: 0 0 var(--space-2);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
 }
 
 .ledger-group {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-4);
 }
 
 .ledger-group-label {
   font-size: var(--fs-xs);
   letter-spacing: 0.16em;
   color: var(--ink-muted);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .ledger-row {
-  padding: 6px 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -5039,7 +5189,7 @@ select {
 .ledger-name {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -5126,7 +5276,7 @@ select {
 
 .ledger-url {
   font-size: var(--fs-xs);
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-2);
 }
 
 .ledger-btn {
@@ -5151,8 +5301,8 @@ select {
 .draft-row {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 0;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -5162,9 +5312,11 @@ select {
 
 /* 当前打开的那篇压暗一点、左侧加一条竖线：一眼看出「这个不用点」 */
 .draft-row.current {
-  padding-left: 10px;
+  padding-left: var(--space-3);
   border-left: 2px solid var(--accent-line);
-  margin-left: -12px;
+  /* 负 margin 把 12px 内边距和 2px 边框一起抵掉，标题才和其他行同一条竖线。
+     这里的 2px 是边框宽度，不是间距，所以不走 --space-*。 */
+  margin-left: calc(-1 * (var(--space-3) + 2px));
 }
 
 .draft-main {
@@ -5175,7 +5327,7 @@ select {
 .draft-title-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -5192,7 +5344,7 @@ select {
   flex-shrink: 0;
   font-size: var(--fs-xs);
   letter-spacing: 0.06em;
-  padding: 1px 5px;
+  padding: 1px var(--space-1);
   border-radius: var(--radius-xs);
   background: var(--accent-soft);
   color: var(--accent);
@@ -5204,26 +5356,26 @@ select {
 }
 
 .draft-meta {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .draft-marks {
-  margin-top: 6px;
+  margin-top: var(--space-2);
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .draft-mark {
   font-size: var(--fs-xs);
   line-height: 1.6;
-  padding: 1px 6px;
+  padding: 1px var(--space-2);
   border-radius: var(--radius-xs);
   background: var(--panel-soft);
   border: 1px solid var(--line-soft);
@@ -5232,7 +5384,7 @@ select {
 
 .draft-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
@@ -5259,7 +5411,7 @@ select {
 }
 
 .rev-tabs {
-  margin: 12px 20px 0;
+  margin: var(--space-3) var(--space-5) 0;
   align-self: flex-start;
 }
 
@@ -5271,22 +5423,22 @@ select {
 .rev-total {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-soft);
 }
 
 .review-zero-hint {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .rev-total-item {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -5305,7 +5457,7 @@ select {
 }
 
 .rev-row {
-  padding: 10px 0;
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -5316,8 +5468,8 @@ select {
 .rev-row-head {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .rev-name {
@@ -5342,13 +5494,13 @@ select {
 .rev-fields {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .rev-field {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -5362,7 +5514,7 @@ select {
   flex: 1;
   min-width: 0;
   font-size: var(--fs-xs);
-  padding: 4px 7px;
+  padding: var(--space-1) var(--space-2);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -5375,9 +5527,9 @@ select {
 .rev-trow {
   display: grid;
   grid-template-columns: 1fr 72px 72px 66px 132px;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 7px 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -5432,7 +5584,7 @@ select {
      格式恰恰是这一行最要紧的信息（.webp 其实是 JPEG 就是这么看出来的），
      所以宁可少一列、缩略图大一圈，也不让它截断。 */
   grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .img-item {
@@ -5476,7 +5628,7 @@ select {
   top: 6px;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  padding: 1px 5px;
+  padding: 1px var(--space-1);
   border-radius: var(--radius-xs);
   background: var(--badge-bg);
   color: #fff;
@@ -5487,7 +5639,7 @@ select {
   right: 6px;
   top: 6px;
   font-size: var(--fs-xs);
-  padding: 1px 5px;
+  padding: 1px var(--space-1);
   border-radius: var(--radius-xs);
 }
 
@@ -5527,13 +5679,13 @@ select {
 /* 结论下面那句「为什么」，单独一行 —— 和总结句挤在一起会读成一长句 */
 .audit-why {
   display: block;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   color: var(--ink-muted);
 }
 
 /* 平台规则说明：默认折叠，避免每次打开都占一行。 */
 .audit-rule-details {
-  margin-top: 12px;
+  margin-top: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel-soft);
@@ -5541,14 +5693,14 @@ select {
 }
 
 .audit-rule-details summary {
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-3);
   color: var(--ink-soft);
   font-size: var(--fs-xs);
   cursor: pointer;
 }
 
 .audit-rule-details > div {
-  padding: 0 10px 9px;
+  padding: 0 var(--space-3) var(--space-2);
   font-size: var(--fs-xs);
   line-height: 1.7;
   color: var(--ink-muted);
@@ -5557,8 +5709,8 @@ select {
 .img-meta {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 6px 8px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2);
 }
 
 .img-alt {
@@ -5610,22 +5762,22 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  margin-bottom: 6px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
   font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--ink);
 }
 
 .meta-section-head-gap {
-  margin-top: 22px;
+  margin-top: var(--space-6);
 }
 
 .meta-bulk-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .meta-section-hint {
@@ -5641,9 +5793,9 @@ select {
 
 .meta-title {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-start;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -5654,7 +5806,7 @@ select {
 .meta-idx {
   flex-shrink: 0;
   width: 20px;
-  padding-top: 2px;
+  padding-top: var(--space-0);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
@@ -5676,14 +5828,14 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  margin-top: 3px;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
 }
 
 .meta-angle {
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   border-radius: var(--radius-xs);
   background: var(--panel-inset);
   color: var(--ink-soft);
@@ -5698,7 +5850,7 @@ select {
 }
 
 .meta-badge {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border: 1px solid var(--ok);
   border-radius: var(--radius-xs);
   font-size: var(--fs-xs);
@@ -5716,18 +5868,18 @@ select {
 
 .meta-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .meta-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .meta-tag {
-  padding: 4px 11px;
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -5752,8 +5904,8 @@ select {
 .meta-running {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 18px 0;
+  gap: var(--space-3);
+  padding: var(--space-5) 0;
   font-size: var(--fs-sm);
   color: var(--ink-soft);
 }
@@ -5766,19 +5918,19 @@ select {
 }
 
 .tail-tabs {
-  margin: 12px 20px 0;
+  margin: var(--space-3) var(--space-5) 0;
   align-self: flex-start;
 }
 
 .tail-block {
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--line-soft);
 }
 
 .tail-toggle {
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: var(--fs-sm);
   color: var(--ink);
 }
@@ -5790,31 +5942,31 @@ select {
 .tail-block-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 10px 0 2px 22px;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-0) var(--space-6);
 }
 
 .tail-items {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* 每一条 = 输入行 + 可选的行内提示，提示换行时不挤乱 flex 行 */
 .tail-item-row {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-1);
 }
 
 .tail-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .tail-item-warn {
-  margin-left: 26px;
+  margin-left: var(--space-7);
   font-size: var(--fs-xs);
   line-height: 1.5;
   color: var(--warn);
@@ -5841,10 +5993,11 @@ select {
 }
 
 .tail-preview {
-  padding: 24px 26px;
-  border: 1px solid var(--line);
+  padding: var(--space-6) var(--space-7);
+  border: 1px solid var(--paper-line);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--paper-bg);
+  color: var(--paper-body);
 }
 
 /* ---------- 工具类 ---------- */
@@ -5852,7 +6005,7 @@ select {
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .muted {
@@ -5871,13 +6024,6 @@ select {
    响应式与偏好
    ========================================================================== */
 
-@media (max-width: 1120px) {
-  .main-head {
-    padding-top: 13px;
-    padding-bottom: 11px;
-  }
-}
-
 @media (min-width: 1600px) {
   /* 宽屏下卡片跟着长，但**正文行宽一点不涨** —— 多出来的 120px 全进内边距，
      像一页纸的页边距。780px 时正文已经是 44 字/行（16px 中文的舒适上限），
@@ -5887,10 +6033,10 @@ select {
     --read-w: 900px;
   }
   .rich-preview {
-    padding: 40px 90px;
+    padding: var(--space-10) var(--space-22);
   }
   .md-preview {
-    padding: 48px 112px 56px;
+    padding: var(--space-12) var(--space-28) var(--space-14);
   }
 }
 
@@ -5898,41 +6044,26 @@ select {
   :root {
     --sidebar-w: 250px;
     --editor-w: 340px;
+    /* 预览列变窄，两侧留白跟着收 */
+    --pad-read: 20px;
   }
 
-  /* 预览列变窄后，标题和工具不能继续挤在一行：
-     1024 宽下「公众号」曾被压成竖排三个字。 */
+  /* 侧栏变成抽屉后，预览列实际有 644~840px 宽，标题和「预览/源码」
+     一直放得下一行；不再折成两行，三栏头部才能保持同高。 */
   .head-row {
-    flex-wrap: wrap;
-    row-gap: 8px;
-  }
-
-  .head-title {
-    flex: 1 1 100%;
+    flex-wrap: nowrap;
   }
 
   .head-tools {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-wrap: nowrap;
+    gap: var(--space-2);
   }
 
-  .main-head,
-  .preview-toolbar,
-  .actionbar {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-  .preview-scroll {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
   .theme-grid {
     grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   }
   .md-preview {
-    padding: 34px 34px 40px;
+    padding: var(--space-9) var(--space-9) var(--space-10);
   }
 }
 
@@ -5959,12 +6090,17 @@ select {
     box-shadow: var(--sh-3);
     visibility: hidden;
     transform: translateX(-102%);
-    transition: transform var(--dur-slow) var(--ease-out), visibility var(--dur-slow);
+    /* 关闭：等滑出动画结束再隐藏；visibility 本身用 0s + 延迟。
+       打开时（下一条规则）立刻可见 —— 否则第一帧仍是 hidden，焦点陷阱
+       要在下一帧才能把焦点放进去，键盘用户会有一拍空窗。 */
+    transition: transform var(--dur-slow) var(--ease-out),
+      visibility 0s linear var(--dur-slow);
   }
 
   .app.sidebar-open .sidebar {
     visibility: visible;
     transform: none;
+    transition: transform var(--dur-slow) var(--ease-out), visibility 0s;
   }
 
   .sidebar-scrim {
@@ -5985,6 +6121,21 @@ select {
   }
 }
 
+/* 手机上工具栏要同时放「检查 / 台账 / 预览宽度」三组控件。
+   只收装饰（眼睛图标）和组间距，给「实时预览」和三个宽度按钮都留出位置，
+   不砍任何功能；图标按钮的内边距已由 .segmented.preview-size-switch 统一。 */
+@media (max-width: 460px) {
+  .preview-toolbar {
+    gap: var(--space-2);
+  }
+  .preview-toolbar-title > svg {
+    display: none;
+  }
+  .preview-toolbar-actions {
+    gap: var(--space-2);
+  }
+}
+
 @media (max-width: 420px) {
   /* 390 宽时同时放「编辑/预览切换 + 已保存 + 台账 + 工具」会挤到换行，
      品牌只留图标，标题在浏览器标签页里仍然看得到。 */
@@ -5993,10 +6144,26 @@ select {
   }
 }
 
+/* 320px 级别的窄屏：文字标签这时真放不下，才让位给功能控件。
+   工具栏没有控件时（首次进入、还没导入文章）把标签留回来，避免一条空栏。 */
+@media (max-width: 340px) {
+  .preview-toolbar-label {
+    display: none;
+  }
+  .preview-toolbar:not(:has(.preview-toolbar-actions > *)) .preview-toolbar-label {
+    display: inline;
+  }
+}
+
 @media (max-width: 760px) {
+  :root {
+    /* 手机屏只剩一栏，两侧 14px 比 16px 多出一点阅读宽度 */
+    --pad-pane: 14px;
+    --pad-read: 14px;
+  }
+
   .topbar {
-    gap: 8px;
-    padding: 0 12px;
+    gap: var(--space-2);
   }
 
   /* 一屏只放得下一栏：编辑 / 预览用栏头的小按钮切，不挤占顶栏 */
@@ -6021,18 +6188,12 @@ select {
     display: inline-flex;
   }
 
-  .editor-head,
-  .editor-foot {
-    padding-left: 14px;
-    padding-right: 14px;
-  }
-
   .editor-textarea {
-    padding: 16px 14px 24px;
+    padding: var(--space-4) var(--pad-pane) var(--space-6);
   }
 
   .brand {
-    gap: 7px;
+    gap: var(--space-2);
     flex-shrink: 0;
   }
 
@@ -6045,30 +6206,16 @@ select {
   }
 
   .sidebar-toggle {
-    padding: 6px 8px;
+    padding: var(--space-2) var(--space-2);
   }
 
   .sidebar-toggle span:last-child {
     display: none;
   }
 
-  .main-head,
-  .preview-toolbar,
-  .actionbar {
-    padding-left: 14px;
-    padding-right: 14px;
-  }
-
-  .preview-scroll {
-    padding-left: 14px;
-    padding-right: 14px;
-  }
-
   .head-tools {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-wrap: nowrap;
+    gap: var(--space-2);
   }
 
   .preview-size-switch {
@@ -6076,20 +6223,16 @@ select {
   }
 
   .head-row {
-    flex-wrap: wrap;
-    row-gap: 9px;
+    flex-wrap: nowrap;
   }
 
-  .head-title {
-    flex: 1 1 100%;
-  }
 
   .preview-toolbar-actions {
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .actionbar {
-    gap: 7px;
+    gap: var(--space-2);
   }
 
   .actionbar-tools {
@@ -6140,17 +6283,22 @@ select {
   }
   .theme-sheet-head,
   .theme-sheet-body {
-    padding-left: 14px;
-    padding-right: 14px;
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
   }
   .theme-grid {
     grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
-    gap: 10px;
+    gap: var(--space-3);
+  }
+  /* 数据行在窄屏已经折成单列，桌面五列表头对不上任何一列；
+     保留它只会把弹层撑出横向滚动，直接收起。 */
+  .ledger-columns {
+    display: none;
   }
   .ledger-row {
     grid-template-columns: 1fr;
-    gap: 4px;
-    padding: 10px 0;
+    gap: var(--space-1);
+    padding: var(--space-3) 0;
   }
   .ledger-btn {
     justify-self: start;
@@ -6180,8 +6328,9 @@ select {
     justify-content: flex-end;
   }
   .draft-row.current {
-    margin-left: -8px;
-    padding-left: 8px;
+    /* 同样要把 2px 左边框一起抵掉，标题才和其他行对齐 */
+    margin-left: calc(-1 * (var(--space-2) + 2px));
+    padding-left: var(--space-2);
   }
   /* 复盘：四个数字格子横排放不下，两列；汇总也压成两列 */
   .rev-fields {
@@ -6189,7 +6338,7 @@ select {
   }
   .rev-total {
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: var(--space-3);
   }
   /* 表格列太多，窄屏只留标题 + 阅读 + 互动率 */
   .rev-thead,
@@ -6206,7 +6355,7 @@ select {
 
 @media (max-width: 560px) {
   .topbar {
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .brand-mark {
@@ -6228,7 +6377,7 @@ select {
 .cover-search {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .cover-search .field-input {
@@ -6240,19 +6389,19 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .cover-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .cover-chip {
   font-size: var(--fs-xs);
-  padding: 3px 9px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: var(--panel);
@@ -6276,16 +6425,16 @@ select {
 .cover-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 
 .cover-setup {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 180px;
-  gap: 20px;
+  gap: var(--space-5);
   align-items: center;
-  padding: 20px;
+  padding: var(--space-5);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-soft);
@@ -6299,7 +6448,7 @@ select {
 }
 
 .cover-setup-copy p {
-  margin: 5px 0 14px;
+  margin: var(--space-1) 0 var(--space-4);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
   line-height: 1.7;
@@ -6347,8 +6496,8 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
   font-size: var(--fs-xs);
   line-height: 1.4;
 }
@@ -6380,7 +6529,7 @@ select {
 }
 
 .cover-preview {
-  margin-top: 14px;
+  margin-top: var(--space-4);
 }
 
 .cover-preview img {
@@ -6400,8 +6549,8 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .cover-dim {
@@ -6411,7 +6560,7 @@ select {
 }
 
 .cover-note {
-  margin-top: 6px;
+  margin-top: var(--space-2);
   /* 同上：这行就是署名本身，得读得清 */
   font-size: var(--fs-xs);
   color: var(--ink-soft);
@@ -6426,7 +6575,7 @@ select {
 /* ---------- 图片面板 ---------- */
 
 .img-tabs {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-4);
 }
 
 /* 三列在 1340 以下放不下：把胶片横过来铺在顶部，预览与检查器留两列。
@@ -6437,7 +6586,7 @@ select {
     grid-template-areas:
       'rail rail'
       'stage inspector';
-    gap: 20px;
+    gap: var(--space-5);
   }
 
   .studio-rail {
@@ -6449,7 +6598,7 @@ select {
     flex-direction: row;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-bottom: 6px;
+    padding-bottom: var(--space-2);
   }
 
   .studio-rail .card-item {
@@ -6507,12 +6656,12 @@ select {
     display: contents;
   }
 
-  .studio-rail { order: 1; margin-bottom: 18px; }
+  .studio-rail { order: 1; margin-bottom: var(--space-5); }
   .studio-stage-head { order: 2; }
   .studio-preview { order: 3; }
   .studio-pager { order: 4; }
-  .studio-inspector { order: 5; margin-top: 18px; }
-  .studio-export { order: 6; margin-top: 18px; }
+  .studio-inspector { order: 5; margin-top: var(--space-5); }
+  .studio-export { order: 6; margin-top: var(--space-5); }
 
   .studio-rail-actions {
     max-width: none;
@@ -6552,14 +6701,14 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 20px;
+  padding: var(--space-6) var(--space-5);
   background: var(--bg);
 }
 
 .crash-card {
   width: 100%;
   max-width: 580px;
-  padding: 28px 28px 22px;
+  padding: var(--space-7) var(--space-7) var(--space-6);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -6567,7 +6716,7 @@ select {
 }
 
 .crash-title {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   font-family: var(--font-serif);
   font-size: var(--fs-xl);
   font-weight: 600;
@@ -6575,7 +6724,7 @@ select {
 }
 
 .crash-lead {
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-4);
   font-size: var(--fs-md);
   line-height: 1.7;
   color: var(--ink-soft);
@@ -6585,7 +6734,7 @@ select {
   max-height: 180px;
   overflow: auto;
   margin: 0;
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-3);
   background: var(--panel-inset);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -6600,12 +6749,12 @@ select {
 .crash-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 
 .crash-hint {
-  margin: 14px 0 0;
+  margin: var(--space-4) 0 0;
   font-size: var(--fs-xs);
   line-height: 1.7;
   color: var(--ink-muted);
@@ -6620,4 +6769,28 @@ select {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ---------- 间距工具类 ----------
+   只保留组件里真正用到的一次性间距，用来替掉 TSX 的 inline margin。
+   名字就是 --space-* 的档位，不另外发明语义。
+   放在文件末尾：同等 specificity 下后写的规则生效，才能覆盖 .field-hint /
+   .check-row 自带的 margin。 */
+.mt-2 {
+  margin-top: var(--space-2);
+}
+.mt-3 {
+  margin-top: var(--space-3);
+}
+.mt-4 {
+  margin-top: var(--space-4);
+}
+.mb-2 {
+  margin-bottom: var(--space-2);
+}
+.mb-3 {
+  margin-bottom: var(--space-3);
+}
+.mb-4 {
+  margin-bottom: var(--space-4);
 }

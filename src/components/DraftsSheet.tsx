@@ -59,7 +59,7 @@ export function DraftsSheet({ open, onClose, drafts, currentKey, onOpen, onDelet
 
         <div className="modal-body drafts-body">
           {drafts.length === 0 ? (
-            <div className="check-empty" style={{ padding: '36px 0' }}>
+            <div className="check-empty check-empty-lg">
               还没有草稿。导入一篇文章就会自动存下来 —— 摘要、四平台文案、标题候选都在里面，
               下次打开直接接着做。
             </div>

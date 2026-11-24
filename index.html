@@ -15,9 +15,13 @@
     <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#C0392B" />
     <meta name="msapplication-config" content="/browserconfig.xml" />
 
-    <meta name="theme-color" content="#C0392B" />
+    <!-- 浏览器/状态栏的底色也跟随深浅：深色底上别再挂一条朱红 -->
+    <meta name="theme-color" content="#C0392B" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#14120F" media="(prefers-color-scheme: dark)" />
     <meta name="application-name" content="文章分发台" />
     <meta name="apple-mobile-web-app-title" content="文章分发台" />
+    <!-- 新版标准名 + 旧版 Apple 名并存：只写后者时 Chrome 会报废弃警告 -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="msapplication-TileColor" content="#C0392B" />

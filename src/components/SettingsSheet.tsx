@@ -50,6 +50,8 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
   /** Unsplash 的 Access Key：和 AI Key 一样只存本机，但两者用途不同，各存各的 */
   const [unsplashKey, setUnsplashKey] = useState('')
   const [showUnsplash, setShowUnsplash] = useState(false)
+  /** 清空 Key 不可撤销，和草稿箱/台账一样要点两次才真的清 */
+  const [confirmClearKey, setConfirmClearKey] = useState(false)
   /** 本地数据：打开面板时算一次，别每次渲染都去遍历 localStorage */
   const [dataSummary, setDataSummary] = useState('')
   /** 导出 / 导入的结果提示。成功和失败都要说出来，尤其「有几项没写进去」 */
@@ -68,6 +70,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
     setShowUnsplash(false)
     setRememberKey(loadRememberKey())
     setDataNote(null)
+    setConfirmClearKey(false)
     setDataSummary(describeBackup(collectBackup()))
   }, [open])
 
@@ -181,7 +184,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
           <p className="settings-privacy">Key 只保存在这台浏览器，不经过本工具的服务器。</p>
 
           {/* ---------- 服务商 ---------- */}
-          <div className="side-title" style={{ marginTop: 18, marginBottom: 10 }}>
+          <div className="side-title settings-block">
             <span>选择服务商</span>
             <span className="count">{ready ? '已配置' : '未配置'}</span>
           </div>
@@ -198,7 +201,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
             ))}
           </div>
 
-          <div className="field" style={{ marginTop: 14 }}>
+          <div className="field mt-4">
             <label className="field-label" htmlFor={apiKeyId}>
               API Key
               {preset?.consoleUrl ? (
@@ -207,7 +210,9 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
                 </a>
               ) : null}
             </label>
-            <div className="key-row">
+            {/* 用 form 包住密码框：否则 Chrome 每打开一次都提示
+                「Password field is not contained in a form」，密码管理器也无从判断这是哪一项 */}
+            <form className="key-row" onSubmit={(e) => e.preventDefault()}>
               <input
                 id={apiKeyId}
                 className="field-input"
@@ -221,11 +226,11 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
                 spellCheck={false}
                 autoComplete="off"
               />
-              <button className="btn btn-sm" onClick={() => setShowKey((v) => !v)}>
+              <button type="button" className="btn btn-sm" onClick={() => setShowKey((v) => !v)}>
                 {showKey ? '隐藏' : '显示'}
               </button>
-            </div>
-            <label className="check-row" style={{ marginTop: 8 }}>
+            </form>
+            <label className="check-row mt-2">
               <input
                 type="checkbox"
                 checked={rememberKey}
@@ -317,7 +322,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
           {/* ---------- 云服务（可选） ---------- */}
           {isCloudConfigured() ? (
             <>
-              <div className="side-title" style={{ marginTop: 24, marginBottom: 10 }}>
+              <div className="side-title settings-block">
                 <span>WorkBuddy 云服务（免密钥）</span>
               </div>
               {loadingModels ? <div className="muted field-hint">正在拉取模型…</div> : null}
@@ -358,13 +363,13 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
               <span className="count">{unsplashKey.trim() ? '已配置' : '未配置'}</span>
             </summary>
             <div className="settings-unsplash-body">
-              <div className="field-hint" style={{ marginBottom: 8 }}>
+              <div className="field-hint mb-2">
                 按文章搜索封面图。免费申请后复制 <b>Access Key</b>（不是 Secret Key）。
               </div>
               <label className="field-label" htmlFor={unsplashKeyId}>
                 Access Key
               </label>
-              <div className="key-row">
+              <form className="key-row" onSubmit={(e) => e.preventDefault()}>
                 <input
                   id={unsplashKeyId}
                   className="field-input"
@@ -375,10 +380,14 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
                   spellCheck={false}
                   autoComplete="off"
                 />
-                <button className="btn btn-sm" onClick={() => setShowUnsplash((v) => !v)}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setShowUnsplash((v) => !v)}
+                >
                   {showUnsplash ? '隐藏' : '显示'}
                 </button>
-              </div>
+              </form>
             </div>
           </details>
 
@@ -390,7 +399,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
               <span>{dataSummary}</span>
             </summary>
             <div className="settings-data-body">
-              <div className="field-hint" style={{ marginBottom: 10 }}>
+              <div className="field-hint mb-3">
                 草稿、发布台账、文末模板、Key 都只存在这台浏览器里。换电脑、清缓存之前先导出一份。
               </div>
               <div className="settings-data-actions">
@@ -415,7 +424,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
                 />
               </div>
               {dataNote ? (
-                <div className={`notice ${dataNote.kind === 'err' ? 'notice-warn' : 'notice-info'}`} style={{ marginTop: 10 }}>
+                <div className={`notice ${dataNote.kind === 'err' ? 'notice-warn' : 'notice-info'} mt-3`}>
                   <span className="notice-mark" aria-hidden>
                     {dataNote.kind === 'err' ? '!' : '·'}
                   </span>
@@ -426,20 +435,27 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
           </details>
 
           {/* 这里不提供图床设置：图片归作者自己的图床管，这个工具只读 md 里的链接 */}
-          <div style={{ marginTop: 18 }}>
+          <div className="settings-block">
             <button
-              className="btn btn-sm"
+              className={`btn btn-sm ${confirmClearKey ? 'btn-danger' : ''}`}
               onClick={() => {
+                // 和草稿箱 / 台账同一套「再点一次」确认：清掉就得重新申请 Key
+                if (!confirmClearKey) {
+                  setConfirmClearKey(true)
+                  return
+                }
                 const ok = clearByok()
                 setByok({ ...emptyByok })
                 setPing(null)
+                setConfirmClearKey(false)
                 onSaved(
                   ok ? '已清空自带 Key' : '没能清掉：浏览器拒绝访问本地存储',
                   ok ? 'success' : 'error',
                 )
               }}
+              onBlur={() => setConfirmClearKey(false)}
             >
-              清空 Key
+              {confirmClearKey ? '再点一次，清空 Key' : '清空 Key'}
             </button>
           </div>
         </div>

@@ -43,8 +43,8 @@ interface Props {
   onToast: (text: string, kind?: 'info' | 'success' | 'error') => void
 }
 
-/** 预览框的最大占位，实际缩放按比例算。
-    360 宽在 390 窄屏和 340 宽检查器旁边都不会溢出。 */
+/** 宽屏下预览框的最大占位；实际缩放取它与容器可用宽度的较小值。
+    宽屏保持这个比例（不放大），320px 窄屏则按可用宽度等比缩小，不会横向溢出。 */
 const PREVIEW_BOX = { w: 360, h: 440 }
 
 /** 加卡菜单的顺序：常用版式在前，首尾两张放最后 */
@@ -123,6 +123,27 @@ export function CardStudio({
   const exportRequestRef = useRef<ExportRequest | null>(null)
   const exportReadyRef = useRef(false)
   const exportWaiters = useRef<Array<() => void>>([])
+
+  /* 预览按容器宽度等比缩放：宽屏保持 PREVIEW_BOX 的原比例，窄到放不下时
+     跟着可用宽度缩，避免 320px 下卡片预览把预览区撑出横向滚动。
+     只影响显示，导出层按 fmt.w/fmt.h 原尺寸渲染，和这里无关。 */
+  const studioRef = useRef<HTMLDivElement>(null)
+  const [studioWidth, setStudioWidth] = useState(0)
+
+  useLayoutEffect(() => {
+    const el = studioRef.current
+    if (!el) return
+    const apply = (width: number) => {
+      const next = Math.round(width)
+      setStudioWidth((prev) => (prev === next ? prev : next))
+    }
+    apply(el.getBoundingClientRect().width)
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) apply(entry.contentRect.width)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   // 拖拽排序
   const [dragId, setDragId] = useState<string | null>(null)
@@ -318,7 +339,11 @@ export function CardStudio({
   const selected = useMemo(() => cards.find((c) => c.id === selectedId) ?? cards[0], [cards, selectedId])
   const theme = getCardTheme(selected?.themeId ?? cardThemeId)
   const fmt = getCardFormat(format)
-  const previewScale = Math.min(PREVIEW_BOX.w / fmt.w, PREVIEW_BOX.h / fmt.h)
+  // 宽屏最多缩到 PREVIEW_BOX 的比例（不放大）；容器比它还窄时按可用宽度再缩。
+  // studioWidth 是 0（首帧还没量）时先用原比例，useLayoutEffect 会在绘制前补上。
+  const baseScale = Math.min(PREVIEW_BOX.w / fmt.w, PREVIEW_BOX.h / fmt.h)
+  const previewScale =
+    studioWidth > 0 ? Math.min(baseScale, studioWidth / fmt.w) : baseScale
 
   const patch = (id: string, changes: Partial<CardSpec>) => {
     dirty.current = true
@@ -507,7 +532,7 @@ export function CardStudio({
   const showFooter = selected?.showFooter !== false
 
   return (
-    <div className="studio">
+    <div className="studio" ref={studioRef}>
       {/* ---------- 左栏：卡片胶片。排序、增删、切卡都在这一列 ---------- */}
       <aside className="studio-rail" aria-label="卡片列表">
         <div className="studio-rail-head">

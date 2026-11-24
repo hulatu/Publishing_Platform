@@ -49,6 +49,8 @@ import { useCopyActions } from './hooks/useCopyActions'
 import { useLedger } from './hooks/useLedger'
 import { useReadiness } from './hooks/useReadiness'
 import { useDraftAutosave } from './hooks/useDraftAutosave'
+import { useFocusTrap } from './hooks/useFocusTrap'
+import { useMediaQuery } from './hooks/useMediaQuery'
 import { DEFAULT_SITE_NAME } from './cards/build'
 import { cardThemes } from './cards/themes'
 import { SAMPLE_ARTICLE } from './core/sample'
@@ -193,6 +195,10 @@ export default function App() {
   /** 侧栏隐藏了哪些平台。只是显示偏好，不影响渲染、台账和生成 */
   const [hidden, setHidden] = useState(() => loadHidden(allPlatforms.map((p) => p.id)))
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null)
+  /** 和 CSS 的 (max-width: 1180px) 保持同一个断点：只有这时侧栏才是覆盖式抽屉 */
+  const drawerMode = useMediaQuery('(max-width: 1180px)')
   /**
    * 当前打开的弹层。原来这里是 12 个独立布尔 —— 于是「开 B 之前先关 A」
    * 得靠每个调用点自己记得，漏一次就是两个遮罩叠在一起。
@@ -1066,23 +1072,45 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [doc, copyCurrentResult, visiblePlatformOrder, platform, selectPlatform])
 
+  /* ---------------- 窄屏侧栏：把覆盖层当弹层对待 ---------------- */
+
+  /**
+   * 抽屉打开时，被遮罩的编辑区和主内容设为 inert，Tab 只在侧栏里循环，
+   * Esc 关闭并把焦点还给打开它的按钮。这套行为和弹层共用 useFocusTrap。
+   *
+   * 只在 drawerMode 下启用：宽屏时侧栏是普通一栏，不能把主内容锁死。
+   */
+  useFocusTrap({
+    active: sidebarOpen && drawerMode,
+    containerRef: sidebarRef,
+    backgroundSelector: '.app-body > .editor-pane, .app-body > .main',
+    onEscape: () => setSidebarOpen(false),
+    returnFocusRef: sidebarToggleRef,
+    restoreFocus: 'when-inside',
+    // 从抽屉里打开筛选/主题等弹层时，Tab/Esc 让给弹层
+    pauseWhileDialogOpen: true,
+  })
+
+  // 窗口从窄屏拉宽后侧栏不再是抽屉，顺手收掉状态，避免残留的 inert
   useEffect(() => {
-    if (!sidebarOpen) return
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSidebarOpen(false)
-    }
-    document.addEventListener('keydown', closeOnEscape)
-    return () => document.removeEventListener('keydown', closeOnEscape)
-  }, [sidebarOpen])
+    if (!drawerMode && sidebarOpen) setSidebarOpen(false)
+  }, [drawerMode, sidebarOpen])
+
+  const closeSidebar = useCallback(() => {
+    setSidebarOpen(false)
+    sidebarToggleRef.current?.focus({ preventScroll: true })
+  }, [])
 
   return (
     <div className={`app ${sidebarOpen ? 'sidebar-open' : ''} mobile-${mobilePane} ${kind === 'card' ? 'card-mode' : ''}`}>
       {/* ================= 顶栏 ================= */}
       <header className="topbar">
         <button
+          ref={sidebarToggleRef}
           className="sidebar-toggle"
           onClick={() => setSidebarOpen((value) => !value)}
           aria-expanded={sidebarOpen}
+          aria-controls="app-sidebar"
           aria-label={sidebarOpen ? '收起平台列表' : '展开平台列表'}
         >
           <span aria-hidden>{sidebarOpen ? '×' : '☰'}</span>
@@ -1193,7 +1221,13 @@ export default function App() {
 
       <div className={`app-body ${kind === 'card' ? 'card-mode' : ''}`}>
         {/* ================= 左栏：文章与选项 ================= */}
-        <aside className="sidebar">
+        <aside
+          id="app-sidebar"
+          ref={sidebarRef}
+          className="sidebar"
+          tabIndex={-1}
+          aria-label="文章与平台设置"
+        >
           <div className="side-section">
             <div className="side-title">
               <span>文章</span>
@@ -1204,6 +1238,8 @@ export default function App() {
                 <button
                   className="file-row"
                   onClick={() => {
+                    // 抽屉里点文章 = 去编辑正文：先关抽屉，否则编辑区仍是 inert，聚焦会失败
+                    setSidebarOpen(false)
                     setMobilePane('edit')
                     requestAnimationFrame(() => editorPaneRef.current?.focus())
                   }}
@@ -1284,7 +1320,7 @@ export default function App() {
         {sidebarOpen ? (
           <button
             className="sidebar-scrim"
-            onClick={() => setSidebarOpen(false)}
+            onClick={closeSidebar}
             aria-label="关闭平台列表"
           />
         ) : null}

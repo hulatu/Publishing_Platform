@@ -246,7 +246,7 @@ export function AIPanel({
                       <LenBadge value={weightedLength(t)} limit={LIMITS.twitterWeighted} unit="加权" />
                     </div>
                     <div style={{ fontSize: 'var(--fs-md)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{t}</div>
-                    <div style={{ marginTop: 8 }}>
+                    <div className="mt-2">
                       <button
                         className="btn btn-sm"
                         onClick={() => onCopy(`${i + 1}/${result.twitter!.thread.length} ${t}`, `第 ${i + 1} 条`)}

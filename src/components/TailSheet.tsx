@@ -101,9 +101,9 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                       placeholder="小标题（选填，例如：关于作者）"
                     />
                     <textarea
-                      className="field-textarea"
+                      className="field-textarea mt-2"
                       aria-label="关注引导正文"
-                      style={{ marginTop: 8, minHeight: 64 }}
+                      style={{ minHeight: 64 }}
                       value={cfg.follow.text}
                       onChange={(e) => patchFollow({ text: e.target.value })}
                       placeholder="如果这篇内容对你有用，欢迎关注「{account}」"
@@ -174,8 +174,7 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                     </div>
                     {cfg.history.items.length < MAX_HISTORY ? (
                       <button
-                        className="btn btn-sm"
-                        style={{ marginTop: 8 }}
+                        className="btn btn-sm mt-2"
                         onClick={() =>
                           patchHistory({ items: [...cfg.history.items, { title: '', url: '' }] })
                         }
@@ -215,7 +214,7 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
                 ) : null}
               </div>
 
-              <div className="field-hint" style={{ marginTop: 10 }}>
+              <div className="field-hint mt-3">
                 可用占位符：{TAIL_VARS.join('、')}
               </div>
             </>
@@ -224,11 +223,11 @@ export function TailSheet({ open, onClose, cfg, account, themeId, onChange, onAc
               {preview.html ? (
                 <div dangerouslySetInnerHTML={{ __html: preview.html }} />
               ) : (
-                <div className="check-empty" style={{ padding: '30px 0' }}>
+                <div className="check-empty check-empty-md">
                   三块都没启用，文末不会追加任何内容。
                 </div>
               )}
-              <div className="field-hint" style={{ marginTop: 14 }}>
+              <div className="field-hint mt-4">
                 这段 HTML 共 {[...preview.html].length} 字符，会拼在正文和参考链接之后。
                 预览用的是当前公众号主题（{theme.name}）的配色。
               </div>

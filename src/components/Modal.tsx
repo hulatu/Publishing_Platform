@@ -1,5 +1,6 @@
-import { useEffect, useRef, type MouseEvent, type ReactNode } from 'react'
+import { useRef, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 interface Props {
   open: boolean
@@ -12,29 +13,14 @@ interface Props {
   shellClass?: string
 }
 
-const FOCUSABLE = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',')
-
-function focusableIn(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (el) => !el.hidden && el.getAttribute('aria-hidden') !== 'true' && el.offsetParent !== null,
-  )
-}
-
 /**
  * 统一弹层外壳。
  *
  * 除了视觉遮罩，这里还负责键盘和读屏用户真正需要的几件事：
  * 焦点移入、Tab 循环、Esc 关闭、背景 inert、关闭后恢复触发按钮。
- * 样式仍由调用方决定，主题墙这类非标准面板通过 shellClass 复用同一套行为。
+ * 这套行为抽在 hooks/useFocusTrap 里，和移动端侧栏抽屉共用。
  *
- * 必须 portal 到 body：本组件会把 `.app > .topbar` 和 `.app > .app-body`
+ * 必须 portal 到 body：焦点陷阱会把 `.app > .topbar` 和 `.app > .app-body`
  * 设为 inert，而主题选择器（ThemePicker）就长在 `.app-body` 里 ——
  * 不 portal 的话，弹层自己成了 inert 祖先的后代，整层点不动、也关不掉。
  */
@@ -47,8 +33,6 @@ export function Modal({
   shellClass = 'modal',
 }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null)
-  const closeRef = useRef(onClose)
-  closeRef.current = onClose
   /**
    * 只有「按在遮罩上、也在遮罩上松开」才算点了遮罩。
    *
@@ -57,80 +41,12 @@ export function Modal({
    */
   const downOnMask = useRef(false)
 
-  useEffect(() => {
-    if (!open) return
-    const dialog = dialogRef.current
-    if (!dialog) return
-
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const backgrounds = [
-      ...document.querySelectorAll<HTMLElement>('.app > .topbar, .app > .app-body'),
-    ]
-    const previousA11y = backgrounds.map((el) => ({
-      el,
-      ariaHidden: el.getAttribute('aria-hidden'),
-      inert: el.inert,
-    }))
-
-    for (const el of backgrounds) {
-      el.setAttribute('aria-hidden', 'true')
-      el.inert = true
-    }
-
-    // 先落在弹层容器上，读屏会先读标题；继续按 Tab 再进入第一个控件。
-    dialog.focus({ preventScroll: true })
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        event.stopPropagation()
-        closeRef.current()
-        return
-      }
-      if (event.key !== 'Tab') return
-
-      const items = focusableIn(dialog)
-      if (items.length === 0) {
-        event.preventDefault()
-        dialog.focus({ preventScroll: true })
-        return
-      }
-
-      const first = items[0]
-      const last = items[items.length - 1]
-      const active = document.activeElement
-      if (event.shiftKey && (active === first || active === dialog)) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener('keydown', onKeyDown, true)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown, true)
-      for (const { el, ariaHidden, inert } of previousA11y) {
-        if (ariaHidden === null) el.removeAttribute('aria-hidden')
-        else el.setAttribute('aria-hidden', ariaHidden)
-        el.inert = inert
-      }
-      if (previous?.isConnected) {
-        // 菜单项触发弹层时，关闭后 <details> 也收起了，原按钮已不可见；
-        // 这时把焦点还给菜单触发器，不要让它掉到页面根节点。
-        const explicitReturn = previous.dataset.returnFocus
-          ? document.querySelector<HTMLElement>(previous.dataset.returnFocus)
-          : null
-        const hiddenMenuTrigger =
-          previous.offsetParent === null
-            ? previous.closest('details')?.querySelector<HTMLElement>('summary')
-            : null
-        const target = explicitReturn ?? hiddenMenuTrigger ?? previous
-        target.focus({ preventScroll: true })
-      }
-    }
-  }, [open])
+  useFocusTrap({
+    active: open,
+    containerRef: dialogRef,
+    backgroundSelector: '.app > .topbar, .app > .app-body',
+    onEscape: onClose,
+  })
 
   if (!open) return null
 

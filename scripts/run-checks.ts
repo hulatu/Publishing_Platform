@@ -48,6 +48,8 @@ const CHECKS = [
   'imgexport',
   'cover',
   'contrast',
+  'spacing',
+  'paper',
 ] as const
 
 /**

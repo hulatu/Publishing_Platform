@@ -126,7 +126,7 @@ export function MetaLab({
 
         <div className="modal-body">
           {!providerReady ? (
-            <div className="notice notice-warn" style={{ marginBottom: 14 }}>
+            <div className="notice notice-warn mb-4">
               <span className="notice-mark">!</span>
               <span>
                 本地模式：只重排原文已有字句。
@@ -139,7 +139,7 @@ export function MetaLab({
 
           {/* 没配 Key 时上面那条已经说清楚了，这里再报一遍「未配置大模型」只是噪音 */}
           {state.error && providerReady ? (
-            <div className="notice notice-warn" style={{ marginBottom: 14 }}>
+            <div className="notice notice-warn mb-4">
               <span className="notice-mark">!</span>
               <span>{state.error}</span>
             </div>

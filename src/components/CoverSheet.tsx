@@ -278,7 +278,7 @@ export function CoverSheet({ open, onClose, doc, onToast, onOpenSettings }: Prop
           </div>
 
           {looksChinese(query) ? (
-            <div className="field-hint" style={{ marginTop: 6 }}>
+            <div className="field-hint mt-2">
               中文词在 Unsplash 上命中率很低 —— 图库是英文索引的。点上面的「用 AI 想英文关键词」，或者手动换成英文。
             </div>
           ) : null}
