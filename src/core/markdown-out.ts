@@ -6,6 +6,28 @@
  */
 
 import type { Block, Inline } from './ir'
+import { escapeHtml } from './escape'
+
+export interface MarkdownOptions {
+  /**
+   * 独立成段的图片写成 `<figure><img><figcaption>`，而不是 `![alt](src)`。
+   *
+   * 知乎的 .md 导入和少数派编辑器都不认 Markdown 的 alt：导入后图片照常出现，
+   * 但图下方的「图片注释 / 图注」是空的。两家真正认的是 figcaption
+   * （知乎 2026-11 实测：导入含 figure 的 .md，figcaption 会直接填进原生图片注释）。
+   *
+   * 只处理作者写了文字的图；alt 为空的图仍输出普通 Markdown，避免凭空造图注。
+   */
+  figureImages?: boolean
+  /**
+   * 图片下方补一行 `*图注*`，给只吃 Markdown 的编辑器兜底。
+   *
+   * 少数派编辑器粘贴时优先用剪贴板里的 text/plain 做 Markdown 转换，并把裸 HTML
+   * 原样转义 —— figure 会被显示成一串源码。所以那边不能写 figure，只能把 alt
+   * 落成图下方一行可见的斜体文字（斜体是 Markdown 原生语法，不会被吃掉）。
+   */
+  captionLines?: boolean
+}
 
 /** 转义 Markdown 里会被误解析的字符 */
 function esc(s: string): string {
@@ -79,6 +101,52 @@ export function inlineToMd(nodes: Inline[]): string {
   return out
 }
 
+/** 普通 Markdown 图片；`title` 是悬停提示，按原语法保留 */
+function imgMd(src: string, alt: string, title: string | undefined): string {
+  return `![${alt || ''}](${src}${title ? ` "${title}"` : ''})`
+}
+
+/**
+ * 独立的图片块 → Markdown。
+ *
+ * 默认仍走 `![alt](src)`；`figureImages` 打开时，作者写了 alt 的图改成
+ * `<figure><img alt><figcaption>alt</figcaption></figure>`，让知乎 / 少数派
+ * 把这段说明存成原生图注。alt 为空时保持普通图片 —— 没写说明就不该凭空生成图注。
+ */
+function imgBlockMd(img: { src: string; alt: string; title?: string }, opts: MarkdownOptions): string {
+  const cap = (img.alt ?? '').trim()
+  if ((!opts.figureImages && !opts.captionLines) || !cap || !img.src) {
+    return imgMd(img.src, img.alt, img.title)
+  }
+
+  if (opts.captionLines) {
+    // 图注和图片分两段：编辑器会把斜体行渲染成图下方的一行字。
+    // 用 esc() 转义 alt 里的 * _ 等字符，否则图注会被拆成斜体/加粗的碎片。
+    return `${imgMd(img.src, img.alt, img.title)}\n\n*${esc(cap)}*`
+  }
+
+  const title = img.title ? ` title="${escapeHtml(img.title)}"` : ''
+  return (
+    `<figure><img src="${escapeHtml(img.src)}" alt="${escapeHtml(img.alt)}"${title}>` +
+    `<figcaption>${escapeHtml(cap)}</figcaption></figure>`
+  )
+}
+
+/** 段落里是不是「只有图片」——与 html-inline 的判定保持一致 */
+function imagesOnlyInline(nodes: Inline[]): (Inline & { t: 'img' })[] | null {
+  const imgs: (Inline & { t: 'img' })[] = []
+  for (const n of nodes) {
+    if (n.t === 'text' && !n.v.trim()) continue
+    if (n.t === 'br') continue
+    if (n.t === 'img') {
+      imgs.push(n)
+      continue
+    }
+    return null
+  }
+  return imgs.length > 0 ? imgs : null
+}
+
 function indent(text: string, prefix: string): string {
   return text
     .split('\n')
@@ -86,7 +154,7 @@ function indent(text: string, prefix: string): string {
     .join('\n')
 }
 
-export function blocksToMd(blocks: Block[], depth = 0): string {
+export function blocksToMd(blocks: Block[], depth = 0, opts: MarkdownOptions = {}): string {
   const parts: string[] = []
 
   for (const b of blocks) {
@@ -96,11 +164,15 @@ export function blocksToMd(blocks: Block[], depth = 0): string {
         break
       }
       case 'p': {
-        parts.push(guardLineStart(inlineToMd(b.inline)))
+        // 连着的几张图有时会落进同一个段落（中间没有空行）。开了图注选项
+        // 就一张图一段，跟 HTML 那边「每张图各配一条图注」保持一致。
+        const imgs = opts.figureImages || opts.captionLines ? imagesOnlyInline(b.inline) : null
+        if (imgs) parts.push(imgs.map((img) => imgBlockMd(img, opts)).join('\n\n'))
+        else parts.push(guardLineStart(inlineToMd(b.inline)))
         break
       }
       case 'quote': {
-        const inner = blocksToMd(b.children, depth)
+        const inner = blocksToMd(b.children, depth, opts)
         parts.push(
           inner
             .split('\n')
@@ -113,7 +185,7 @@ export function blocksToMd(blocks: Block[], depth = 0): string {
         const lines: string[] = []
         b.items.forEach((item, idx) => {
           const marker = b.ordered ? `${(b.start ?? 1) + idx}. ` : '- '
-          const itemMd = blocksToMd(item, depth + 1)
+          const itemMd = blocksToMd(item, depth + 1, opts)
           const itemLines = itemMd.split('\n')
           // 首行接在 marker 后，其余行缩进对齐
           const pad = ' '.repeat(marker.length)
@@ -132,7 +204,7 @@ export function blocksToMd(blocks: Block[], depth = 0): string {
         break
       }
       case 'img': {
-        parts.push(`![${b.alt || ''}](${b.src}${b.title ? ` "${b.title}"` : ''})`)
+        parts.push(imgBlockMd(b, opts))
         break
       }
       case 'table': {
@@ -152,7 +224,7 @@ export function blocksToMd(blocks: Block[], depth = 0): string {
         break
       }
       case 'fn': {
-        const inner = blocksToMd(b.children, depth)
+        const inner = blocksToMd(b.children, depth, opts)
         const label = b.label ?? b.id
         parts.push(`[^${label}]: ${inner.replace(/\n/g, ' ')}`)
         break
@@ -204,8 +276,12 @@ export function buildFrontMatter(meta: {
   return lines.join('\n')
 }
 
-export function toMarkdown(blocks: Block[], meta?: Parameters<typeof buildFrontMatter>[0]): MarkdownOutput {
-  const body = blocksToMd(blocks)
+export function toMarkdown(
+  blocks: Block[],
+  meta?: Parameters<typeof buildFrontMatter>[0],
+  opts: MarkdownOptions = {},
+): MarkdownOutput {
+  const body = blocksToMd(blocks, 0, opts)
   const fm = meta ? buildFrontMatter(meta) : ''
   return {
     markdown: body,

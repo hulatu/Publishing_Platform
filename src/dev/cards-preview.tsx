@@ -239,12 +239,8 @@ function Studio() {
 
 const params = new URLSearchParams(location.search)
 const root = createRoot(document.getElementById('root')!)
-const fmtParam = params.get('fmt')
-const formats: CardFormatId[] = params.get('allformats')
-  ? ['3:4', '1:1', '16:9']
-  : fmtParam === '1:1' || fmtParam === '16:9'
-    ? [fmtParam]
-    : ['3:4']
+// 只有 3:4 一种比例了；旧的 ?allformats / ?fmt 参数不再生效
+const formats: CardFormatId[] = ['3:4']
 
 root.render(
   params.get('studio') ? (

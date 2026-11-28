@@ -33,6 +33,11 @@ export interface RenderOutput {
   text: string
   format: 'markdown' | 'html' | 'text'
   copyMode: 'rich' | 'plain' | 'markdown'
+  /**
+   * 复制时只写 text/html，不写 text/plain。
+   * 少数派这种「有纯文本就优先按 Markdown 转换」的编辑器要靠它走 HTML 分支。
+   */
+  htmlOnly?: boolean
   warnings: string[]
   stats: StatItem[]
   extras?: ExtraList[]
@@ -67,7 +72,7 @@ export interface ConvertPlatform {
   limits?: string
   /**
    * 渲染函数是动态 import 进来的 —— 侧栏只要元数据（id / 名字 / 说明），
-   * 首屏不该为 7 个平台全买单。调用方用下面的 loadConvertRenderer。
+   * 首屏不该为 5 个平台全买单。调用方用下面的 loadConvertRenderer。
    */
   load: () => Promise<RenderFn>
 }
@@ -77,14 +82,14 @@ export const convertPlatforms: ConvertPlatform[] = [
     id: 'sspai',
     name: '少数派',
     kind: 'convert',
-    hint: '原生 Markdown',
+    hint: 'Markdown / 富文本 · 图注',
     load: () => import('./sspai').then((m) => m.renderSspai),
   },
   {
     id: 'zhihu',
     name: '知乎',
     kind: 'convert',
-    hint: 'Markdown / 富文本',
+    hint: '富文本 · 图注进注释',
     limits: '字号行距由知乎归一化',
     load: () => import('./zhihu').then((m) => m.renderZhihu),
   },
@@ -104,28 +109,12 @@ export const convertPlatforms: ConvertPlatform[] = [
     load: () => import('./douban').then((m) => m.renderDouban),
   },
   {
-    id: 'bilibili',
-    name: 'B 站专栏',
-    kind: 'convert',
-    hint: '富文本',
-    limits: '代码块退化成普通段落',
-    load: () => import('./cn-blogs').then((m) => m.renderBilibili),
-  },
-  {
     id: 'toutiao',
     name: '头条号',
     kind: 'convert',
     hint: '富文本',
     limits: '外链清除 · 代码块清洗',
     load: () => import('./cn-blogs').then((m) => m.renderToutiao),
-  },
-  {
-    id: 'baijiahao',
-    name: '百家号',
-    kind: 'convert',
-    hint: '基础 HTML',
-    limits: '外链与代码块会被剥离',
-    load: () => import('./cn-blogs').then((m) => m.renderBaijiahao),
   },
 ]
 
@@ -139,7 +128,7 @@ export const rewritePlatforms = [
   },
   {
     id: 'twitter',
-    name: '推特 / X',
+    name: '推特',
     kind: 'rewrite' as const,
     hint: '自动拆 thread',
     limits: '单条约 140 汉字',

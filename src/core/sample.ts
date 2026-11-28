@@ -5,7 +5,7 @@
  * 「生成预览 → 切换平台 → 复制」的完整路径。
  */
 export const SAMPLE_ARTICLE = `---
-title: 示例文章：一次发布到 11 个平台
+title: 示例文章：一次发布到 9 个平台
 slug: sample-multi-platform-publishing
 date: 2026-11-13
 categories: [示例]

@@ -39,7 +39,7 @@ import { isMarkdownFile } from './core/local-assets'
 import { ThemePicker } from './components/ThemePicker'
 import { PreviewStage, type PreviewSize } from './components/PreviewStage'
 import { PreviewSizeSwitch } from './components/PreviewSizeSwitch'
-import { getWechatTheme, wechatThemes } from './themes/wechat'
+import { wechatThemes } from './themes/wechat'
 import { resolveProvider } from './ai/provider'
 import { addUsage, emptyAIState, isRewriteId, rewriteIds, type AIState, type RewriteId } from './ai/types'
 import { useAIJobs } from './hooks/useAIJobs'
@@ -124,7 +124,8 @@ const PREVIEW_SIZE_KEY = 'ad.preview-size.v1'
 function readPreviewSize(): PreviewSize {
   try {
     const saved = localStorage.getItem(PREVIEW_SIZE_KEY)
-    if (saved === 'mobile' || saved === 'tablet' || saved === 'auto') return saved
+    // 旧版本存过 tablet：现在只有手机 / 桌面两档，读回来按自适应处理
+    if (saved === 'mobile' || saved === 'auto') return saved
   } catch {
     // 隐私模式下读不到，按自适应
   }
@@ -250,9 +251,7 @@ export default function App() {
   /** 窄屏一次只显示一栏：编辑或预览 */
   const [mobilePane, setMobilePane] = useState<'edit' | 'preview'>('edit')
   const [drafts, setDrafts] = useState<DraftSnapshot[]>(listDrafts)
-  /** 预览 / 源码。md 与 html 平台都先看排版，需要时再切源码 */
-  const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
-  /** 预览纸宽度：自适应 / 手机 390 / 平板 820 */
+  /** 预览纸宽度：自适应 / 手机 390 */
   const [previewSize, setPreviewSize] = useState<PreviewSize>(readPreviewSize)
   const changePreviewSize = useCallback((size: PreviewSize) => {
     setPreviewSize(size)
@@ -444,7 +443,7 @@ export default function App() {
   /* ---------------- 渲染 ---------------- */
 
   /**
-   * 已加载的平台渲染函数：7 个渲染器按平台拆包后，首屏不再包含任何一个。
+   * 已加载的平台渲染函数：5 个渲染器按平台拆包后，首屏不再包含任何一个。
    * 只有导入文章后、切到某个转换平台时，才加载它那一份。
    */
   const [renderFns, setRenderFns] = useState<Partial<Record<string, RenderFn>>>({})
@@ -546,23 +545,11 @@ export default function App() {
     [output],
   )
 
-  /** 能切「预览 / 源码」的平台：md 走渲染预览，公众号走富文本预览 */
+  /** 能直接渲染成排版预览的平台：md 走渲染预览，公众号走富文本预览 */
   const canPreview = Boolean(
     output && (output.format === 'markdown' ? previewHtml : output.format === 'html' && output.html),
   )
 
-  /** 预览工具栏与纸面说明只在「真的在看排版」时出现 */
-  const showPaperChrome = Boolean(doc && kind === 'convert' && viewMode === 'preview' && canPreview)
-  const previewModeLabel =
-    previewSize === 'mobile' ? '手机 · 390 px' : previewSize === 'tablet' ? '平板 · 820 px' : '自适应阅读'
-  const previewMetaLabel =
-    platform === 'wechat'
-      ? getWechatTheme(themeId).name
-      : output?.format === 'markdown'
-        ? 'Markdown'
-        : output?.format === 'html'
-          ? 'HTML'
-          : ''
 
   const { notices, formatNotes } = useMemo<{ notices: NoticeItem[]; formatNotes: string[] }>(() => {
     if (!output) return { notices: [], formatNotes: [] }
@@ -771,7 +758,6 @@ export default function App() {
     // 首页是默认的三栏工作区：从配图卡片回来时不能停在 card-mode（那里没有粘贴正文的中栏）
     setPlatform('wechat')
     setMobilePane('edit')
-    setViewMode('preview')
     setLedgerFocusPlatform('')
     setSidebarOpen(false)
     closeSheet()
@@ -834,7 +820,7 @@ export default function App() {
   // 切平台/切视图后回到顶部 —— 否则从长文滚到一半再切走，新面板会停在中间
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0
-  }, [platform, viewMode])
+  }, [platform])
 
   // 一篇文章开一个标签页是常态，标题栏不能全叫「文章分发台」
   useEffect(() => {
@@ -896,7 +882,7 @@ export default function App() {
     return map
   }, [platformStates])
 
-  /** 台账进度：11 个发布平台里，真正确认发过几个 */
+  /** 台账进度：9 个发布平台里，真正确认发过几个 */
   const platformTotal = convertPlatforms.length + rewritePlatforms.length
   const ledgerDone = publishedCount(ledger)
   const currentPublished = Boolean(ledger[platform]?.at)
@@ -1151,6 +1137,61 @@ export default function App() {
     sidebarToggleRef.current?.focus({ preventScroll: true })
   }, [])
 
+  /**
+   * 预览区的三个操作：发布检查、台账、预览宽度。
+   *
+   * 非卡片页并进页头，和平台名同一行 —— 右栏于是只剩一条 58px 的头部，
+   * 预览内容和中栏正文从同一条水平线开始。卡片页没有独立的页头，
+   * 这段放进预览工具栏（它兼任卡片页的 h1）。
+   */
+  const previewActions = (
+    <>
+      {doc ? (
+        <button
+          className={`check-chip tone-${readiness.tone}`}
+          onClick={() => setSheet('readiness')}
+          title="发布检查：标题、正文、合规、素材、统计与转换提示"
+          aria-label={`发布检查，${readiness.done}/${readiness.required.length} 项就绪`}
+        >
+          <span className="check-chip-dot" aria-hidden />
+          <span className="check-chip-label">检查</span>
+          {readiness.done < readiness.required.length ? (
+            <span className="check-chip-count">
+              {readiness.required.length - readiness.done}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
+      {doc ? (
+        <button
+          className={`publish-chip ${publishChip.tone}`}
+          onClick={() => {
+            setLedgerFocusPlatform(platform)
+            setSheet('ledger')
+          }}
+          title={`${kind === 'card' ? '发布台账' : publishChip.hint} · 打开发布台账`}
+          /* 标签说的是「本平台」，计数说的是「全站」—— 读屏也要把这层区分说清楚 */
+          aria-label={`${kind === 'card' ? '发布台账' : publishChip.label}，全站已发布 ${ledgerDone}/${platformTotal}`}
+        >
+          <span className="publish-chip-dot" aria-hidden />
+          <span className="publish-chip-label">{kind === 'card' ? '台账' : publishChip.label}</span>
+          <span className="publish-chip-count">
+            <span className="publish-chip-count-scope">已发布</span>
+            <span className="publish-chip-count-mark" aria-hidden>
+              ✓
+            </span>
+            <span>
+              {ledgerDone}/{platformTotal}
+            </span>
+          </span>
+        </button>
+      ) : null}
+      {canPreview ? (
+        <PreviewSizeSwitch value={previewSize} onChange={changePreviewSize} />
+      ) : null}
+    </>
+  )
+
   return (
     <div className={`app ${sidebarOpen ? 'sidebar-open' : ''} mobile-${mobilePane} ${kind === 'card' ? 'card-mode' : ''}`}>
       {/* ================= 顶栏 ================= */}
@@ -1313,12 +1354,6 @@ export default function App() {
             </div>
           ) : null}
 
-          {doc && kind === 'convert' && platform === 'wechat' ? (
-            <div className="side-section side-options">
-              <ThemePicker value={themeId} onChange={setThemeId} />
-            </div>
-          ) : null}
-
           <PlatformNav
             active={platform}
             onSelect={selectPlatform}
@@ -1371,6 +1406,11 @@ export default function App() {
                   {currentPlatformMeta?.hint ? (
                     <p className="main-hint">{currentPlatformMeta.hint}</p>
                   ) : null}
+                  {platform === 'wechat' ? (
+                    <span className="head-theme">
+                      <ThemePicker value={themeId} onChange={setThemeId} />
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="head-tools">
@@ -1383,43 +1423,18 @@ export default function App() {
                   >
                     ← 编辑
                   </button>
-                  {canPreview ? (
-                    <div className="segmented view-switch">
-                      <button
-                        className={viewMode === 'preview' ? 'active' : ''}
-                        onClick={() => setViewMode('preview')}
-                      >
-                        预览
-                      </button>
-                      <button
-                        className={viewMode === 'source' ? 'active' : ''}
-                        onClick={() => setViewMode('source')}
-                      >
-                        源码
-                      </button>
-                    </div>
-                  ) : null}
+                  {previewActions}
                 </div>
               </div>
             </div>
           ) : null}
 
-          {/* ---------- 预览工具栏（卡片模式兼任页面 header） ---------- */}
-          <div className="preview-toolbar">
-            <div className="preview-toolbar-title">
-              {kind !== 'card' ? (
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  aria-hidden
-                >
-                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" strokeLinejoin="round" />
-                  <circle cx="12" cy="12" r="2.6" />
-                </svg>
-              ) : null}
-              {kind === 'card' ? (
+          {/* ---------- 卡片页头部（兼任页面 h1） ----------
+              非卡片页的检查 / 台账 / 预览宽度已经并进上面的主头部，
+              右栏只剩一条 58px 的头部，内容起始线与中栏正文对齐。 */}
+          {kind === 'card' ? (
+            <div className="preview-toolbar">
+              <div className="preview-toolbar-title">
                 <h1
                   className="card-toolbar-title"
                   ref={mainTitleRef}
@@ -1429,63 +1444,10 @@ export default function App() {
                 >
                   配图卡片
                 </h1>
-              ) : (
-                <span className="preview-toolbar-label">
-                  {viewMode === 'source' ? '产物源码' : '实时预览'}
-                </span>
-              )}
-              {kind === 'card' ? (
-                <span className="preview-toolbar-meta">排序 · 改字 · 配色 · 导出</span>
-              ) : previewMetaLabel ? (
-                <span className="preview-toolbar-meta">{previewMetaLabel}</span>
-              ) : null}
+              </div>
+              <div className="preview-toolbar-actions">{previewActions}</div>
             </div>
-            <div className="preview-toolbar-actions">
-              {doc ? (
-                <button
-                  className={`check-chip tone-${readiness.tone}`}
-                  onClick={() => setSheet('readiness')}
-                  title="发布检查：标题、正文、合规、素材、统计与转换提示"
-                  aria-label={`发布检查，${readiness.done}/${readiness.required.length} 项就绪`}
-                >
-                  <span className="check-chip-dot" aria-hidden />
-                  <span className="check-chip-label">检查</span>
-                  {readiness.done < readiness.required.length ? (
-                    <span className="check-chip-count">
-                      {readiness.required.length - readiness.done}
-                    </span>
-                  ) : null}
-                </button>
-              ) : null}
-              {doc ? (
-                <button
-                  className={`publish-chip ${publishChip.tone}`}
-                  onClick={() => {
-                    setLedgerFocusPlatform(platform)
-                    setSheet('ledger')
-                  }}
-                  title={`${kind === 'card' ? '发布台账' : publishChip.hint} · 打开发布台账`}
-                  /* 标签说的是「本平台」，计数说的是「全站」—— 读屏也要把这层区分说清楚 */
-                  aria-label={`${kind === 'card' ? '发布台账' : publishChip.label}，全站已发布 ${ledgerDone}/${platformTotal}`}
-                >
-                  <span className="publish-chip-dot" aria-hidden />
-                  <span className="publish-chip-label">{kind === 'card' ? '台账' : publishChip.label}</span>
-                  <span className="publish-chip-count">
-                    <span className="publish-chip-count-scope">已发布</span>
-                    <span className="publish-chip-count-mark" aria-hidden>
-                      ✓
-                    </span>
-                    <span>
-                      {ledgerDone}/{platformTotal}
-                    </span>
-                  </span>
-                </button>
-              ) : null}
-              {canPreview && viewMode === 'preview' ? (
-                <PreviewSizeSwitch value={previewSize} onChange={changePreviewSize} />
-              ) : null}
-            </div>
-          </div>
+          ) : null}
 
           {/* ---------- 预览区 ---------- */}
           <div
@@ -1544,18 +1506,12 @@ export default function App() {
             ) : (
               <>
                 <PreviewStage
-                  key={`${platform}-${viewMode}`}
-                  size={viewMode === 'preview' && canPreview ? previewSize : 'auto'}
-                  caption={
-                    showPaperChrome
-                      ? { left: '文章效果', right: previewModeLabel }
-                      : undefined
-                  }
-                  footnote={showPaperChrome ? '好内容，值得好排版。' : undefined}
+                  key={platform}
+                  size={canPreview ? previewSize : 'auto'}
                 >
                   {kind === 'convert' ? (
                     output ? (
-                    viewMode === 'preview' && canPreview ? (
+                    canPreview ? (
                       output.format === 'html' && output.html ? (
                         <div
                           className="rich-preview"

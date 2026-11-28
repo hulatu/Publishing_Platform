@@ -163,7 +163,7 @@ export function useCopyActions({
   const doCopyPrimary = useCallback(() => {
     if (!output) return
 
-    const payload = { html: output.html, text: output.text }
+    const payload = { html: output.html, text: output.text, htmlOnly: output.htmlOnly }
     const finish = (channel: 'rich' | 'plain', openedTab: boolean) => {
       const persisted = articleKey ? applyLedger(markCopiedRecord(articleKey, platform)) : false
       const tail =
@@ -173,9 +173,10 @@ export function useCopyActions({
       // 真的开了标签才说 —— 被设置关掉或被弹窗拦截时不能骗用户
       const opened = openedTab ? ' · 已打开发布页' : ''
       if (output.copyMode === 'rich') {
+        const onlyHtml = output.htmlOnly ? '（仅 HTML，不带纯文本）' : ''
         toast(
           channel === 'rich'
-            ? `已复制富文本，直接粘进编辑器即可${tail}${opened}`
+            ? `已复制富文本${onlyHtml}，直接粘进编辑器即可${tail}${opened}`
             : `浏览器不支持富文本复制，已改为复制纯文本${tail}${opened}`,
           channel === 'rich' ? 'success' : 'info',
         )
@@ -243,7 +244,7 @@ export function useCopyActions({
    * 把这篇文章在全部「转换」平台上的产物打成一个 zip。
    *
    * 逐个点「下载」会被浏览器拦（多个文件要授权一次），也麻烦。这里一次渲染
-   * 7 个平台，文件名带序号，解压后按名称排序就是侧栏的顺序。
+   * 5 个平台，文件名带序号，解压后按名称排序就是侧栏的顺序。
    *
    * 转换平台之外，**已经生成**的 AI 文案也一起放进 `ai/`（不重新调模型，
    * 未生成 / 生成中的平台跳过）；配图是 PNG，走各自的导出入口。

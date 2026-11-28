@@ -17,6 +17,7 @@ import { parseArticle, renderPreviewHtml } from '../src/core/parse'
 import { renderWechat } from '../src/renderers/wechat'
 import { renderDouban } from '../src/renderers/douban'
 import { renderSspai } from '../src/renderers/sspai'
+import { renderZhihu } from '../src/renderers/zhihu'
 import { imageCaption } from '../src/core/ir'
 
 
@@ -43,8 +44,52 @@ ok(altKept, '段落内图片的 alt 保留为「10 月跑量」')
 
 const sspaiMd = renderSspai(d1, OPTS).primary
 ok(
-  sspaiMd.includes('![10 月跑量](https://img.hulatu.com/post/UILBl6.jpg)'),
-  '少数派 Markdown 输出保留 alt（以前会变成 ![](url)）',
+  sspaiMd ===
+    '![10 月跑量](https://img.hulatu.com/post/UILBl6.jpg)\n\n*10 月跑量*',
+  '少数派 Markdown：图下补一行斜体图注（裸 HTML 会被编辑器转义成源码）',
+)
+ok(!sspaiMd.includes('<figure'), '少数派 Markdown 里没有裸 <figure>，粘过去不会出现源码')
+ok(
+  (renderSspai(d1, OPTS).html ?? '').includes('<figcaption'),
+  '少数派富文本：编辑器若采用 HTML，图注在 <figcaption> 里',
+)
+ok(
+  renderZhihu(d1, OPTS).primary.includes('<figcaption>10 月跑量</figcaption>'),
+  '知乎 .md：导入后图注进原生「图片注释」',
+)
+ok(
+  renderZhihu(d1, OPTS).copyMode === 'rich' &&
+    (renderZhihu(d1, OPTS).html ?? '').includes('<figcaption'),
+  '知乎默认复制富文本：粘贴时图注进「图片注释」',
+)
+ok(
+  !renderZhihu(d1, OPTS).text.includes('<figure'),
+  '知乎的纯文本兜底不露裸 figure（用斜体图注）',
+)
+ok(
+  renderSspai(d1, OPTS).htmlOnly === true &&
+    (renderSspai(d1, OPTS).html ?? '').includes(
+      '<figure class="image ss-img-wrapper"><img',
+    ),
+  '少数派只写 HTML，且 figure 带 CKEditor 认的 image 类',
+)
+const sspaiHardened = renderSspai(d1, OPTS).html ?? ''
+const sspaiRules = [
+  /\[.*]\(.*\)/,
+  /(^|\n)#{2,6}\s.*/,
+  /(^|\n)[0-9]\.\s.*/,
+  /(^|\n)[*+-]\s.*/,
+  /(^|\n)>\s.*/,
+]
+ok(
+  sspaiRules.every((re) => !re.test(sspaiHardened)),
+  '少数派 HTML 不命中它的 Markdown 检测规则（不会弹转换框）',
+)
+ok(!sspaiHardened.includes('\n'), '少数派 HTML 不含换行，直接过它的 5 行早退')
+const noAltMd = renderSspai(doc('![](https://img.hulatu.com/post/UILBl6.jpg)'), OPTS).primary
+ok(
+  noAltMd === '![](https://img.hulatu.com/post/UILBl6.jpg)',
+  '没写 alt 的图不凭空生成图注',
 )
 
 /* ------------------------------------------------------------------ */

@@ -451,8 +451,10 @@ select {
   align-items: center;
   gap: var(--space-4);
   height: 58px;
-  /* 与侧栏 / 编辑栏的文字左边缘对齐；窄屏断点只改 --pad-pane */
-  padding: 0 var(--pad-pane);
+  /* 左边与侧栏 / 编辑栏的文字左边缘对齐（--pad-pane）；
+     右边跟着主栏走（--pad-read），「工具」的右边缘才能和预览工具栏、
+     操作条、「更多」落在同一条竖线上。 */
+  padding: 0 var(--pad-read) 0 var(--pad-pane);
   background: var(--chrome);
   backdrop-filter: saturate(180%) blur(14px);
   border-bottom: 1px solid var(--line);
@@ -1036,6 +1038,11 @@ select {
   gap: var(--space-2);
 }
 
+/* 署名 / 小标签 / 日期：检查器拉宽后三格并排 */
+.studio .field-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .field-label {
   display: block;
   font-size: var(--fs-sm);
@@ -1295,7 +1302,9 @@ select {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  flex-wrap: wrap;
+  /* 头部只放文件名和「换一篇」，永远单行：长文件名用省略号收，
+     不允许折成两行把 58px 的头部撑高、和右栏标题错开。 */
+  flex-wrap: nowrap;
   /* 与右栏页标题同高：两条横向分隔线落在同一条水平线上。
      内容垂直居中，不再用 14/11 这种上下不对称的内边距去凑光学对齐。 */
   min-height: var(--pane-head-h);
@@ -1311,15 +1320,7 @@ select {
   gap: var(--space-2);
   min-width: 0;
   flex: 1;
-  flex-wrap: wrap;
-}
-
-.editor-eyebrow {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  color: var(--ink-muted);
-  flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 
 .editor-file {
@@ -1333,7 +1334,6 @@ select {
   color: var(--ink);
 }
 
-.editor-count,
 .editor-dirty,
 .editor-hint {
   font-size: var(--fs-xs);
@@ -1457,7 +1457,7 @@ select {
   background: var(--main-bg);
 }
 
-/* 与中栏头部同高、同一条底边线。标题和「预览/源码」在 58px 里垂直居中；
+/* 与中栏头部同高、同一条底边线。平台名和右侧操作在 58px 里垂直居中；
    不再让头部随标题的 25px 行高单独算一套 padding。 */
 .main-head {
   display: flex;
@@ -1491,6 +1491,10 @@ select {
   letter-spacing: 0.02em;
   line-height: 1.25;
   color: var(--ink);
+  /* 平台名永远不折行：页头被操作按钮挤窄时，宁可让说明文字截断，
+     也不能让 3 个字的平台名断成两行、把 58px 的头部撑高。 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 页面标题只是 selectPlatform 的程序化焦点落点：读屏靠它播报新平台名，
@@ -1514,6 +1518,14 @@ select {
   white-space: nowrap;
 }
 
+/* 公众号主题选择器：跟平台名同一行，替代原来的主题名文字 */
+.head-theme {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  flex-shrink: 0;
+}
+
 @media (max-width: 760px) {
   .main-hint {
     display: none;
@@ -1523,13 +1535,31 @@ select {
 .head-tools {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  /* 检查、台账、预览宽度都并进这一行后，间距收一档才放得下 */
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
-/* 卡片平台没有预览/源码切换，工具位是空的，不要留一条空隙 */
+/* 卡片页的工具位在预览工具栏里；这里防的是主头部在没有操作时留一条空隙 */
 .head-tools:empty {
   display: none;
+}
+
+/* 页头并进三个操作后，窄屏按「次要 → 更次要」逐级收：
+   台账文字 → 检查文字 / 主题名。图标和计数始终保留，功能不丢。 */
+@media (max-width: 840px) {
+  .main-head .publish-chip-label,
+  .main-head .publish-chip-count-scope,
+  .main-head .publish-chip-count-mark {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .main-head .check-chip-label,
+  .main-head .main-meta {
+    display: none;
+  }
 }
 
 /* 发布检查收成一个 chip：圆点是总体语气，数字是还没就绪的必查项。
@@ -1609,11 +1639,7 @@ select {
   color: var(--error);
 }
 
-.view-switch {
-  flex-shrink: 0;
-}
-
-/* ---------- 预览工具栏 ---------- */
+/* ---------- 预览工具栏（卡片页头部） ---------- */
 
 .preview-toolbar {
   display: flex;
@@ -1636,18 +1662,6 @@ select {
   min-width: 0;
   font-size: var(--fs-sm);
   color: var(--ink-soft);
-}
-
-.preview-toolbar-title svg {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  color: var(--ink-muted);
-}
-
-/* 标题永不竖排；窄屏时让主题名先被截断 */
-.preview-toolbar-label {
-  white-space: nowrap;
 }
 
 .preview-toolbar-meta {
@@ -1821,7 +1835,7 @@ select {
 
 /* ---------- 预览宽度 ---------- */
 
-/* 自适应时纸面自己撑满；手机/平板把纸固定到目标宽度再等比缩放。
+/* 自适应时纸面自己撑满；手机把纸固定到 390px 再等比缩放。
    缩放量由 PreviewStage 用 ResizeObserver 算，这里只负责几何。 */
 .preview-fit {
   margin: 0 auto;
@@ -1841,14 +1855,6 @@ select {
 .preview-stage[data-preview-size="mobile"] .md-preview {
   padding: var(--space-8) var(--space-6) var(--space-9);
   border-radius: var(--radius-lg);
-}
-
-.preview-stage[data-preview-size="tablet"] .rich-preview {
-  padding: var(--space-9) var(--space-10);
-}
-
-.preview-stage[data-preview-size="tablet"] .md-preview {
-  padding: var(--space-10) var(--space-11) var(--space-12);
 }
 
 @keyframes stage-in {
@@ -3522,11 +3528,11 @@ select {
   --studio-brand-soft: #eef2f7;
   --studio-brand-line: #c9d7e6;
 
-  /* 卡片工坊占满「编辑 + 预览」两栏：左胶片、中预览、右检查器。
-     三列各自滚动，改文字时预览始终在视野里。 */
+  /* 卡片工坊：舞台宽度跟着图片走（--studio-preview-w），检查器吃掉剩余宽度。
+     预览、翻页、导出都对齐图片边缘；页面右侧不再留一大块空白。 */
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) 320px;
-  grid-template-areas: 'rail stage inspector';
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'stage inspector';
   gap: var(--space-6);
   align-items: start;
 }
@@ -3597,6 +3603,8 @@ select {
   position: sticky;
   top: 4px;
   min-width: 0;
+  /* 舞台、翻页、导出都按图片显示宽度收；数值由组件写在 --studio-preview-w */
+  width: var(--studio-preview-w);
 }
 
 /* 右栏：整套设置 + 当前卡。表单长，自己在列内滚 */
@@ -3655,6 +3663,19 @@ select {
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-3);
+  width: var(--studio-preview-w);
+  margin-inline: auto;
+  /* 极窄屏放不下「翻页 + 加卡 / 重新生成」时换行，不横向溢出 */
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+}
+
+/* 加卡 / 重新生成跟着翻页条走，不占一整条横向空间 */
+.studio-pager-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
 }
 
 .pager-btn {
@@ -3701,6 +3722,8 @@ select {
 /* 导出面板：安静的小卡片，贴着预览下方 */
 .studio-export {
   margin-top: var(--space-3);
+  width: var(--studio-preview-w);
+  margin-inline: auto;
   padding: var(--space-3) var(--space-3) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -3810,8 +3833,8 @@ select {
 
 /* 当前卡的编辑区：和上方「整套图设置」拉一条线分开 */
 .studio-editor-head {
-  margin: var(--space-5) 0 var(--space-3);
-  padding-top: var(--space-4);
+  margin: var(--space-4) 0 var(--space-2);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--line);
 }
 
@@ -3887,6 +3910,40 @@ select {
   background: var(--panel-soft);
 }
 
+/* 小标签 / 日期：默认收起，右栏首屏不必为两个低频字段多出一条滚动条 */
+.studio-more {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.studio-more > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
+}
+
+.studio-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.studio-more > summary::after {
+  content: '▾';
+  transition: transform var(--dur) var(--ease);
+}
+
+.studio-more[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.studio-more > .field:first-of-type {
+  margin-top: var(--space-3);
+}
+
 .studio-group .field:last-of-type {
   margin-bottom: 0;
 }
@@ -3900,20 +3957,17 @@ select {
   text-transform: uppercase;
 }
 
-/* 「全选图片」：只同步排版，不同步文字 */
-.studio-bulk {
+/* 「排版 + 同步到全部卡片」同一行：标题和开关各占一端 */
+.studio-group-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-3);
-  margin-bottom: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
-.studio-bulk-hint {
-  flex: 1 1 100%;
-  font-size: var(--fs-xs);
-  line-height: 1.6;
-  color: var(--ink-muted);
+.studio-group-head .studio-group-title {
+  margin-bottom: 0;
 }
 
 .studio-seg {
@@ -4066,57 +4120,6 @@ select {
 .card-item.drop-target {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent-line);
-}
-
-/* 上下移：平时收起，悬停/聚焦/当前卡时出现，避免胶片列变成按钮墙 */
-.card-move {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0);
-  flex-shrink: 0;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur) var(--ease);
-}
-
-.card-item:focus-within .card-move,
-.card-item.active .card-move {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-@media (hover: hover) {
-  .card-item:hover .card-move {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
-
-.card-move-btn {
-  width: 20px;
-  height: 17px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
-  background: var(--panel);
-  color: var(--ink-soft);
-  font-size: var(--fs-xs);
-  line-height: 1;
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
-}
-
-@media (hover: hover) {
-  .card-move-btn:hover:not(:disabled) {
-    background: var(--panel-soft);
-    border-color: var(--line-strong);
-  }
-}
-
-.card-move-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
 }
 
 /* 新增卡的删除键：平时淡一点，悬停再实，避免误触但不藏起来 */
@@ -6159,7 +6162,7 @@ select {
     --pad-read: 20px;
   }
 
-  /* 侧栏变成抽屉后，预览列实际有 644~840px 宽，标题和「预览/源码」
+  /* 侧栏变成抽屉后，预览列实际有 644~840px 宽，平台名和右侧操作
      一直放得下一行；不再折成两行，三栏头部才能保持同高。 */
   .head-row {
     flex-wrap: nowrap;
@@ -6239,9 +6242,6 @@ select {
   .preview-toolbar {
     gap: var(--space-2);
   }
-  .preview-toolbar-title > svg {
-    display: none;
-  }
   .preview-toolbar-actions {
     gap: var(--space-2);
   }
@@ -6255,22 +6255,17 @@ select {
   }
 }
 
-/* 320px 级别的窄屏：文字标签这时真放不下，才让位给功能控件。
-   工具栏没有控件时（首次进入、还没导入文章）把标签留回来，避免一条空栏。 */
-@media (max-width: 340px) {
-  .preview-toolbar-label {
-    display: none;
-  }
-  .preview-toolbar:not(:has(.preview-toolbar-actions > *)) .preview-toolbar-label {
-    display: inline;
-  }
-}
-
 @media (max-width: 760px) {
   :root {
     /* 手机屏只剩一栏，两侧 14px 比 16px 多出一点阅读宽度 */
     --pad-pane: 14px;
     --pad-read: 14px;
+  }
+
+  /* 页头放不下完整主题按钮：只留主题名，色点和「更换」收起 */
+  .head-theme .theme-swatches,
+  .head-theme .theme-bar-action {
+    display: none;
   }
 
   .topbar {
@@ -6684,46 +6679,17 @@ select {
   margin-bottom: var(--space-4);
 }
 
-/* 三列在 1340 以下放不下：把胶片横过来铺在顶部，预览与检查器留两列。
-   仍然保留「改字时预览在左、设置在右」的对应关系。 */
+/* 预览 + 检查器两列在 1340 以下仍然放得下；这里只收一下间距。
+   顶部不再有胶片，预览从首屏开始，sticky 反而会把导出按钮顶出视口，改静态。 */
 @media (max-width: 1340px) {
   .studio {
-    grid-template-columns: minmax(0, 1fr) 320px;
-    grid-template-areas:
-      'rail rail'
-      'stage inspector';
     gap: var(--space-5);
-  }
-
-  .studio-rail {
-    position: static;
-    max-height: none;
-  }
-
-  .studio-rail .card-list {
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-bottom: var(--space-2);
-  }
-
-  .studio-rail .card-item {
-    flex: 0 0 210px;
-  }
-
-  .studio-rail-actions {
-    max-width: 300px;
-  }
-
-  .studio-rail-hint {
-    display: none;
   }
 
   .studio-inspector {
     max-height: calc(100vh - 190px);
   }
 
-  /* 胶片横置后预览已经不在首屏顶部，sticky 会把导出按钮推出视口且无法滚到 */
   .studio-stage {
     position: static;
   }
@@ -6745,8 +6711,8 @@ select {
     width: min(220px, 100%);
   }
 
-  /* 单列顺序：胶片 → 预览 → 本张卡编辑 → 导出。
-     让 .studio-stage 变成 display:contents，把它的四个孩子提成 flex item，
+  /* 单列顺序：预览 → 本张卡编辑 → 导出。
+     让 .studio-stage 变成 display:contents，把它的孩子提成 flex item，
      这样导出可以排到检查器后面，不用为了手机端复制一份 DOM。
      sticky 在单列里会把预览钉住挡住表单，所以全部改静态。 */
   .studio {
@@ -6767,30 +6733,11 @@ select {
     display: contents;
   }
 
-  .studio-rail { order: 1; margin-bottom: var(--space-5); }
-  .studio-stage-head { order: 2; }
-  .studio-preview { order: 3; }
-  .studio-pager { order: 4; }
-  .studio-inspector { order: 5; margin-top: var(--space-5); }
-  .studio-export { order: 6; margin-top: var(--space-5); }
-
-  .studio-rail-actions {
-    max-width: none;
-  }
-
-  .studio-rail-actions .add-wrap {
-    flex: 0 1 auto;
-  }
-
-  .studio-rail-actions .add-wrap > .btn {
-    width: auto;
-  }
-
-  /* 胶片横条：给当前卡的上下移按钮留出宽度，标题不至于只剩两个字；
-     第二张会稍微露不全，横向滚动本来就是这个断点的预期 */
-  .studio-rail .card-item {
-    flex: 0 0 190px;
-  }
+  .studio-stage-head { order: 1; }
+  .studio-preview { order: 2; }
+  .studio-pager { order: 3; }
+  .studio-inspector { order: 4; margin-top: var(--space-5); }
+  .studio-export { order: 5; margin-top: var(--space-5); }
 
   /* 窄屏的工具栏只剩标题和两个 chip，说明文字让标题竖着断行 */
   .preview-toolbar-meta {

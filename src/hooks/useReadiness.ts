@@ -109,7 +109,7 @@ export function useReadiness(opts: Options): Readiness {
       list.push({
         id: 'body',
         label: '配图卡片',
-        summary: '卡片工坊已就绪 · 导出前确认文字与比例',
+        summary: '卡片工坊已就绪 · 导出前确认文字',
         tone: 'ok',
       })
     }

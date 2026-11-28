@@ -33,6 +33,6 @@ ok(Boolean(rewriteMarkdown('weibo', all)?.includes('#写作#')), '微博保留�
 
 ok(rewriteMarkdown('jike', {}) === null, '没有结果时返回 null（不生成空文件）')
 ok(rewriteMarkdown('twitter', { twitter: { thread: [] } }) === null, '空 thread 返回 null')
-ok(REWRITE_FILE_NAMES.twitter === '推特-X', '推特文件名不带路径斜杠')
+ok(REWRITE_FILE_NAMES.twitter === '推特', '推特文件名不带路径斜杠')
 
 process.exit(report('AI 导出'))

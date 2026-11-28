@@ -1,10 +1,10 @@
 /**
- * 预览画布：自适应 / 手机 / 平板三种宽度。
+ * 预览画布：自适应 / 手机两种宽度。
  *
  * 为什么不用 `max-width` 直接把纸压窄：
  * 手机预览的价值是「在 390px 下真的长这样」，纸被容器压到 320px 时，
  * 换行位置、标题折行、表格挤压全都不是目标宽度下的结果。
- * 所以固定宽度按比例缩放，纸本身仍然按 390 / 820 排版。
+ * 所以固定宽度按比例缩放，纸本身仍然按 390 排版。
  *
  * 缩放用的是 MDskill-Web 的同一套思路（ResizeObserver + transform），
  * 但测量对象是外层全宽容器而不是纸本身 —— 如果量纸，纸一缩小，
@@ -13,11 +13,10 @@
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
-export type PreviewSize = 'auto' | 'mobile' | 'tablet'
+export type PreviewSize = 'auto' | 'mobile'
 
 const PAPER_WIDTH: Record<Exclude<PreviewSize, 'auto'>, number> = {
   mobile: 390,
-  tablet: 820,
 }
 
 interface Props {

@@ -132,7 +132,7 @@ body 必须严格三段式，段与段之间空一行：
 title：不超过 20 个汉字，陈述句，说清「做了什么 / 得到什么」。不含 emoji，不含 #，不以 ！ 结尾。
 tags：3–6 个，只写词本身，不带 # 号，不带空格。优先用原文 front matter 里的标签。`
 
-const TWITTER_SPEC = `【twitter 推特 / X】
+const TWITTER_SPEC = `【twitter 推特】
 输出 {"thread": ["第一条", "第二条", ...]}
 
 3–8 条。平台按加权字符算，中文每字算 2，所以每条控制在 135 个汉字以内。

@@ -110,6 +110,20 @@ export interface HtmlRenderOptions {
    * - web：标题用 <h2>、代码用 <pre>、分隔线用 <hr>（豆瓣等标准 HTML 环境）
    */
   target: 'wechat' | 'web'
+  /**
+   * 独立图片输出成 `<figure><img><figcaption>`，而不是「图一个块 + 图注一个块」。
+   *
+   * 少数派编辑器的图片就是 figure + figcaption 结构，粘富文本时保持同构，
+   * 图注才会落在图片上（而不是变成图下方一段普通正文）。
+   */
+  figureImages?: boolean
+  /**
+   * figure 上的 class（figureImages 打开时生效）。
+   *
+   * 少数派编辑器是 CKEditor，它的图片组件只认 `figure.image` —— 少了这个 class，
+   * 粘进去只是一张普通图，figcaption 不会进「图片标注框」。
+   */
+  figureClass?: string
   refsTitle?: string
   fnTitle?: string
 }
@@ -211,7 +225,7 @@ function refMark(idx: number, ctx: Ctx): string {
  * refs 模式下的 HTML 片段：手写的 `<a href>` 也收进文末参考链接。
  *
  * 原样输出的话这条链接绕开了「外链抽到文末」：公众号粘贴后链接失效，
- * 头条/百家号会把整个标签连文字一起抹掉。处理方式和 Markdown 链接完全一致。
+ * 头条号会把整个标签连文字一起抹掉。处理方式和 Markdown 链接完全一致。
  *
  * 落单的开/闭标签一并去掉 —— `<a href>` 和 `</a>` 是分开的 token，
  * 跨节点的那半个标签留在正文里只会变成可见的空链接。
@@ -300,6 +314,16 @@ function renderFigure(img: { src: string; alt: string }, ctx: Ctx): string {
   const { theme, opts } = ctx
   const wrapper = opts.target === 'web' ? 'p' : 'section'
   const el = `<img src="${escapeHtml(img.src)}" alt="${escapeHtml(img.alt)}"${attr(theme.imgBlock)}>`
+
+  // 少数派那一路：保持 figure > img + figcaption 的同构结构，编辑器才会把
+  // 这段文字当成图片自己的图注，而不是图下方一段普通正文。
+  if (opts.figureImages) {
+    const cap = img.alt.trim()
+    const caption = cap ? `<figcaption${attr(theme.caption)}>${escapeHtml(cap)}</figcaption>` : ''
+    const cls = opts.figureClass ? ` class="${escapeHtml(opts.figureClass)}"` : ''
+    return `<figure${cls}>${el}${caption}</figure>`
+  }
+
   const name = imageCaption(img.src, img.alt)
 
   if (!name) {

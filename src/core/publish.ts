@@ -4,7 +4,7 @@
  * 用途：复制成功后把发布页直接打开，省掉「切窗口 → 找入口」这一步。
  *
  * 这里**只做一件事：打开一个 URL**。不碰登录态、不填表单、不点发布 ——
- * 粘贴和发布仍然由人完成。原因见 README：11 个平台里只有公众号有官方发布通道，
+ * 粘贴和发布仍然由人完成。原因见 README：9 个平台里只有公众号有官方发布通道，
  * 其余走「模拟操作」既违反平台条款，也会在平台改版时立刻失效。
  *
  * 平台改版时只改这个文件。带 note 的是没有稳定独立编辑页的，只能落到首页。
@@ -22,9 +22,7 @@ export const PUBLISH_URLS: Record<string, PublishTarget> = {
   sspai: { url: 'https://sspai.com/write' },
   zhihu: { url: 'https://zhuanlan.zhihu.com/write' },
   douban: { url: 'https://www.douban.com/note/create' },
-  bilibili: { url: 'https://member.bilibili.com/platform/upload/text/edit' },
   toutiao: { url: 'https://mp.toutiao.com/profile_v4/graphic/publish' },
-  baijiahao: { url: 'https://baijiahao.baidu.com/builder/rc/edit?type=news' },
   xiaohongshu: { url: 'https://creator.xiaohongshu.com/publish/publish' },
   twitter: { url: 'https://x.com/compose/post' },
   jike: { url: 'https://web.okjike.com/', note: '首页点「发布」' },

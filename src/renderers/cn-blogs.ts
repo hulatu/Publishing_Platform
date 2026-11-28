@@ -1,20 +1,17 @@
 /**
- * B 站专栏 / 头条号 / 百家号
+ * 头条号
  *
- * 这三个都是「富文本编辑器 + 手动上传图片」的路子，和豆瓣同一类，
- * 所以共用一套渲染：标准 HTML 标签（target='web'）、不用 section 包正文。
+ * 和豆瓣同一类：富文本编辑器 + 手动上传图片，所以用标准 HTML 标签
+ * （target='web'）、不用 section 包正文。
  *
- * 三家的差别只有两点，按这两点分叉：
+ * 头条的特殊之处只有两点：
  *
- * 1. **正文外链**：B 站专栏允许插入链接；头条和百家号会把正文里的 <a> 清掉。
- *    所以前者用 linkMode='inline'，后者用 'refs'（把 URL 抽到文末当纯文本列出，
- *    至少读者还能看见地址）。
- * 2. **代码块**：三家都不保证保留等宽格式。B 站专栏会把代码压成普通段落，
- *    头条和百家号连 <pre> 都会剥。遇到代码块统一提示「粘贴后需检查格式」。
+ * 1. **正文外链**：会把正文里的 <a> 清掉，所以用 linkMode='refs'
+ *    （把 URL 抽到文末当纯文本列出，至少读者还能看见地址）。
+ * 2. **代码块**：不保证保留等宽格式，遇到代码块提示「粘贴后需检查格式」。
  *
- * 图片走外链就行 —— 这三家过去被认为有图床防盗链、外链图粘过去会裂，
- * 但实测自建图床（Cloudflare R2 + 自有域名）在这几家都能正常显示，
- * 所以不再提示「逐张手动上传」。
+ * 图片走外链就行 —— 实测自建图床（Cloudflare R2 + 自有域名）能正常显示，
+ * 不再提示「逐张手动上传」。
  */
 
 import type { Doc } from '../core/ir'
@@ -34,25 +31,12 @@ interface Spec {
 }
 
 const SPECS = {
-  bilibili: {
-    inlineLinks: true,
-    codeHint: '代码块粘进专栏后会变成普通段落，等宽对齐会丢，建议先截图再贴',
-    notes: ['B 站专栏编辑器支持富文本粘贴，标题层级与表格保真'],
-  },
   toutiao: {
     inlineLinks: false,
     codeHint: '代码块在头条编辑器里会被清洗成普通文字',
     notes: [
       '头条号粘贴后会把字号、行距、颜色全部归一化，这里排的样式只作参考',
       '正文里的外链会被清除，已抽成文末「参考链接」纯文本',
-    ],
-  },
-  baijiahao: {
-    inlineLinks: false,
-    codeHint: '百家号会剥掉 <pre>，代码只能以纯文本呈现',
-    notes: [
-      '百家号的清洗最狠，只保留段落、加粗、标题、图片等基础标签',
-      '正文外链会被清除，已抽成文末「参考链接」纯文本',
     ],
   },
 } satisfies Record<string, Spec>
@@ -97,6 +81,4 @@ export function renderCnBlog(id: CnBlogId, doc: Doc, _opts: ConvertOptions): Ren
   }
 }
 
-export const renderBilibili = (doc: Doc, opts: ConvertOptions) => renderCnBlog('bilibili', doc, opts)
 export const renderToutiao = (doc: Doc, opts: ConvertOptions) => renderCnBlog('toutiao', doc, opts)
-export const renderBaijiahao = (doc: Doc, opts: ConvertOptions) => renderCnBlog('baijiahao', doc, opts)

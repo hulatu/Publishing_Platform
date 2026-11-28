@@ -27,6 +27,7 @@ import {
   type CardSpec,
 } from '../cards/types'
 import { hashDoc, readCardSnapshot, saveCardSnapshot } from '../cards/store'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 
 interface Props {
   doc: Doc
@@ -109,8 +110,8 @@ export function CardStudio({
   const [copying, setCopying] = useState(false)
   const [progress, setProgress] = useState('')
   const [addOpen, setAddOpen] = useState(false)
-  const [format, setFormat] = useState<CardFormatId>('3:4')
-  const [multiSize, setMultiSize] = useState(false)
+  /** 卡片只保留 3:4（小红书竖图）；其它比例不常用，不再提供切换 */
+  const format: CardFormatId = '3:4'
   /** 排版设置是否同步到全部卡片（文字内容不受影响） */
   const [applyAll, setApplyAll] = useState(false)
 
@@ -128,12 +129,13 @@ export function CardStudio({
 
   /* 预览按容器宽度等比缩放：宽屏保持 PREVIEW_BOX 的原比例，窄到放不下时
      跟着可用宽度缩，避免 320px 下卡片预览把预览区撑出横向滚动。
-     只影响显示，导出层按 fmt.w/fmt.h 原尺寸渲染，和这里无关。 */
+     只影响显示，导出层按 fmt.w/fmt.h 原尺寸渲染，和这里无关。
+
+     舞台宽度 = 图片显示宽度：翻页、加卡、导出都跟着图片走，不再拉满整列。
+     宽屏可用宽度要扣掉右侧检查器和列间距；窄屏（单列）直接用 studio 宽度。 */
   const studioRef = useRef<HTMLDivElement>(null)
   const [studioWidth, setStudioWidth] = useState(0)
-  /** 宽屏下预览的可用宽度是 stage，不是整个 studio；窄屏 stage 变成 display:contents，退回 studio */
-  const stageRef = useRef<HTMLDivElement>(null)
-  const [stageWidth, setStageWidth] = useState(0)
+  const stacked = useMediaQuery('(max-width: 760px)')
 
   const measure = (el: HTMLElement | null, set: (n: number) => void) => {
     if (!el) return () => {}
@@ -150,17 +152,8 @@ export function CardStudio({
   }
 
   useLayoutEffect(() => {
-    const stopStudio = measure(studioRef.current, (w) => setStudioWidth((prev) => (prev === w ? prev : w)))
-    const stopStage = measure(stageRef.current, (w) => setStageWidth((prev) => (prev === w ? prev : w)))
-    return () => {
-      stopStudio()
-      stopStage()
-    }
+    return measure(studioRef.current, (w) => setStudioWidth((prev) => (prev === w ? prev : w)))
   }, [])
-
-  // 拖拽排序
-  const [dragId, setDragId] = useState<string | null>(null)
-  const [overId, setOverId] = useState<string | null>(null)
 
   // 用户改过任何一张卡之后，就不再用新摘要覆盖他的编辑。
   // 这个标记跟着快照一起存：过几天回来，改过的卡仍然不许被覆盖。
@@ -355,8 +348,15 @@ export function CardStudio({
   // 宽屏最多缩到 PREVIEW_BOX 的比例（不放大）；容器比它还窄时按可用宽度再缩。
   // studioWidth 是 0（首帧还没量）时先用原比例，useLayoutEffect 会在绘制前补上。
   const baseScale = Math.min(PREVIEW_BOX.w / fmt.w, PREVIEW_BOX.h / fmt.h)
-  const fitWidth = stageWidth > 0 ? stageWidth : studioWidth
-  const previewScale = fitWidth > 0 ? Math.min(baseScale, fitWidth / fmt.w) : baseScale
+  const INSPECTOR_W = 320
+  const STUDIO_GAP = 24
+  const availableStage = stacked
+    ? studioWidth
+    : Math.max(0, studioWidth - INSPECTOR_W - STUDIO_GAP)
+  const previewScale =
+    availableStage > 0 ? Math.min(baseScale, availableStage / fmt.w) : baseScale
+  const previewW = fmt.w * previewScale
+  const previewH = fmt.h * previewScale
 
   const patch = (id: string, changes: Partial<CardSpec>) => {
     dirty.current = true
@@ -365,7 +365,7 @@ export function CardStudio({
 
   /**
    * 排版类改动（字号 / 密度 / 对齐 / 显示项）。
-   * 勾了「全选图片」就落到所有卡片；文字、指标、条目仍走 patch()，只改当前这张。
+   * 勾了「同步到全部卡片」就落到所有卡片；文字、指标、条目仍走 patch()，只改当前这张。
    */
   const patchStyle = (changes: Partial<CardSpec>) => {
     dirty.current = true
@@ -391,34 +391,6 @@ export function CardStudio({
       const next = renumber(prev.filter((c) => c.id !== id))
       if (selectedId === id) setSelectedId(next[Math.min(index, next.length - 1)]?.id ?? '')
       return next
-    })
-  }
-
-  /** 把 from 拖到 to 的位置（to 之后紧邻 to） */
-  const moveCard = (from: string, to: string) => {
-    setCards((prev) => {
-      const a = prev.findIndex((c) => c.id === from)
-      const b = prev.findIndex((c) => c.id === to)
-      if (a < 0 || b < 0 || a === b) return prev
-      const next = [...prev]
-      const [item] = next.splice(a, 1)
-      next.splice(b, 0, item)
-      return renumber(next)
-    })
-    dirty.current = true
-  }
-
-  /** 上移/下移一位：Alt+↑↓ 和卡片行里的小箭头都走这里 */
-  const moveCardBy = (id: string, delta: number) => {
-    const index = cards.findIndex((c) => c.id === id)
-    const target = index + delta
-    if (index < 0 || target < 0 || target >= cards.length) return
-    dirty.current = true
-    setCards((prev) => {
-      const next = [...prev]
-      const [item] = next.splice(index, 1)
-      next.splice(target, 0, item)
-      return renumber(next)
     })
   }
 
@@ -504,7 +476,7 @@ export function CardStudio({
       onToast('没有可导出的卡片', 'error')
       return
     }
-    const formats = multiSize ? CARD_FORMATS : [fmt]
+    const formats = [fmt]
 
     setExporting(true)
     setProgress('')
@@ -521,7 +493,7 @@ export function CardStudio({
         const name = `${fileNameOf(c, i)}.png`
         for (const f of formats) {
           const node = nodeRefs.current[`${c.id}@${f.id}`]
-          if (node) entries.push({ node, name, format: f.id, folder: multiSize ? f.id.replace(':', 'x') : undefined })
+          if (node) entries.push({ node, name, format: f.id })
         }
       })
 
@@ -556,181 +528,16 @@ export function CardStudio({
   const showFooter = selected?.showFooter !== false
 
   return (
-    <div className="studio" ref={studioRef}>
-      {/* ---------- 左栏：卡片胶片。排序、增删、切卡都在这一列 ---------- */}
-      <aside className="studio-rail" aria-label="卡片列表">
-        <div className="studio-rail-head">
-          <span className="studio-stage-label">卡片</span>
-          <span className="studio-stage-meta">{cards.length} 张</span>
-        </div>
-
-        <div className="card-list">
-          {cards.map((c, index) => {
-            const t = getCardTheme(c.themeId)
-            const active = c.id === selectedId
-            const confirming = confirmRemoveId === c.id
-            return (
-              <div
-                key={c.id}
-                draggable
-                className={[
-                  'card-item',
-                  active ? 'active' : '',
-                  dragId === c.id ? 'dragging' : '',
-                  overId === c.id && dragId && dragId !== c.id ? 'drop-target' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                onDragStart={(e) => {
-                  setDragId(c.id)
-                  e.dataTransfer.effectAllowed = 'move'
-                  // Firefox 必须 setData 才会真正开始拖拽
-                  e.dataTransfer.setData('text/plain', c.id)
-                }}
-                onDragEnd={() => {
-                  setDragId(null)
-                  setOverId(null)
-                }}
-                onDragOver={(e) => {
-                  if (!dragId) return
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                  if (overId !== c.id) setOverId(c.id)
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  const from = e.dataTransfer.getData('text/plain') || dragId
-                  if (from && from !== c.id) moveCard(from, c.id)
-                  setDragId(null)
-                  setOverId(null)
-                }}
-              >
-                <button
-                  type="button"
-                  className="card-select"
-                  onClick={() => setSelectedId(c.id)}
-                  aria-pressed={active}
-                  aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-                  aria-label={`选择第 ${index + 1} 张：${layoutNames[c.layout]}`}
-                  onKeyDown={(e) => {
-                    if (!e.altKey) return
-                    if (e.key === 'ArrowUp') {
-                      e.preventDefault()
-                      moveCardBy(c.id, -1)
-                    } else if (e.key === 'ArrowDown') {
-                      e.preventDefault()
-                      moveCardBy(c.id, 1)
-                    }
-                  }}
-                >
-                  <span className="card-grip" aria-hidden>
-                    ⋮⋮
-                  </span>
-                  {/* 缩略图只表示配色，不塞文字 —— 34px 宽放字必然糊成一团 */}
-                  <span className="card-thumb" style={{ background: t.bg, borderColor: t.line, color: t.ink }}>
-                    <span className="card-thumb-bar" style={{ background: t.accent }} />
-                    <span className="card-thumb-lines" />
-                  </span>
-                  <span className="card-item-body">
-                    <span className="card-item-title">
-                      {layoutNames[c.layout]}
-                      {c.id.startsWith('custom') ? '（新增）' : ''}
-                      <span className="card-item-mark">{c.mark}</span>
-                    </span>
-                    <span className="card-item-sub">{c.title.slice(0, 26)}</span>
-                  </span>
-                </button>
-
-                <span className="card-move">
-                  <button
-                    type="button"
-                    className="card-move-btn"
-                    onClick={() => moveCardBy(c.id, -1)}
-                    disabled={index === 0}
-                    title="上移（Alt+↑）"
-                    aria-label={`上移${layoutNames[c.layout]}`}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    className="card-move-btn"
-                    onClick={() => moveCardBy(c.id, 1)}
-                    disabled={index === cards.length - 1}
-                    title="下移（Alt+↓）"
-                    aria-label={`下移${layoutNames[c.layout]}`}
-                  >
-                    ↓
-                  </button>
-                </span>
-
-                {c.id.startsWith('custom') ? (
-                  <button
-                    type="button"
-                    className={['icon-btn', 'card-item-remove', confirming ? 'confirm' : ''].filter(Boolean).join(' ')}
-                    onClick={() => {
-                      if (confirming) removeCard(c.id)
-                      else setConfirmRemoveId(c.id)
-                    }}
-                    onBlur={() => {
-                      if (confirming) setConfirmRemoveId(null)
-                    }}
-                    title={confirming ? '再点一次删除' : '删除这张卡'}
-                    aria-label={confirming ? '确认删除这张卡' : '删除这张卡'}
-                  >
-                    {confirming ? '确定' : '×'}
-                  </button>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-
-        <div className="studio-rail-actions">
-          <div className="add-wrap" ref={addWrapRef}>
-            <button className="btn btn-sm" onClick={() => setAddOpen((v) => !v)}>
-              + 加一张卡
-            </button>
-            {addOpen ? (
-              <div className="add-menu" onMouseLeave={() => setAddOpen(false)}>
-                {ADDABLE.map((l) => (
-                  <button key={l} onClick={() => addCard(l)} title={layoutHints[l]}>
-                    {layoutNames[l]}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <button
-            className={`btn btn-sm ${confirmRebuild ? 'btn-danger' : ''}`}
-            onClick={requestRebuild}
-            onBlur={() => setConfirmRebuild(false)}
-            title={
-              confirmRebuild
-                ? '再点一次会覆盖当前所有卡片'
-                : '按文章小节重新生成整套图；改过卡片时会先请你确认'
-            }
-          >
-            {confirmRebuild ? '确定覆盖' : '重新生成'}
-          </button>
-        </div>
-        <p className="studio-rail-hint">拖动或 Alt+↑↓ 排序 · 页码自动重排</p>
-      </aside>
-
+    <div
+      className="studio"
+      ref={studioRef}
+      style={{ '--studio-preview-w': `${previewW}px` } as React.CSSProperties}
+    >
       {/* ---------- 中栏：预览 + 导出 ---------- */}
-      <div className="studio-stage" ref={stageRef}>
-        <div className="studio-stage-head">
-          <span className="studio-stage-label">预览</span>
-          <span className="studio-stage-meta">
-            {selected
-              ? `${layoutNames[selected.layout]} · ${cardNo(selectedIndex + 1)}/${cardNo(cards.length)} · ${format}`
-              : '—'}
-          </span>
-        </div>
-
+      <div className="studio-stage">
         <div
           className="studio-preview"
-          style={{ width: fmt.w * previewScale, height: fmt.h * previewScale }}
+          style={{ width: previewW, height: previewH }}
           tabIndex={0}
           role="img"
           aria-label={selected ? `第 ${selectedIndex + 1} 张卡片预览：${selected.title}` : '卡片预览'}
@@ -759,40 +566,61 @@ export function CardStudio({
           <button className="pager-btn" onClick={() => go(1)} disabled={cards.length < 2} aria-label="下一张">
             →
           </button>
-          <span className="pager-hint">← → 切换</span>
+
+          {/* 顶部卡片条去掉后，加卡与重新生成跟翻页放在同一行：
+              这两个是整套卡片的操作，不占一整条横向空间。 */}
+          <div className="studio-pager-actions">
+            {selected?.id.startsWith('custom') ? (
+              <button
+                className={`btn btn-sm btn-quiet ${confirmRemoveId === selected.id ? 'btn-danger' : ''}`}
+                onClick={() => {
+                  if (confirmRemoveId === selected.id) removeCard(selected.id)
+                  else setConfirmRemoveId(selected.id)
+                }}
+                onBlur={() => setConfirmRemoveId(null)}
+                title={confirmRemoveId === selected.id ? '再点一次删除这张卡' : '删除这张自定义卡'}
+              >
+                {confirmRemoveId === selected.id ? '确定删除' : '删除这张'}
+              </button>
+            ) : null}
+            <div className="add-wrap" ref={addWrapRef}>
+              <button className="btn btn-sm" onClick={() => setAddOpen((v) => !v)}>
+                + 加一张卡
+              </button>
+              {addOpen ? (
+                <div className="add-menu" onMouseLeave={() => setAddOpen(false)}>
+                  {ADDABLE.map((l) => (
+                    <button key={l} onClick={() => addCard(l)} title={layoutHints[l]}>
+                      {layoutNames[l]}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <button
+              className={`btn btn-sm ${confirmRebuild ? 'btn-danger' : ''}`}
+              onClick={requestRebuild}
+              onBlur={() => setConfirmRebuild(false)}
+              title={
+                confirmRebuild
+                  ? '再点一次会覆盖当前所有卡片'
+                  : '按文章小节重新生成整套图；改过卡片时会先请你确认'
+              }
+            >
+              {confirmRebuild ? '确定覆盖' : '重新生成'}
+            </button>
+          </div>
         </div>
 
         {/* 导出控制：跟着预览走，不用滚到右栏最底下才找得到 */}
         <div className="studio-export">
-          <div className="studio-export-head">
-            <span className="studio-export-title">导出</span>
-            <span className="studio-export-spec">成品 {fmt.w * 2} × {fmt.h * 2}</span>
-          </div>
-
-          <div className="segmented fmt-switch">
-            {CARD_FORMATS.map((f) => (
-              <button
-                key={f.id}
-                className={format === f.id ? 'active' : ''}
-                onClick={() => setFormat(f.id)}
-                title={f.hint}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
           <div className="studio-export-actions">
             <button className="btn btn-accent" onClick={exportOne} disabled={exporting || copying || !selected}>
               {exporting ? <span className="spinner" /> : null}
               导出这张
             </button>
             <button className="btn" onClick={exportAll} disabled={exporting || copying}>
-              {progress
-                ? `导出中 ${progress}`
-                : multiSize
-                  ? `全部 ${cards.length * CARD_FORMATS.length} 张`
-                  : `全部 ${cards.length} 张`}
+              {progress ? `导出中 ${progress}` : `全部 ${cards.length} 张`}
             </button>
             <button
               className="btn btn-quiet"
@@ -804,31 +632,14 @@ export function CardStudio({
               复制图片
             </button>
           </div>
-
-          <div className="studio-export-foot">
-            <label className="check-row">
-              <input type="checkbox" checked={multiSize} onChange={(e) => setMultiSize(e.target.checked)} />
-              <span>全部导出时，1:1 / 16:9 也各出一套</span>
-            </label>
-            <span className="studio-export-note" title="纯 CSS 渲染，不引用正文配图。文件名按两位编号排序">
-              纯 CSS 渲染 · 不引用正文配图
-            </span>
-          </div>
         </div>
       </div>
 
       {/* ---------- 右栏：整套设置 + 当前卡内容 ---------- */}
       <section className="studio-inspector" aria-label="卡片设置" ref={inspectorRef}>
-        <div className="studio-inspector-head">
-          <span className="studio-stage-label">整套设置</span>
-          <span className="studio-stage-meta">{cards.length} 张共用</span>
-        </div>
-
         {/* 配色 */}
         <div className="field">
-          <span className="field-label">
-            配色 · {getCardTheme(cardThemeId).name}
-          </span>
+          <span className="field-label">配色</span>
           <div className="studio-theme-row">
             {cardThemes.map((t) => (
               <button
@@ -846,44 +657,63 @@ export function CardStudio({
           </div>
         </div>
 
-        <div className="field">
-          <label className="field-label" htmlFor={`${fid}-site`}>
-            署名（卡片底部）
-          </label>
-          <input
-            id={`${fid}-site`}
-            className="field-input"
-            value={siteName}
-            onChange={(e) => onSiteNameChange(e.target.value)}
-            placeholder={DEFAULT_SITE_NAME}
-          />
-        </div>
-
         {/* 编辑当前卡 */}
         {selected ? (
           <>
-            <div className="studio-editor-head" ref={editorHeadRef}>
-              <span className="studio-editor-kicker">本张卡片 · 第 {selectedIndex + 1} 张</span>
-              <span className="studio-editor-title">{layoutNames[selected.layout]}</span>
-              <span className="studio-editor-hint">{layoutHints[selected.layout]}</span>
+            {/* 署名 / 小标签 / 日期 放一行：右栏变宽后没必要各占一行 */}
+            <div className="field-row field-row-3">
+              <div className="field">
+                <label className="field-label" htmlFor={`${fid}-site`}>
+                  署名
+                </label>
+                <input
+                  id={`${fid}-site`}
+                  className="field-input"
+                  value={siteName}
+                  onChange={(e) => onSiteNameChange(e.target.value)}
+                  placeholder={DEFAULT_SITE_NAME}
+                />
+              </div>
+              {selected.layout !== 'end' ? (
+                <div className="field">
+                  <label className="field-label" htmlFor={`${fid}-kicker`}>
+                    小标签
+                  </label>
+                  <input
+                    id={`${fid}-kicker`}
+                    className="field-input"
+                    value={selected.kicker ?? ''}
+                    onChange={(e) => patch(selected.id, { kicker: e.target.value })}
+                    placeholder="留空则不显示"
+                  />
+                </div>
+              ) : null}
+              <div className="field">
+                <label className="field-label" htmlFor={`${fid}-date`}>
+                  日期
+                </label>
+                <input
+                  id={`${fid}-date`}
+                  className="field-input"
+                  value={selected.date ?? ''}
+                  onChange={(e) => patch(selected.id, { date: e.target.value })}
+                  placeholder="2026.11.03"
+                />
+              </div>
             </div>
 
-            {/* 排版 */}
-            <div className="studio-group">
-              <div className="studio-group-title">排版</div>
-              <div className="studio-bulk">
+            {/* 排版：标题 + 同步开关同一行；切卡时右栏滚到这里 */}
+            <div className="studio-group" ref={editorHeadRef}>
+              <div className="studio-group-head">
+                <div className="studio-group-title">排版</div>
                 <label className="check-inline">
                   <input
                     type="checkbox"
                     checked={applyAll}
                     onChange={(e) => setApplyAll(e.target.checked)}
-                    aria-describedby={`${fid}-bulk-hint`}
                   />
-                  <span>全选图片</span>
+                  <span>同步到全部卡片</span>
                 </label>
-                <span className="studio-bulk-hint" id={`${fid}-bulk-hint`}>
-                  勾选后，字号 / 密度 / 对齐 / 显示项一次改全部 {cards.length} 张；文字内容仍只改当前这张
-                </span>
               </div>
               <div className="field-row">
                 <div className="field">
@@ -969,17 +799,6 @@ export function CardStudio({
             <div className="field">
               <label className="field-label" htmlFor={`${fid}-title`}>
                 主文字
-                {selected.layout === 'cover' || selected.layout === 'compare'
-                  ? '（标题）'
-                  : selected.layout === 'points'
-                    ? '（小标题）'
-                    : selected.layout === 'toc'
-                      ? '（目录标题）'
-                      : selected.layout === 'stat'
-                        ? '（小标题）'
-                        : selected.layout === 'section'
-                          ? '（小节标题）'
-                          : ''}
               </label>
               <textarea
                 id={`${fid}-title`}
@@ -992,7 +811,7 @@ export function CardStudio({
             {/* 数据卡：指标是「大数字 + 一行说明」 */}
             {selected.layout === 'stat' ? (
               <div className="field">
-                <span className="field-label">指标（最多 3 项，数字用你文章里的原话）</span>
+                <span className="field-label">指标</span>
                 <div className="stat-rows">
                   {(selected.stats ?? []).map((s, i) => (
                     <div className="stat-row" key={i}>
@@ -1048,10 +867,10 @@ export function CardStudio({
               <div className="field">
                 <label className="field-label" htmlFor={`${fid}-points`}>
                   {selected.layout === 'points'
-                    ? '要点（每行一条，最多 5 条生效）'
+                    ? '要点（每行一条）'
                     : selected.layout === 'toc'
-                      ? '目录条目（每行一节，最多 6 条）'
-                      : '对照条目（每行「左 | 右」，最多 4 行）'}
+                      ? '目录（每行一节）'
+                      : '对照（每行「左 | 右」）'}
                 </label>
                 <textarea
                   id={`${fid}-points`}
@@ -1069,7 +888,7 @@ export function CardStudio({
             ) : (
               <div className="field">
                 <label className="field-label" htmlFor={`${fid}-subtitle`}>
-                  {selected.layout === 'section' ? '本节内容（摘要）' : '副文字'}
+                  {selected.layout === 'section' ? '摘要' : '副文字'}
                 </label>
                 <textarea
                   id={`${fid}-subtitle`}
@@ -1078,10 +897,8 @@ export function CardStudio({
                   value={selected.subtitle ?? ''}
                   onChange={(e) => patch(selected.id, { subtitle: e.target.value })}
                 />
-                {selected.layout === 'section' ? (
-                  <div className="field-hint">
-                    约 {(selected.subtitle ?? '').length} 字 · 超过 118 字会顶到画布外，建议压到两三句
-                  </div>
+                {selected.layout === 'section' && (selected.subtitle ?? '').length > 118 ? (
+                  <div className="field-hint">超出 118 字，可能顶出画布</div>
                 ) : null}
               </div>
             )}
@@ -1119,7 +936,7 @@ export function CardStudio({
             {selected.layout === 'cta' ? (
               <div className="field">
                 <label className="field-label" htmlFor={`${fid}-cta`}>
-                  按钮文字（留空则不显示）
+                  按钮文字
                 </label>
                 <input
                   id={`${fid}-cta`}
@@ -1131,33 +948,6 @@ export function CardStudio({
               </div>
             ) : null}
 
-            {selected.layout !== 'end' ? (
-              <div className="field">
-                <label className="field-label" htmlFor={`${fid}-kicker`}>
-                  左上角小标签
-                </label>
-                <input
-                  id={`${fid}-kicker`}
-                  className="field-input"
-                  value={selected.kicker ?? ''}
-                  onChange={(e) => patch(selected.id, { kicker: e.target.value })}
-                  placeholder="分类，留空则不显示"
-                />
-              </div>
-            ) : null}
-
-            <div className="field">
-              <label className="field-label" htmlFor={`${fid}-date`}>
-                底部日期
-              </label>
-              <input
-                id={`${fid}-date`}
-                className="field-input"
-                value={selected.date ?? ''}
-                onChange={(e) => patch(selected.id, { date: e.target.value })}
-                placeholder="2026.11.03"
-              />
-            </div>
 
 
 

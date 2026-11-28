@@ -170,7 +170,9 @@ function ConvertActions({
           title={`复制当前平台产物（⌘Enter）${willOpen ? '，随后打开发布页' : ''}`}
         >
           {output.copyMode === 'rich'
-            ? '复制富文本'
+            ? output.htmlOnly
+              ? '复制富文本（仅 HTML）'
+              : '复制富文本'
             : output.copyMode === 'markdown'
               ? '复制 Markdown'
               : '复制全文'}

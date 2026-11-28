@@ -19,7 +19,6 @@ import {
   type KeyboardEvent,
 } from 'react'
 import type { Doc } from '../core/ir'
-import { charCount } from '../core/cjk'
 import { decodeText, looksMojibake } from '../core/text'
 import { isImageFile, isMarkdownFile } from '../core/local-assets'
 
@@ -137,13 +136,11 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
     >
       <div className="editor-head">
         <div className="editor-head-main">
-          <span className="editor-eyebrow">正文</span>
           {doc ? (
             <>
               <span className="editor-file" title={fileName}>
                 {fileName || '未命名'}
               </span>
-              <span className="editor-count">{charCount(value)} 字</span>
               {dirty ? <span className="editor-dirty">排版中…</span> : null}
             </>
           ) : (
@@ -193,7 +190,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
       <div className="editor-foot">
         {doc ? (
           <>
-            <span>只改正文；标题、分类、标签在左侧「文章信息」里编辑。</span>
+            <span>标题 / 分类 / 标签在左栏「文章信息」</span>
             {dirty ? <span className="editor-foot-dirty">停止输入后自动重新排版</span> : null}
           </>
         ) : (

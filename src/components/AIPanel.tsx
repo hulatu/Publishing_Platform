@@ -90,9 +90,7 @@ export function AIPanel({
         <div className="connect-banner">
           <div className="connect-banner-text">
             <div className="connect-banner-title">当前使用本地模式</div>
-            <div className="connect-banner-sub">
-              填入 API Key 可启用 AI；没有 Key 时会本地抽取，结构一样，但措辞会更生硬。
-            </div>
+            <div className="connect-banner-sub">填入 API Key 可启用 AI</div>
           </div>
           <button className="btn btn-sm btn-primary" onClick={onOpenSettings}>
             填入 API Key
@@ -166,7 +164,7 @@ export function AIPanel({
         {!running && !result ? (
           <div className="stage-empty">
             <div className="stage-sample">
-              <div className="stage-sample-label">示例 · 生成后会长这样</div>
+              <div className="stage-sample-label">示例</div>
               <div className="stage-sample-text">{PLATFORM_SAMPLES[platform]}</div>
             </div>
           </div>

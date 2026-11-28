@@ -27,6 +27,14 @@ export type CopyMode = 'rich' | 'plain' | 'markdown'
 export interface CopyPayload {
   html?: string
   text: string
+  /**
+   * 只写 text/html，不写 text/plain。
+   *
+   * 少数派编辑器粘贴时优先拿 text/plain 做 Markdown 转换，并且会转义裸 HTML；
+   * 只要剪贴板里有纯文本，它就永远不用 HTML 那条路，图片图注也就进不了
+   * 「图片标注框」。去掉纯文本，CKEditor 才只能按 HTML 解析 figure + figcaption。
+   */
+  htmlOnly?: boolean
 }
 
 /** 实际写进剪贴板的内容形态 */
@@ -50,7 +58,7 @@ const OFFSCREEN = 'position:fixed;top:0;left:0;width:820px;opacity:0;pointer-eve
  * 实测同一篇稿子 58891 字符会被撑到 80610，头条那套主题更是 57799 → 277680。
  * 而 `clipboardData.setData('text/html', …)` 是原样写入，一个字节都不多。
  */
-function copyExact(html: string | undefined, text: string): boolean {
+function copyExact(html: string | undefined, text: string, htmlOnly = false): boolean {
   // 先造一个真选区，保证 execCommand('copy') 一定会派发 copy 事件
   const holder = document.createElement('textarea')
   holder.value = text
@@ -63,7 +71,7 @@ function copyExact(html: string | undefined, text: string): boolean {
 
   const onCopy = (e: ClipboardEvent) => {
     if (!e.clipboardData) return
-    e.clipboardData.setData('text/plain', text)
+    if (!htmlOnly) e.clipboardData.setData('text/plain', text)
     if (html) e.clipboardData.setData('text/html', html)
     e.preventDefault()
   }
@@ -89,7 +97,7 @@ function copyExact(html: string | undefined, text: string): boolean {
  */
 export function copySync(mode: CopyMode, payload: CopyPayload): CopyChannel | null {
   const html = mode === 'rich' ? payload.html : undefined
-  if (!copyExact(html, payload.text)) return null
+  if (!copyExact(html, payload.text, Boolean(html && payload.htmlOnly))) return null
   return html ? 'rich' : 'plain'
 }
 
@@ -131,18 +139,15 @@ async function retryOnFocus(fn: () => Promise<void>): Promise<void> {
 
 /** 复制富文本（HTML）到剪贴板，失败时降级为纯文本 */
 export async function copyRich(payload: CopyPayload): Promise<CopyChannel> {
-  const { html, text } = payload
+  const { html, text, htmlOnly } = payload
 
   if (html && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
     try {
-      await retryOnFocus(() =>
-        navigator.clipboard.write([
-          new ClipboardItem({
-            'text/html': new Blob([html], { type: 'text/html' }),
-            'text/plain': new Blob([text], { type: 'text/plain' }),
-          }),
-        ]),
-      )
+      const data: Record<string, Blob> = {
+        'text/html': new Blob([html], { type: 'text/html' }),
+      }
+      if (!htmlOnly) data['text/plain'] = new Blob([text], { type: 'text/plain' })
+      await retryOnFocus(() => navigator.clipboard.write([new ClipboardItem(data)]))
       return 'rich'
     } catch {
       // 继续尝试纯文本

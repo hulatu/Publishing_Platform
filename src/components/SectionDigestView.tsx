@@ -141,9 +141,7 @@ export function SectionDigestView({
               </div>
             </>
           ) : !running ? (
-            <div className="muted field-hint" style={{ lineHeight: 1.9 }}>
-              还没有摘要。生成后会按小节提取要点，并用于平台文案。
-            </div>
+            <div className="muted field-hint">还没有摘要</div>
           ) : null}
         </div>
       ) : null}

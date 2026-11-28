@@ -279,9 +279,7 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
               <span>在这台设备上记住 Key</span>
             </label>
             <div className="field-hint">
-              {rememberKey
-                ? '关掉浏览器再打开也不用重填。公用电脑上建议取消勾选。'
-                : '只存在本次会话：关掉这个标签页就要重新填。'}
+              {rememberKey ? '公用电脑建议取消勾选' : '关掉标签页后需重填'}
             </div>
           </div>
 

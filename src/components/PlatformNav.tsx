@@ -24,9 +24,7 @@ const MONOGRAM: Record<string, string> = {
   zhihu: '知',
   wechat: '公',
   douban: '豆',
-  bilibili: 'B',
   toutiao: '头',
-  baijiahao: '百',
   xiaohongshu: '小',
   twitter: '推',
   jike: '即',
@@ -127,7 +125,7 @@ function NavItem({
 /**
  * 分组标题可折叠。
  *
- * 11 个平台全部平铺仍会挤占主操作空间；每一行保持单行，
+ * 9 个平台全部平铺仍会挤占主操作空间；每一行保持单行，
  * 平台说明由主标题区域统一展示，侧栏只负责选择。
  *
  * 收起时标题右侧显示「组里几个」，如果当前平台正好在这个组里，就改显示它的名字
