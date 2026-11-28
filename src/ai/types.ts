@@ -30,6 +30,18 @@ export interface DigestSet {
 
 export type JobStatus = 'idle' | 'running' | 'done' | 'error'
 
+/** 一次模型调用的 token 用量；服务商不返回时为 undefined */
+export interface TokenUsage {
+  input: number
+  output: number
+}
+
+export function addUsage(a?: TokenUsage, b?: TokenUsage): TokenUsage | undefined {
+  if (!a) return b
+  if (!b) return a
+  return { input: a.input + b.input, output: a.output + b.output }
+}
+
 export interface DigestState {
   status: JobStatus
   /** 流式原始文本，仅用于「正在生成」的反馈 */
@@ -41,6 +53,8 @@ export interface DigestState {
   retries: number
   /** 走的是哪个 provider，展示用 */
   providerLabel: string
+  /** 本次生成消耗的 token（含重试），服务商不返回时为空 */
+  usage?: TokenUsage
 }
 
 export const emptyDigestState: DigestState = {
@@ -93,6 +107,8 @@ export interface AIState {
   fallback: boolean
   retries: number
   providerLabel: string
+  /** 本次生成消耗的 token（含重试），服务商不返回时为空 */
+  usage?: TokenUsage
 }
 
 export const emptyAIState: AIState = {

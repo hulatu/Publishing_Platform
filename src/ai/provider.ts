@@ -14,6 +14,7 @@
 
 import { getCloudClient, listCloudModels } from '../cloud/client'
 import { isCloudConfigured } from '../cloud/config'
+import { addUsage, type TokenUsage } from './types'
 
 export interface CompleteOptions {
   system: string
@@ -26,6 +27,8 @@ export interface CompleteResult {
   text: string
   /** 是否因 max_tokens 被截断（需要重试而不是当成解析失败） */
   truncated: boolean
+  /** 服务商返回的 token 用量；不支持 usage 的服务商为 undefined */
+  usage?: TokenUsage
 }
 
 export interface AIProvider {
@@ -481,6 +484,8 @@ export function createByokProvider(settings: ByokSettings): AIProvider {
         temperature: 0.55,
       }
       if (settings.jsonMode) payload.response_format = { type: 'json_object' }
+      // 让兼容 OpenAI 的服务商在流末尾带 usage；不支持的服务商会忽略这个字段
+      payload.stream_options = { include_usage: true }
 
       const guard = startTimeoutGuard(signal)
       try {
@@ -503,12 +508,14 @@ export function createByokProvider(settings: ByokSettings): AIProvider {
 
         let text = ''
         let truncated = false
+        let usage: TokenUsage | undefined
 
         for await (const data of readSse(res.body, guard.touch)) {
           if (!data || data === '[DONE]') continue
           try {
             const chunk = JSON.parse(data) as {
               choices?: { delta?: { content?: string }; finish_reason?: string }[]
+              usage?: { prompt_tokens?: number; completion_tokens?: number }
             }
             const choice = chunk.choices?.[0]
             const delta = choice?.delta?.content
@@ -517,12 +524,18 @@ export function createByokProvider(settings: ByokSettings): AIProvider {
               onDelta?.(delta)
             }
             if (choice?.finish_reason === 'length') truncated = true
+            if (chunk.usage) {
+              usage = addUsage(usage, {
+                input: chunk.usage.prompt_tokens ?? 0,
+                output: chunk.usage.completion_tokens ?? 0,
+              })
+            }
           } catch {
             /* 跳过无法解析的帧 */
           }
         }
 
-        return { text, truncated }
+        return { text, truncated, usage }
       } catch (err) {
         throw asTimeout(err, guard)
       } finally {
@@ -703,6 +716,7 @@ export function createCloudProvider(modelId: string): AIProvider {
 
       let text = ''
       let truncated = false
+      let usage: TokenUsage | undefined
 
       const guard = startTimeoutGuard(signal)
       try {
@@ -728,9 +742,16 @@ export function createCloudProvider(modelId: string): AIProvider {
             onDelta?.(delta)
           }
           if (choice?.finish_reason === 'length') truncated = true
+          const u = (chunk as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage
+          if (u) {
+            usage = addUsage(usage, {
+              input: u.prompt_tokens ?? 0,
+              output: u.completion_tokens ?? 0,
+            })
+          }
         }
 
-        return { text, truncated }
+        return { text, truncated, usage }
       } catch (err) {
         throw asTimeout(err, guard)
       } finally {

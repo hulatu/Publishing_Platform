@@ -7,7 +7,7 @@
  * 只有把每套主题的每个文字角色都量一遍才看得出来。
  *
  * 检查项：
- * - 12 套主题都有 dark 变体，且和亮色不同
+ * - 每套主题都有 dark 变体，且和亮色不同
  * - 深色根底亮度足够低（< 0.08），不能出现「黑字配浅灰底」的半吊子深色
  * - 产物里所有 background-color 都是深色（相对亮度 < 0.25）
  * - 正文 / H2–H4 / 引用 / 图注 / 代码 / 表头 / 参考链接 / 脚注 / 强调 / 链接
@@ -106,7 +106,7 @@ for (const theme of wechatThemes) {
 /* 取主题的两个入口不能串：预览要深色，复制必须默认亮色 */
 ok(getWechatTheme('paper', true).id === 'paper__dark', 'getWechatTheme(id, true) 返回深色变体')
 ok(getWechatTheme('paper').id === 'paper', 'getWechatTheme(id) 仍返回亮色主题')
-ok(getWechatTheme('no-such-theme', true).id === 'paper__dark', '未知 id 的深色回退到纸白深色')
+ok(getWechatTheme('no-such-theme', true).id === 'sspai__dark', '未知 id 的深色回退到默认（少数派）深色')
 
 /*
  * 渲染器契约：`wechatThemeDark` 只在预览链路传；不传时产物必须还是亮色。

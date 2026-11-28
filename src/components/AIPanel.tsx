@@ -10,7 +10,7 @@
 
 import { charCount, weightedLength } from '../core/cjk'
 import type { ArticleSection } from '../core/sections'
-import { LIMITS, toneLabels, type AIState, type DigestState, type RewriteId, type RewriteTone } from '../ai/types'
+import { LIMITS, toneLabels, type AIState, type DigestState, type RewriteId, type RewriteTone, type TokenUsage } from '../ai/types'
 import { SectionDigestView } from './SectionDigestView'
 import { useElapsed } from './useElapsed'
 import { formatElapsed } from '../core/time'
@@ -23,6 +23,8 @@ interface Props {
   tone: RewriteTone
   providerReady: boolean
   providerLabel: string
+  /** 摘要 + 已生成平台的总 token 用量；undefined 表示服务商没返回 */
+  usageTotal?: TokenUsage
   onToneChange: (tone: RewriteTone) => void
   onGenerateDigest: () => void
   onCancel: () => void
@@ -68,6 +70,7 @@ export function AIPanel({
   tone,
   providerReady,
   providerLabel,
+  usageTotal,
   onToneChange,
   onGenerateDigest,
   onCancel,
@@ -110,6 +113,14 @@ export function AIPanel({
           </span>
         </div>
         {providerReady ? <span className="ai-toolbar-model">{providerLabel || '已配置模型'}</span> : null}
+        {usageTotal ? (
+          <span
+            className="ai-toolbar-usage"
+            title={`输入 ${usageTotal.input.toLocaleString('zh-CN')} tokens，输出 ${usageTotal.output.toLocaleString('zh-CN')} tokens`}
+          >
+            本次约 {(usageTotal.input + usageTotal.output).toLocaleString('zh-CN')} tokens
+          </span>
+        ) : null}
       </div>
 
       {/* ---------- 第一段：逐节摘要 ---------- */}

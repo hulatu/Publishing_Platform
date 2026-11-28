@@ -26,6 +26,8 @@ import { isImageFile, isMarkdownFile } from '../core/local-assets'
 export interface EditorPaneHandle {
   chooseFile: () => void
   focus: () => void
+  /** 拖到编辑区外面也按同一套规则读文件（编码、大小、提示都在这里） */
+  loadFile: (file: File) => void
 }
 
 interface Props {
@@ -49,6 +51,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
   ref,
 ) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const fileBtnRef = useRef<HTMLButtonElement>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
   const [emptyText, setEmptyText] = useState('')
   const [over, setOver] = useState(false)
@@ -56,6 +59,8 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
   useImperativeHandle(ref, () => ({
     chooseFile: () => fileRef.current?.click(),
     focus: () => textRef.current?.focus(),
+    // 推迟到调用时再读 readFile（它声明在本行之后）
+    loadFile: (file: File) => void readFile(file),
   }))
 
   const readFile = async (file: File) => {
@@ -92,9 +97,22 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
     await readFile(md)
   }
 
-  /** Tab 插入两个空格，不把焦点带出编辑器 */
+  /**
+   * Tab 插入两个空格，Shift+Tab 离开 —— 正文框不能是键盘陷阱。
+   *
+   * 只拦不带修饰键的 Tab：Shift+Tab 必须交给浏览器，否则焦点进得来出不去，
+   * 键盘用户没法从正文框走到下面的「解析并排版」和预览区（WCAG 2.1.2）。
+   * Esc 也回到工具行，作为另一条明确的退路。
+   */
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key !== 'Tab' || e.altKey || e.metaKey || e.ctrlKey) return
+    // 中文输入法组字中，Esc / Tab 归输入法处理，别把焦点抢走
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Escape') {
+      e.currentTarget.blur()
+      fileBtnRef.current?.focus()
+      return
+    }
+    if (e.key !== 'Tab' || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return
     e.preventDefault()
     const el = e.currentTarget
     const { selectionStart, selectionEnd } = el
@@ -136,7 +154,11 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
           <button className="mobile-pane-link" onClick={onShowPreview}>
             预览 →
           </button>
-          <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>
+          <button
+            ref={fileBtnRef}
+            className="btn btn-sm"
+            onClick={() => fileRef.current?.click()}
+          >
             {doc ? '换一篇' : '选择 .md'}
           </button>
         </div>
@@ -176,7 +198,8 @@ export const EditorPane = forwardRef<EditorPaneHandle, Props>(function EditorPan
           </>
         ) : (
           <>
-            <button className="btn btn-sm btn-primary" onClick={() => {
+            {/* 空态里只留预览区那个朱红主按钮；粘贴路径用次级样式，两个实心按钮不互相抢 */}
+            <button className="btn btn-sm" onClick={() => {
               if (!emptyText.trim()) {
                 onError('粘贴区是空的')
                 return

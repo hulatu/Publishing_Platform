@@ -147,11 +147,13 @@ function ConvertActions({
   output,
   publishTarget,
   platformName,
+  openOnCopy,
   currentPrepared,
   currentPublished,
   onCopyPrimary,
   onMarkPublished,
 }: Props & { output: RenderOutput }) {
+  const willOpen = openOnCopy && Boolean(publishTarget)
   return (
     <>
       {currentPrepared && !currentPublished && publishTarget ? (
@@ -165,13 +167,19 @@ function ConvertActions({
         <button
           className="btn btn-accent"
           onClick={onCopyPrimary}
-          title="复制当前平台产物（⌘Enter）"
+          title={`复制当前平台产物（⌘Enter）${willOpen ? '，随后打开发布页' : ''}`}
         >
           {output.copyMode === 'rich'
             ? '复制富文本'
             : output.copyMode === 'markdown'
               ? '复制 Markdown'
               : '复制全文'}
+          {/* 复制前就告诉用户会多开一个标签，别等新标签抢了焦点才发现 */}
+          {willOpen ? (
+            <span className="copy-open-mark" aria-hidden>
+              ↗
+            </span>
+          ) : null}
         </button>
       )}
       {currentPrepared && !currentPublished ? (
@@ -268,6 +276,13 @@ function ToolsMenu({
           event.currentTarget.removeAttribute('open')
         }
       }}
+      onKeyDown={(event) => {
+        // 和顶栏「工具」菜单同一套：Esc 收起，焦点回到触发按钮
+        if (event.key !== 'Escape' || !event.currentTarget.open) return
+        event.preventDefault()
+        event.currentTarget.removeAttribute('open')
+        event.currentTarget.querySelector('summary')?.focus()
+      }}
     >
       <summary className="btn btn-sm">
         {zipping ? <span className="spinner" /> : null}
@@ -288,7 +303,6 @@ function ToolsMenu({
               </button>
             ) : null}
             <button
-              aria-label={`下载 ${output.format === 'markdown' ? 'Markdown' : 'HTML'} 文件`}
               onClick={(event) => {
                 closeMenu(event)
                 onDownload()
@@ -307,7 +321,6 @@ function ToolsMenu({
               <span>{zipping ? '正在打包…' : '导出全平台'}</span>
             </button>
             <button
-              aria-label="按二级标题拆成多篇导出"
               onClick={(event) => {
                 closeMenu(event)
                 onSplitExport()

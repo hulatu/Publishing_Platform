@@ -45,7 +45,7 @@ interface Props {
 
 /** 宽屏下预览框的最大占位；实际缩放取它与容器可用宽度的较小值。
     宽屏保持这个比例（不放大），320px 窄屏则按可用宽度等比缩小，不会横向溢出。 */
-const PREVIEW_BOX = { w: 360, h: 440 }
+const PREVIEW_BOX = { w: 440, h: 520 }
 
 /** 加卡菜单的顺序：常用版式在前，首尾两张放最后 */
 const ADDABLE: CardLayout[] = ['quote', 'points', 'section', 'stat', 'toc', 'compare', 'cta', 'cover', 'end']
@@ -111,6 +111,8 @@ export function CardStudio({
   const [addOpen, setAddOpen] = useState(false)
   const [format, setFormat] = useState<CardFormatId>('3:4')
   const [multiSize, setMultiSize] = useState(false)
+  /** 排版设置是否同步到全部卡片（文字内容不受影响） */
+  const [applyAll, setApplyAll] = useState(false)
 
   // 破坏性操作：先变文案，再点一次才执行；失焦或 3 秒后恢复
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
@@ -129,13 +131,15 @@ export function CardStudio({
      只影响显示，导出层按 fmt.w/fmt.h 原尺寸渲染，和这里无关。 */
   const studioRef = useRef<HTMLDivElement>(null)
   const [studioWidth, setStudioWidth] = useState(0)
+  /** 宽屏下预览的可用宽度是 stage，不是整个 studio；窄屏 stage 变成 display:contents，退回 studio */
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [stageWidth, setStageWidth] = useState(0)
 
-  useLayoutEffect(() => {
-    const el = studioRef.current
-    if (!el) return
+  const measure = (el: HTMLElement | null, set: (n: number) => void) => {
+    if (!el) return () => {}
     const apply = (width: number) => {
       const next = Math.round(width)
-      setStudioWidth((prev) => (prev === next ? prev : next))
+      set(next)
     }
     apply(el.getBoundingClientRect().width)
     const observer = new ResizeObserver((entries) => {
@@ -143,6 +147,15 @@ export function CardStudio({
     })
     observer.observe(el)
     return () => observer.disconnect()
+  }
+
+  useLayoutEffect(() => {
+    const stopStudio = measure(studioRef.current, (w) => setStudioWidth((prev) => (prev === w ? prev : w)))
+    const stopStage = measure(stageRef.current, (w) => setStageWidth((prev) => (prev === w ? prev : w)))
+    return () => {
+      stopStudio()
+      stopStage()
+    }
   }, [])
 
   // 拖拽排序
@@ -342,12 +355,23 @@ export function CardStudio({
   // 宽屏最多缩到 PREVIEW_BOX 的比例（不放大）；容器比它还窄时按可用宽度再缩。
   // studioWidth 是 0（首帧还没量）时先用原比例，useLayoutEffect 会在绘制前补上。
   const baseScale = Math.min(PREVIEW_BOX.w / fmt.w, PREVIEW_BOX.h / fmt.h)
-  const previewScale =
-    studioWidth > 0 ? Math.min(baseScale, studioWidth / fmt.w) : baseScale
+  const fitWidth = stageWidth > 0 ? stageWidth : studioWidth
+  const previewScale = fitWidth > 0 ? Math.min(baseScale, fitWidth / fmt.w) : baseScale
 
   const patch = (id: string, changes: Partial<CardSpec>) => {
     dirty.current = true
     setCards((prev) => prev.map((c) => (c.id === id ? { ...c, ...changes } : c)))
+  }
+
+  /**
+   * 排版类改动（字号 / 密度 / 对齐 / 显示项）。
+   * 勾了「全选图片」就落到所有卡片；文字、指标、条目仍走 patch()，只改当前这张。
+   */
+  const patchStyle = (changes: Partial<CardSpec>) => {
+    dirty.current = true
+    setCards((prev) =>
+      prev.map((c) => (applyAll || c.id === selectedId ? { ...c, ...changes } : c)),
+    )
   }
 
   const addCard = (layout: CardLayout) => {
@@ -694,7 +718,7 @@ export function CardStudio({
       </aside>
 
       {/* ---------- 中栏：预览 + 导出 ---------- */}
-      <div className="studio-stage">
+      <div className="studio-stage" ref={stageRef}>
         <div className="studio-stage-head">
           <span className="studio-stage-label">预览</span>
           <span className="studio-stage-meta">
@@ -781,14 +805,15 @@ export function CardStudio({
             </button>
           </div>
 
-          <label className="check-row">
-            <input type="checkbox" checked={multiSize} onChange={(e) => setMultiSize(e.target.checked)} />
-            <span>全部导出时，1:1 / 16:9 也各出一套</span>
-          </label>
-
-          <p className="studio-export-note">
-            纯 CSS 渲染，不引用正文配图，导出不会因外链跨域失败。文件名按两位编号排序。
-          </p>
+          <div className="studio-export-foot">
+            <label className="check-row">
+              <input type="checkbox" checked={multiSize} onChange={(e) => setMultiSize(e.target.checked)} />
+              <span>全部导出时，1:1 / 16:9 也各出一套</span>
+            </label>
+            <span className="studio-export-note" title="纯 CSS 渲染，不引用正文配图。文件名按两位编号排序">
+              纯 CSS 渲染 · 不引用正文配图
+            </span>
+          </div>
         </div>
       </div>
 
@@ -841,6 +866,104 @@ export function CardStudio({
               <span className="studio-editor-kicker">本张卡片 · 第 {selectedIndex + 1} 张</span>
               <span className="studio-editor-title">{layoutNames[selected.layout]}</span>
               <span className="studio-editor-hint">{layoutHints[selected.layout]}</span>
+            </div>
+
+            {/* 排版 */}
+            <div className="studio-group">
+              <div className="studio-group-title">排版</div>
+              <div className="studio-bulk">
+                <label className="check-inline">
+                  <input
+                    type="checkbox"
+                    checked={applyAll}
+                    onChange={(e) => setApplyAll(e.target.checked)}
+                    aria-describedby={`${fid}-bulk-hint`}
+                  />
+                  <span>全选图片</span>
+                </label>
+                <span className="studio-bulk-hint" id={`${fid}-bulk-hint`}>
+                  勾选后，字号 / 密度 / 对齐 / 显示项一次改全部 {cards.length} 张；文字内容仍只改当前这张
+                </span>
+              </div>
+              <div className="field-row">
+                <div className="field">
+                  <span className="field-label">字号</span>
+                  <div className="segmented studio-seg">
+                    {SIZE_OPTIONS.map((o) => (
+                      <button
+                        key={o.id}
+                        className={(selected.size ?? 'md') === o.id ? 'active' : ''}
+                        onClick={() => patchStyle({ size: o.id })}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="field">
+                  <span className="field-label">密度</span>
+                  <div className="segmented studio-seg">
+                    {DENSITY_OPTIONS.map((o) => (
+                      <button
+                        key={o.id}
+                        className={(selected.density ?? 'normal') === o.id ? 'active' : ''}
+                        onClick={() => patchStyle({ density: o.id })}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {CENTERABLE.includes(selected.layout) ? (
+                <div className="field">
+                  <span className="field-label">对齐</span>
+                  <div className="segmented studio-seg">
+                    {(
+                      [
+                        { id: 'left', label: '左对齐' },
+                        { id: 'center', label: '居中' },
+                      ] as { id: CardAlign; label: string }[]
+                    ).map((o) => (
+                      <button
+                        key={o.id}
+                        className={(selected.align ?? 'left') === o.id ? 'active' : ''}
+                        onClick={() => patchStyle({ align: o.id })}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flag-row">
+                <label className="check-inline">
+                  <input
+                    type="checkbox"
+                    checked={showKicker}
+                    onChange={(e) => patchStyle({ showKicker: e.target.checked })}
+                  />
+                  <span>小标签</span>
+                </label>
+                <label className="check-inline">
+                  <input
+                    type="checkbox"
+                    checked={showMark}
+                    onChange={(e) => patchStyle({ showMark: e.target.checked })}
+                  />
+                  <span>页码</span>
+                </label>
+                <label className="check-inline">
+                  <input
+                    type="checkbox"
+                    checked={showFooter}
+                    onChange={(e) => patchStyle({ showFooter: e.target.checked })}
+                  />
+                  <span>页脚</span>
+                </label>
+              </div>
             </div>
 
             <div className="field">
@@ -1036,89 +1159,7 @@ export function CardStudio({
               />
             </div>
 
-            {/* 排版 */}
-            <div className="studio-group">
-              <div className="studio-group-title">排版</div>
-              <div className="field-row">
-                <div className="field">
-                  <span className="field-label">字号</span>
-                  <div className="segmented studio-seg">
-                    {SIZE_OPTIONS.map((o) => (
-                      <button
-                        key={o.id}
-                        className={(selected.size ?? 'md') === o.id ? 'active' : ''}
-                        onClick={() => patch(selected.id, { size: o.id })}
-                      >
-                        {o.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="field">
-                  <span className="field-label">密度</span>
-                  <div className="segmented studio-seg">
-                    {DENSITY_OPTIONS.map((o) => (
-                      <button
-                        key={o.id}
-                        className={(selected.density ?? 'normal') === o.id ? 'active' : ''}
-                        onClick={() => patch(selected.id, { density: o.id })}
-                      >
-                        {o.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
 
-              {CENTERABLE.includes(selected.layout) ? (
-                <div className="field">
-                  <span className="field-label">对齐</span>
-                  <div className="segmented studio-seg">
-                    {(
-                      [
-                        { id: 'left', label: '左对齐' },
-                        { id: 'center', label: '居中' },
-                      ] as { id: CardAlign; label: string }[]
-                    ).map((o) => (
-                      <button
-                        key={o.id}
-                        className={(selected.align ?? 'left') === o.id ? 'active' : ''}
-                        onClick={() => patch(selected.id, { align: o.id })}
-                      >
-                        {o.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flag-row">
-                <label className="check-inline">
-                  <input
-                    type="checkbox"
-                    checked={showKicker}
-                    onChange={(e) => patch(selected.id, { showKicker: e.target.checked })}
-                  />
-                  <span>小标签</span>
-                </label>
-                <label className="check-inline">
-                  <input
-                    type="checkbox"
-                    checked={showMark}
-                    onChange={(e) => patch(selected.id, { showMark: e.target.checked })}
-                  />
-                  <span>页码</span>
-                </label>
-                <label className="check-inline">
-                  <input
-                    type="checkbox"
-                    checked={showFooter}
-                    onChange={(e) => patch(selected.id, { showFooter: e.target.checked })}
-                  />
-                  <span>页脚</span>
-                </label>
-              </div>
-            </div>
 
           </>
         ) : null}

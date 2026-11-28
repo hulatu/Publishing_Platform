@@ -24,7 +24,7 @@ import {
   type ByokSettings,
   type PingResult,
 } from '../ai/provider'
-import { backupFileName, backupText, collectBackup, describeBackup, restoreBackup } from '../core/backup'
+import { backupFileName, backupText, collectBackup, describeBackup, previewBackup, restoreBackup } from '../core/backup'
 import { downloadText } from '../core/copy'
 import { loadUnsplashKey, saveUnsplashKey } from '../core/unsplash'
 import { Modal } from './Modal'
@@ -56,6 +56,10 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
   const [dataSummary, setDataSummary] = useState('')
   /** 导出 / 导入的结果提示。成功和失败都要说出来，尤其「有几项没写进去」 */
   const [dataNote, setDataNote] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
+  /** 导出是否带 API Key；默认不带，避免备份文件被随手分享 */
+  const [includeSecrets, setIncludeSecrets] = useState(false)
+  /** 导入前先预览，确认后才写 */
+  const [pendingImport, setPendingImport] = useState<{ text: string; keys: number; secrets: number } | null>(null)
   const importRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -71,7 +75,9 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
     setRememberKey(loadRememberKey())
     setDataNote(null)
     setConfirmClearKey(false)
-    setDataSummary(describeBackup(collectBackup()))
+    setIncludeSecrets(false)
+    setPendingImport(null)
+    setDataSummary(describeBackup(collectBackup({ includeSecrets: true })))
   }, [open])
 
   useEffect(() => {
@@ -144,15 +150,45 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
   }
 
   const exportLocal = () => {
-    const snapshot = collectBackup()
-    downloadText(backupText(), backupFileName(), 'application/json')
-    setDataNote({ text: `已导出 ${describeBackup(snapshot)}。文件里含 API Key，别分享出去。`, kind: 'ok' })
+    const snapshot = collectBackup({ includeSecrets })
+    downloadText(
+      backupText({ includeSecrets }),
+      backupFileName({ includeSecrets }),
+      'application/json',
+    )
+    setDataNote({
+      text: includeSecrets
+        ? `已导出 ${describeBackup(snapshot)}。文件里含 API Key，别分享出去。`
+        : `已导出 ${describeBackup(snapshot)}，不含 API Key。换机后需要重新填写 Key。`,
+      kind: 'ok',
+    })
   }
 
   const importLocal = async (file: File) => {
+    // 选新文件时先取消上一次未确认的导入
+    setPendingImport(null)
     // 读不出来（文件被占用、不是文本）也要给一句话，而不是静默什么都不发生
     const text = await file.text().catch(() => '')
-    const result = restoreBackup(text)
+    const preview = previewBackup(text)
+    if (!preview.backup || preview.error) {
+      setDataNote({ text: preview.error ?? '这个文件不是备份文件', kind: 'err' })
+      return
+    }
+    if (preview.keys === 0) {
+      setDataNote({ text: '这个备份里没有可恢复的项', kind: 'err' })
+      return
+    }
+    // 先不写：让用户看清项数和是否含密钥，确认后再恢复
+    setPendingImport({ text, keys: preview.keys, secrets: preview.secrets })
+    setDataNote({
+      text: `备份里有 ${preview.keys} 项${preview.secrets > 0 ? `，其中 ${preview.secrets} 项是 API Key` : ''}。确认后恢复，只写不删。`,
+      kind: 'ok',
+    })
+  }
+
+  const confirmImport = () => {
+    if (!pendingImport) return
+    const result = restoreBackup(pendingImport.text)
     if (result.error) {
       setDataNote({ text: result.error, kind: 'err' })
       return
@@ -166,7 +202,8 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
       text: `已恢复 ${result.keys} 项${failed}。刷新页面后生效。`,
       kind: result.failed ? 'err' : 'ok',
     })
-    setDataSummary(describeBackup(collectBackup()))
+    setPendingImport(null)
+    setDataSummary(describeBackup(collectBackup({ includeSecrets: true })))
   }
 
   return (
@@ -202,14 +239,17 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
           </div>
 
           <div className="field mt-4">
-            <label className="field-label" htmlFor={apiKeyId}>
-              API Key
+            {/* 链接放在 label 外面：否则「去申请」会被算进输入框的可访问名 */}
+            <div className="field-label-line">
+              <label className="field-label" htmlFor={apiKeyId}>
+                API Key
+              </label>
               {preset?.consoleUrl ? (
                 <a className="link-btn" href={preset.consoleUrl} target="_blank" rel="noreferrer">
                   去申请
                 </a>
               ) : null}
-            </label>
+            </div>
             {/* 用 form 包住密码框：否则 Chrome 每打开一次都提示
                 「Password field is not contained in a form」，密码管理器也无从判断这是哪一项 */}
             <form className="key-row" onSubmit={(e) => e.preventDefault()}>
@@ -402,6 +442,14 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
               <div className="field-hint mb-3">
                 草稿、发布台账、文末模板、Key 都只存在这台浏览器里。换电脑、清缓存之前先导出一份。
               </div>
+              <label className="check-row mb-3">
+                <input
+                  type="checkbox"
+                  checked={includeSecrets}
+                  onChange={(e) => setIncludeSecrets(e.target.checked)}
+                />
+                <span>备份包含 API Key（换机时不用重填，别分享）</span>
+              </label>
               <div className="settings-data-actions">
                 <button className="btn btn-sm" onClick={exportLocal} disabled={!dataSummary}>
                   导出备份
@@ -423,6 +471,22 @@ export function SettingsSheet({ open, onClose, onSaved }: Props) {
                   }}
                 />
               </div>
+              {pendingImport ? (
+                <div className="settings-data-actions mt-2">
+                  <button className="btn btn-sm btn-primary" onClick={confirmImport}>
+                    确认恢复 {pendingImport.keys} 项
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => {
+                      setPendingImport(null)
+                      setDataNote(null)
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              ) : null}
               {dataNote ? (
                 <div className={`notice ${dataNote.kind === 'err' ? 'notice-warn' : 'notice-info'} mt-3`}>
                   <span className="notice-mark" aria-hidden>

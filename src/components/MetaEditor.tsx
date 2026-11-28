@@ -40,12 +40,14 @@ export function MetaEditor({ meta, onChange, embedded = false }: Props) {
             <label className="field-label" htmlFor={`${fid}-title`}>
               标题
             </label>
-            <input
+            {/* 标题可能很长，用 textarea 换行显示，和摘要同一套输入样式 */}
+            <textarea
               id={`${fid}-title`}
-              className="field-input"
+              className="field-textarea"
               value={meta.title}
               onChange={(e) => onChange({ title: e.target.value })}
               placeholder="文章标题"
+              rows={2}
             />
           </div>
 

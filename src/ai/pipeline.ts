@@ -21,6 +21,7 @@ import { parseAIJson, parseDigestJson, repairDigest, repairSet, validateDigest, 
 import { completeWithRetry, describeAIError, resolveProvider, type AIProvider } from './provider'
 import { buildPlatformFromDigest, fillMissingDigest, localDigest } from './fallback'
 import {
+  addUsage,
   emptyAIState,
   emptyDigestState,
   type AIResultSet,
@@ -29,6 +30,7 @@ import {
   type DigestState,
   type RewriteId,
   type RewriteTone,
+  type TokenUsage,
 } from './types'
 
 const MAX_ATTEMPTS = 3
@@ -57,6 +59,8 @@ export interface JsonRunResult<T> {
   aborted: boolean
   /** 致命错误（鉴权/网络），重试无意义 */
   fatal: boolean
+  /** 本次（含重试）累计的 token 用量；服务商不返回时为空 */
+  usage?: TokenUsage
 }
 
 /** 通用的「带校验重试的 JSON 调用」。标题/标签这一路也复用它。 */
@@ -67,6 +71,7 @@ export async function runJson<T>(opts: JsonRunOptions<T>): Promise<JsonRunResult
   let lastRaw = ''
   let lastError = ''
   let attempt = 0
+  let usage: TokenUsage | undefined
 
   while (attempt < MAX_ATTEMPTS) {
     attempt++
@@ -96,12 +101,13 @@ export async function runJson<T>(opts: JsonRunOptions<T>): Promise<JsonRunResult
       )
       text = result.text || text
       truncated = result.truncated
+      usage = addUsage(usage, result.usage)
     } catch (err) {
       if (signal?.aborted) {
-        return { data: null, error: null, retries: attempt - 1, notes, aborted: true, fatal: false }
+        return { data: null, error: null, retries: attempt - 1, notes, aborted: true, fatal: false, usage }
       }
       const msg = describeAIError(err)
-      return { data: null, error: msg, retries: attempt - 1, notes: [...notes, msg], aborted: false, fatal: true }
+      return { data: null, error: msg, retries: attempt - 1, notes: [...notes, msg], aborted: false, fatal: true, usage }
     }
 
     lastRaw = text
@@ -126,7 +132,7 @@ export async function runJson<T>(opts: JsonRunOptions<T>): Promise<JsonRunResult
       continue
     }
 
-    return { data: parsed.data, error: null, retries: attempt - 1, notes, aborted: false, fatal: false }
+    return { data: parsed.data, error: null, retries: attempt - 1, notes, aborted: false, fatal: false, usage }
   }
 
   // 重试耗尽：尽量用最后一次能解析出的数据硬裁
@@ -140,6 +146,7 @@ export async function runJson<T>(opts: JsonRunOptions<T>): Promise<JsonRunResult
       notes: [...notes, ...repaired.notes],
       aborted: false,
       fatal: false,
+      usage,
     }
   }
 
@@ -150,6 +157,7 @@ export async function runJson<T>(opts: JsonRunOptions<T>): Promise<JsonRunResult
     notes,
     aborted: false,
     fatal: false,
+    usage,
   }
 }
 
@@ -222,6 +230,7 @@ export async function runDigest(
         error: run.error,
         retries: run.retries,
         providerLabel: provider.label,
+        usage: run.usage,
       },
       notes: [...notes, ...run.notes],
     }
@@ -240,6 +249,7 @@ export async function runDigest(
       error: run.error,
       retries: run.retries,
       providerLabel: provider.label,
+      usage: run.usage,
     },
     notes: [...notes, ...run.notes],
   }
@@ -265,7 +275,13 @@ export async function runPlatform(
   const { provider, reason } = resolveProvider()
   const notes: string[] = []
 
-  const localState = (error: string | null, fallback: boolean, retries = 0, providerLabel = '本地组装'): AIState => ({
+  const localState = (
+    error: string | null,
+    fallback: boolean,
+    retries = 0,
+    providerLabel = '本地组装',
+    usage?: TokenUsage,
+  ): AIState => ({
     ...emptyAIState,
     status: 'done',
     result: buildPlatformFromDigest(platform, digest, doc),
@@ -273,6 +289,7 @@ export async function runPlatform(
     fallback,
     retries,
     providerLabel,
+    usage,
   })
 
   if (!provider || !provider.available()) {
@@ -297,7 +314,10 @@ export async function runPlatform(
   if (run.aborted) return { state: { ...emptyAIState }, notes }
 
   if (!run.data) {
-    return { state: localState(run.error, true, run.retries, provider.label), notes: [...notes, ...run.notes] }
+    return {
+      state: localState(run.error, true, run.retries, provider.label, run.usage),
+      notes: [...notes, ...run.notes],
+    }
   }
 
   return {
@@ -309,6 +329,7 @@ export async function runPlatform(
       fallback: false,
       retries: run.retries,
       providerLabel: provider.label,
+      usage: run.usage,
     },
     notes: [...notes, ...run.notes],
   }

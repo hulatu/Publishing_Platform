@@ -3,6 +3,11 @@ node_modules/
 dist/
 .tmp/
 
+# Playwright 冒烟产物
+test-results/
+playwright-report/
+blob-report/
+
 # Hugo 误输出（本站不是 Hugo 站点，不允许再进 public/）
 .hugo_build.lock
 public/categories/

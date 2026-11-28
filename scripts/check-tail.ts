@@ -47,6 +47,22 @@ ok(r1.droppedLinks === 1, `不能点击的链接统计到 ${r1.droppedLinks} 条
 ok(r1.html.includes('href="https://mp.weixin.qq.com/s/abc"'), '公众号文章链接输出成 <a href>')
 ok(!r1.html.includes('href="https://example.com/a"'), '非公众号链接不输出 href（写了也会被剥离）')
 
+// 往期推荐不再限制 4 条：6 条配置应全部输出
+const many = buildTailHtml(
+  {
+    ...full,
+    history: {
+      on: true,
+      title: '',
+      items: Array.from({ length: 6 }, (_, i) => ({ title: `第 ${i + 1} 篇`, url: '' })),
+    },
+  },
+  theme,
+  'x',
+)
+ok(many.historyCount === 6, `往期推荐 6 条全部输出（实际 ${many.historyCount} 条）`)
+ok(many.text.includes('第 6 篇'), '往期推荐第 6 条进入纯文本通道')
+
 // 链接识别：微信号、协议归一化、伪装域名、其它页面
 ok(wechatArticleUrl('https://mp.weixin.qq.com/s/abc') === 'https://mp.weixin.qq.com/s/abc', '标准短链被识别')
 ok(wechatArticleUrl('  mp.weixin.qq.com/s/abc  ') === 'https://mp.weixin.qq.com/s/abc', '省略协议的地址补上 https')

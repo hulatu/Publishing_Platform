@@ -12,6 +12,7 @@
     "check": "esbuild scripts/run-checks.ts --bundle --platform=node --format=esm --external:esbuild --outfile=.tmp/run-checks.mjs --log-level=warning && node .tmp/run-checks.mjs",
     "check:fixtures": "POSTS_DIR=scripts/fixtures npm run check",
     "check:bundle": "esbuild scripts/check-bundle.ts --bundle --platform=node --format=esm --outfile=.tmp/check-bundle.mjs --log-level=warning && node .tmp/check-bundle.mjs",
+    "test:e2e": "playwright test",
     "icons": "bash scripts/build-icons.sh"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/markdown-it": "^14.1.2",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",

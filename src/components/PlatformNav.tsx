@@ -16,8 +16,6 @@ interface Props {
   hidden: Set<string>
   /** 打开「显示哪些平台」面板 */
   onOpenFilter: () => void
-  /** 打开 ⌘K 快速切换 */
-  onQuickSwitch: () => void
 }
 
 /** 单个汉字做「图标」：比一排灰色徽章好扫，也不用引图标库 */
@@ -181,7 +179,6 @@ export function PlatformNav({
   published,
   hidden,
   onOpenFilter,
-  onQuickSwitch,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
 
@@ -218,14 +215,6 @@ export function PlatformNav({
       <div className="side-title">
         <span>发布到</span>
         <span className="side-title-right">
-          <button
-            className="nav-kbd"
-            onClick={onQuickSwitch}
-            title="快速切换平台（⌘K）"
-            aria-label="快速切换平台"
-          >
-            ⌘K
-          </button>
           <button
             className={`nav-filter-btn ${hiddenCount > 0 ? 'has-hidden' : ''}`}
             onClick={onOpenFilter}

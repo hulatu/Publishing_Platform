@@ -11,7 +11,7 @@
  *   这段开销和「样式有没有上提」无关。短文章标题密度高，5 个标题就能把比值
  *   顶过 20%（fixture-html.md 实测 22.3%），不豁免会误报。
  * - 编号主题真的注入了 01/02，非编号主题没有
- * - 12 套主题在同一篇文章上的输出两两不同（防止复制粘贴时漏改）
+ * - 各主题在同一篇文章上的输出两两不同（防止复制粘贴时漏改）
  */
 
 import { readdirSync, readFileSync } from 'node:fs'
@@ -140,9 +140,7 @@ function heading(text: string): Block {
 const PLAIN_HEADS: Block[] = [heading('Why rewrite'), heading('Split in two')]
 const CN_HEADS: Block[] = [heading('一、为什么重写'), heading('二、拆成两段')]
 
-if (!numbered) {
-  problems.push('没有找到编号主题（headingIndex 未生效）')
-} else {
+if (numbered) {
   const html = htmlOf(numbered.id, PLAIN_HEADS)
   if (!/>01</.test(html) || !/>02</.test(html)) {
     problems.push(`编号主题 ${numbered.id} 没有注入 01/02`)

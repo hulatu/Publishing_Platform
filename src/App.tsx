@@ -4,7 +4,7 @@ import { collectImages } from './core/ir'
 import { sanitizePreview } from './core/sanitize-preview'
 import { splitSections } from './core/sections'
 import { checkText, scopeOf, stripHtml } from './core/compliance'
-import { readTailConfig, writeTailConfig, type TailConfig } from './core/tail'
+import { readTailConfig, writeTailConfig, wechatArticleUrl, type TailConfig } from './core/tail'
 import { loadOpenOnCopy, publishUrlOf, saveOpenOnCopy } from './core/publish'
 import {
   clearDrafts,
@@ -30,19 +30,18 @@ import {
   cardPlatform,
   convertPlatforms,
   loadConvertRenderer,
-  platformGroups,
   rewritePlatforms,
   type RenderFn,
   type RenderOutput,
 } from './renderers'
 import { loadHidden, saveHidden, sortByWidth } from './core/platform-visibility'
+import { isMarkdownFile } from './core/local-assets'
 import { ThemePicker } from './components/ThemePicker'
 import { PreviewStage, type PreviewSize } from './components/PreviewStage'
 import { PreviewSizeSwitch } from './components/PreviewSizeSwitch'
-import { darkContrast, getWechatTheme, wechatThemes } from './themes/wechat'
-import { formatRatio } from './core/color'
+import { getWechatTheme, wechatThemes } from './themes/wechat'
 import { resolveProvider } from './ai/provider'
-import { emptyAIState, isRewriteId, rewriteIds, type AIState, type RewriteId } from './ai/types'
+import { addUsage, emptyAIState, isRewriteId, rewriteIds, type AIState, type RewriteId } from './ai/types'
 import { useAIJobs } from './hooks/useAIJobs'
 import { useAppUpdate } from './hooks/useAppUpdate'
 import { useCopyActions } from './hooks/useCopyActions'
@@ -102,9 +101,6 @@ const PlatformFilterSheet = lazy(() =>
 const ReadinessSheet = lazy(() =>
   import('./components/ReadinessSheet').then((m) => ({ default: m.ReadinessSheet })),
 )
-const PlatformPalette = lazy(() =>
-  import('./components/PlatformPalette').then((m) => ({ default: m.PlatformPalette })),
-)
 const RecoverySheet = lazy(() =>
   import('./components/RecoverySheet').then((m) => ({ default: m.RecoverySheet })),
 )
@@ -123,7 +119,6 @@ const THEME_KEY = 'ad.wechat-theme'
 const ACCOUNT_KEY = 'ad.wechat-account'
 const CARD_THEME_KEY = 'ad.card-theme'
 const PREVIEW_SIZE_KEY = 'ad.preview-size.v1'
-const WECHAT_DARK_KEY = 'ad.wechat-dark-preview.v1'
 
 /** 预览宽度：只影响站内看稿，不影响产物 */
 function readPreviewSize(): PreviewSize {
@@ -134,15 +129,6 @@ function readPreviewSize(): PreviewSize {
     // 隐私模式下读不到，按自适应
   }
   return 'auto'
-}
-
-/** 微信深色预览开关。默认关：它改变的是「预览怎么显示」，不是文章本身 */
-function readWechatDark(): boolean {
-  try {
-    return localStorage.getItem(WECHAT_DARK_KEY) === '1'
-  } catch {
-    return false
-  }
 }
 
 /** 公众号账号名，替换文末模板里的 {account} */
@@ -162,7 +148,7 @@ function readStoredTheme(): string {
   } catch {
     // 隐私模式下 localStorage 会抛异常，忽略即可
   }
-  return 'paper'
+  return 'sspai'
 }
 
 /** 卡片配色也记一下：卡片快照会恢复，配色却每次回到纸白会很怪 */
@@ -186,6 +172,9 @@ function loadParseModule(): Promise<ParseModule> {
   parseModulePromise ??= import('./core/parse')
   return parseModulePromise
 }
+
+/** 启动自动接回上次草稿：整个页面会话只尝试一次（StrictMode / Fast Refresh 不重跑） */
+let autoRestoreAttempted = false
 
 export default function App() {
   const { updateReady, applyUpdate } = useAppUpdate()
@@ -265,24 +254,12 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
   /** 预览纸宽度：自适应 / 手机 390 / 平板 820 */
   const [previewSize, setPreviewSize] = useState<PreviewSize>(readPreviewSize)
-  /** 公众号深色模式预览：只换预览主题，复制仍然用亮色 */
-  const [wechatDark, setWechatDark] = useState(readWechatDark)
-
   const changePreviewSize = useCallback((size: PreviewSize) => {
     setPreviewSize(size)
     try {
       localStorage.setItem(PREVIEW_SIZE_KEY, size)
     } catch {
       // 写不进去不影响本次使用
-    }
-  }, [])
-
-  const changeWechatDark = useCallback((on: boolean) => {
-    setWechatDark(on)
-    try {
-      localStorage.setItem(WECHAT_DARK_KEY, on ? '1' : '0')
-    } catch {
-      // 同上
     }
   }, [])
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -542,31 +519,6 @@ export default function App() {
     }
   }, [doc, platform, themeId, kind, tail, account, renderFns, renderLoadError])
 
-  /**
-   * 深色预览产物。
-   *
-   * 单独算一份，不覆盖 output：复制、导出、字数统计、台账都继续用亮色那一份。
-   * 深色只是「读者在微信里可能看到的样子」，不是我们交给平台的产物。
-   */
-  const previewOutput = useMemo(() => {
-    if (!wechatDark || platform !== 'wechat' || kind !== 'convert' || !doc) return output
-    const render = renderFns[platform]
-    if (!render) return output
-    try {
-      return render(doc, { wechatThemeId: themeId, tail, account, wechatThemeDark: true })
-    } catch {
-      return output
-    }
-  }, [wechatDark, output, platform, kind, doc, renderFns, themeId, tail, account])
-
-  /** 当前主题在深色下最弱的一项对比度，显示在开关旁边 */
-  const darkInfo = useMemo(() => darkContrast(getWechatTheme(themeId, true)), [themeId])
-  /** 深色纸面用主题自己的底色，避免外层白卡在深色正文四周留一圈白框 */
-  const darkSurface = useMemo(
-    () => getWechatTheme(themeId, true).root['background-color'],
-    [themeId],
-  )
-
   /** Markdown 平台的阅读预览：和转换器共用同一套前置处理 */
   const previewHtml = useMemo(() => {
     if (!doc || kind !== 'convert' || !output || output.format !== 'markdown') return ''
@@ -587,11 +539,11 @@ export default function App() {
    */
   const richPreviewHtml = useMemo(
     () =>
-      sanitizePreview(previewOutput?.html ?? '').replace(
+      sanitizePreview(output?.html ?? '').replace(
         /<img\b(?![^>]*\bloading=)/g,
         '<img loading="lazy" decoding="async"',
       ),
-    [previewOutput],
+    [output],
   )
 
   /** 能切「预览 / 源码」的平台：md 走渲染预览，公众号走富文本预览 */
@@ -605,7 +557,7 @@ export default function App() {
     previewSize === 'mobile' ? '手机 · 390 px' : previewSize === 'tablet' ? '平板 · 820 px' : '自适应阅读'
   const previewMetaLabel =
     platform === 'wechat'
-      ? getWechatTheme(themeId, wechatDark).name
+      ? getWechatTheme(themeId).name
       : output?.format === 'markdown'
         ? 'Markdown'
         : output?.format === 'html'
@@ -654,6 +606,29 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ledger 只用来触发重读
   }, [drafts, doc, articleKey, ledger, reviewSheetOpen])
 
+  /**
+   * 往期推荐可选的「已发布公众号文章」。
+   *
+   * 只收台账里公众号且 URL 能通过 wechatArticleUrl() 的；标题优先取草稿箱，
+   * 草稿被淘汰后退回 slug。当前文章自己不进列表。
+   */
+  const tailLibrary = useMemo(() => {
+    const titles = new Map(drafts.map((d) => [d.key, d.title]))
+    if (doc) titles.set(articleKey, doc.meta.title)
+    const out: { key: string; title: string; url: string }[] = []
+    for (const [key, rec] of Object.entries(readAllLedgers())) {
+      if (key === articleKey) continue
+      // 只收「已标记发布」且填了公众号链接的；仅复制未发布的还不算往期
+      const wechat = rec.wechat
+      if (!wechat?.at || !wechat.url) continue
+      const url = wechatArticleUrl(wechat.url)
+      if (!url) continue
+      out.push({ key, title: titles.get(key) ?? key, url })
+    }
+    return out.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ledger 只用来触发重读
+  }, [drafts, doc, articleKey, ledger])
+
   const images = useMemo(() => (doc ? collectImages(doc.blocks) : []), [doc])
 
   /** 检查用的纯文本：转换平台看产物，改写平台看当前生成的文案 */
@@ -694,7 +669,7 @@ export default function App() {
 
   // 自动保存：800ms 防抖、生成中跳过、内容没变不写、写失败只报一次。
   // 细节见 hooks/useDraftAutosave.ts。
-  const { saveStatus, savedAt, adoptSnapshot } = useDraftAutosave({
+  const { saveStatus, savedAt, adoptSnapshot, flush: flushDraft } = useDraftAutosave({
     doc,
     articleKey,
     sourceText,
@@ -719,9 +694,17 @@ export default function App() {
         setDrafts(listDrafts())
         return
       }
-      const mod = await loadParseModule()
-      parseModRef.current = mod
-      const parsed = mod.parseArticle({ source: d.source, fileName: d.fileName })
+      let parsed: Doc
+      try {
+        const mod = await loadParseModule()
+        parseModRef.current = mod
+        parsed = mod.parseArticle({ source: d.source, fileName: d.fileName })
+      } catch {
+        // 草稿结构坏了也要给一条能走的下一步，别让启动停在半路
+        toast('这篇草稿读不出来，重新导入原文，或在草稿箱里删掉它', 'error')
+        setDrafts(listDrafts())
+        return
+      }
       setDoc({ ...parsed, meta: d.meta })
       setFileName(d.fileName)
       setSourceText(d.source)
@@ -749,6 +732,53 @@ export default function App() {
     },
     [toast, setThemeId, hidden, adoptAI, adoptSnapshot, closeSheet],
   )
+
+  /**
+   * 启动时接回最近一篇草稿。
+   *
+   * 以前草稿只在「草稿箱」里手动恢复，刷新后看到的是空态，很容易以为没存上。
+   * 只尝试一次；恢复失败就留在空态，由「继续上次编辑」入口让用户再点一次。
+   */
+  useEffect(() => {
+    if (autoRestoreAttempted) return
+    autoRestoreAttempted = true
+    const [latest] = listDrafts()
+    if (!latest) return
+    void restoreDraft(latest.key)
+  }, [restoreDraft])
+
+  /**
+   * 点左上角品牌回到首页。
+   *
+   * 「清空」的是当前工作区，不是本地数据：草稿仍留在草稿箱（空态里有继续入口），
+   * 台账、设置、卡片快照都不动。清空前先同步落盘一次，避免把最后 800ms 的修改吞掉。
+   */
+  const goHome = useCallback(() => {
+    if (doc && !flushDraft()) {
+      toast('最后一笔还没存进草稿箱，先留在当前文章；检查浏览器存储或删几篇旧草稿', 'error')
+      return
+    }
+    cancelGenerate()
+    cancelMetaLab()
+    resetAI()
+    setDoc(null)
+    setFileName('')
+    setSourceText('')
+    setSourcePrefix('')
+    setBodyDraft('')
+    setBodyDirty(false)
+    setArticleKey('')
+    // 首页是默认的三栏工作区：从配图卡片回来时不能停在 card-mode（那里没有粘贴正文的中栏）
+    setPlatform('wechat')
+    setMobilePane('edit')
+    setViewMode('preview')
+    setLedgerFocusPlatform('')
+    setSidebarOpen(false)
+    closeSheet()
+    setDrafts(listDrafts())
+  }, [
+    doc, flushDraft, toast, cancelGenerate, cancelMetaLab, resetAI, closeSheet,
+  ])
 
   const removeDraft = useCallback(
     (key: string) => {
@@ -841,10 +871,18 @@ export default function App() {
     themeId,
     tail,
     account,
+    platformStates,
     toast,
   })
 
   const currentAI: AIState = isRewriteId(platform) ? platformStates[platform] : emptyAIState
+
+  /** 当前这组结果（摘要 + 四个平台）的总 token 用量；用于给 BYOK 用户看成本 */
+  const aiUsage = useMemo(() => {
+    let total = digest.usage
+    for (const state of Object.values(platformStates)) total = addUsage(total, state.usage)
+    return total
+  }, [digest.usage, platformStates])
 
   const currentPlatformMeta = useMemo(() => {
     if (kind === 'convert') return convertPlatforms.find((p) => p.id === platform)
@@ -972,21 +1010,6 @@ export default function App() {
     scrollToTop,
   })
 
-  const palettePlatforms = useMemo(
-    () =>
-      platformGroups.flatMap((group) =>
-        group.list
-          .filter((item) => !hidden.has(item.id))
-          .map((item) => ({
-            id: item.id,
-            name: item.name,
-            hint: item.hint,
-            group: group.label.split(' · ')[0] ?? group.label,
-          })),
-      ),
-    [hidden],
-  )
-
   const visiblePlatformOrder = useMemo(
     () => [
       ...sortByWidth(convertPlatforms.filter((item) => !hidden.has(item.id))),
@@ -1031,6 +1054,39 @@ export default function App() {
     }
   }, [doc])
 
+  /**
+   * 全窗口接住文件拖放。
+   *
+   * 编辑区自己有拖放处理；但空态占了大半个屏幕，用户很容易把 .md 拖到预览区
+   * 或侧栏 —— 那里没有处理，浏览器会按默认行为把本地文件当页面打开，
+   * 当前编辑被打断。这里统一挡住默认行为，找到 .md 就交给编辑区同一套读取逻辑。
+   */
+  useEffect(() => {
+    const isFileDrag = (event: DragEvent) =>
+      Array.from(event.dataTransfer?.types ?? []).includes('Files')
+    const onDragOver = (event: DragEvent) => {
+      if (!isFileDrag(event)) return
+      event.preventDefault()
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+    }
+    const onDrop = (event: DragEvent) => {
+      if (!isFileDrag(event)) return
+      // 编辑区自己的 onDrop 已经 preventDefault，由它载入，别重复读一遍
+      if (event.defaultPrevented) return
+      event.preventDefault()
+      // 弹层打开时拖进来的文件不接：用户多半是想拖到弹层里的控件上
+      if (document.querySelector('[role="dialog"]')) return
+      const md = Array.from(event.dataTransfer?.files ?? []).find(isMarkdownFile)
+      if (md) editorPaneRef.current?.loadFile(md)
+    }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [])
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey
@@ -1053,12 +1109,6 @@ export default function App() {
             ]
           if (next) selectPlatform(next.id)
         }
-        return
-      }
-
-      if (event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        if (!document.querySelector('[role="dialog"]')) setSheet('palette')
         return
       }
 
@@ -1117,10 +1167,16 @@ export default function App() {
           <span>平台</span>
         </button>
 
-        <div className="brand">
+        <button
+          type="button"
+          className="brand"
+          onClick={goHome}
+          aria-label="文章分发台，回到首页"
+          title="回到首页（当前文章会留在草稿箱）"
+        >
           <img className="brand-icon" src="./icon.svg" alt="" width={26} height={26} />
           <span className="brand-mark">文章分发台</span>
-        </div>
+        </button>
 
         <div className="topbar-spacer" />
 
@@ -1148,22 +1204,28 @@ export default function App() {
               setDrafts(listDrafts())
               setSheet('drafts')
             }}
-            title="打开草稿箱"
+            title={
+              saveStatus === 'conflict'
+                ? '另一个标签页修改了这篇草稿；刷新页面后再继续，避免覆盖'
+                : '打开草稿箱'
+            }
             /* 不挂 aria-live：每停顿 800ms 就播报一次「已保存 14:03」太吵。
                真正需要播报的是保存失败，那条走的是 role=alert 的 toast。 */
           >
             <span className="save-dot" aria-hidden />
             {saveStatus === 'saving'
               ? '保存中…'
-              : saveStatus === 'error'
-                ? '保存失败'
-                : savedAt
-                  ? `已保存 ${new Date(savedAt).toLocaleTimeString('zh-CN', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: false,
-                    })}`
-                  : '已保存'}
+              : saveStatus === 'conflict'
+                ? '多标签冲突'
+                : saveStatus === 'error'
+                  ? '保存失败'
+                  : savedAt
+                    ? `已保存 ${new Date(savedAt).toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                      })}`
+                    : '已保存'}
           </button>
         ) : null}
 
@@ -1175,7 +1237,10 @@ export default function App() {
             }
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') e.currentTarget.removeAttribute('open')
+            if (e.key !== 'Escape' || !e.currentTarget.open) return
+            e.preventDefault()
+            e.currentTarget.removeAttribute('open')
+            e.currentTarget.querySelector('summary')?.focus()
           }}
         >
           <summary className="btn btn-sm btn-quiet topbar-tools-trigger">工具</summary>
@@ -1228,65 +1293,29 @@ export default function App() {
           tabIndex={-1}
           aria-label="文章与平台设置"
         >
-          <div className="side-section">
-            <div className="side-title">
-              <span>文章</span>
-              {doc ? <span className="count">{fileName.slice(0, 22)}</span> : null}
+          {doc ? (
+            <div className="side-section">
+              <button
+                className="file-row"
+                onClick={() => {
+                  // 抽屉里点文章 = 去编辑正文：先关抽屉，否则编辑区仍是 inert，聚焦会失败
+                  setSidebarOpen(false)
+                  setMobilePane('edit')
+                  requestAnimationFrame(() => editorPaneRef.current?.focus())
+                }}
+                title={`${doc.meta.title || fileName} · 在中间栏编辑正文`}
+              >
+                <span className="file-row-main">
+                  <span className="file-row-title">{doc.meta.title || fileName}</span>
+                </span>
+              </button>
+              <MetaEditor meta={doc.meta} onChange={updateMeta} embedded />
             </div>
-            {doc ? (
-              <>
-                <button
-                  className="file-row"
-                  onClick={() => {
-                    // 抽屉里点文章 = 去编辑正文：先关抽屉，否则编辑区仍是 inert，聚焦会失败
-                    setSidebarOpen(false)
-                    setMobilePane('edit')
-                    requestAnimationFrame(() => editorPaneRef.current?.focus())
-                  }}
-                  title="在中间栏编辑正文"
-                >
-                  <span className="file-row-main">
-                    <span className="file-row-title">{doc.meta.title || fileName}</span>
-                    <span className="file-row-filename">{fileName}</span>
-                  </span>
-                  <span className="file-row-swap">编辑</span>
-                </button>
-                <MetaEditor
-                  meta={doc.meta}
-                  onChange={updateMeta}
-                  embedded
-                />
-              </>
-            ) : (
-              <p className="side-empty">在中间栏粘贴 Markdown，或拖入 .md 文件。</p>
-            )}
-          </div>
+          ) : null}
 
           {doc && kind === 'convert' && platform === 'wechat' ? (
             <div className="side-section side-options">
-              <div className="side-title">
-                <span>公众号排版</span>
-              </div>
-              <ThemePicker value={themeId} onChange={setThemeId} dark={wechatDark} />
-              <div className="dark-toggle-row">
-                <button
-                  className={`dark-toggle ${wechatDark ? 'active' : ''}`}
-                  onClick={() => changeWechatDark(!wechatDark)}
-                  aria-pressed={wechatDark}
-                  title={`预览微信深色模式下的观感。最弱对比度：${darkInfo.worst} ${formatRatio(darkInfo.min)}:1`}
-                >
-                  <span className="dark-toggle-dot" aria-hidden />
-                  深色预览
-                </button>
-                {wechatDark ? (
-                  <span
-                    className={`dark-ratio ${darkInfo.min < 4.5 ? 'warn' : ''}`}
-                    title={`深色模式下最弱的是${darkInfo.worst}`}
-                  >
-                    {formatRatio(darkInfo.min)}:1
-                  </span>
-                ) : null}
-              </div>
+              <ThemePicker value={themeId} onChange={setThemeId} />
             </div>
           ) : null}
 
@@ -1297,7 +1326,6 @@ export default function App() {
             published={ledger}
             hidden={hidden}
             onOpenFilter={() => setSheet('filter')}
-            onQuickSwitch={() => setSheet('palette')}
           />
         </aside>
 
@@ -1340,6 +1368,9 @@ export default function App() {
                   >
                     {currentPlatformMeta?.name}
                   </h1>
+                  {currentPlatformMeta?.hint ? (
+                    <p className="main-hint">{currentPlatformMeta.hint}</p>
+                  ) : null}
                 </div>
 
                 <div className="head-tools">
@@ -1434,11 +1465,19 @@ export default function App() {
                     setSheet('ledger')
                   }}
                   title={`${kind === 'card' ? '发布台账' : publishChip.hint} · 打开发布台账`}
+                  /* 标签说的是「本平台」，计数说的是「全站」—— 读屏也要把这层区分说清楚 */
+                  aria-label={`${kind === 'card' ? '发布台账' : publishChip.label}，全站已发布 ${ledgerDone}/${platformTotal}`}
                 >
                   <span className="publish-chip-dot" aria-hidden />
                   <span className="publish-chip-label">{kind === 'card' ? '台账' : publishChip.label}</span>
                   <span className="publish-chip-count">
-                    {ledgerDone}/{platformTotal}
+                    <span className="publish-chip-count-scope">已发布</span>
+                    <span className="publish-chip-count-mark" aria-hidden>
+                      ✓
+                    </span>
+                    <span>
+                      {ledgerDone}/{platformTotal}
+                    </span>
                   </span>
                 </button>
               ) : null}
@@ -1466,15 +1505,31 @@ export default function App() {
                 <div className="empty-hint">
                   在中间栏粘贴 Markdown，或拖入、选择一个 .md 文件。
                 </div>
+                {drafts.length > 0 ? (
+                  <button
+                    className="empty-resume"
+                    onClick={() => void restoreDraft(drafts[0].key)}
+                    title={`继续编辑「${drafts[0].title || drafts[0].fileName}」（保存于 ${formatAgo(drafts[0].updatedAt)}）`}
+                  >
+                    <span className="empty-resume-label">继续上次编辑</span>
+                    <span className="empty-resume-title">
+                      「{drafts[0].title || drafts[0].fileName}」
+                    </span>
+                    <span className="empty-resume-meta">
+                      保存于 {formatAgo(drafts[0].updatedAt)}
+                    </span>
+                  </button>
+                ) : null}
                 <div className="empty-actions">
+                  {/* 导入入口只留在中间栏：这里只负责把用户带过去，不再重复一个选文件按钮 */}
                   <button
                     className="btn btn-accent empty-primary"
-                    onClick={() => editorPaneRef.current?.chooseFile()}
+                    onClick={() => {
+                      setMobilePane('edit')
+                      requestAnimationFrame(() => editorPaneRef.current?.focus())
+                    }}
                   >
-                    选择 Markdown 文件
-                  </button>
-                  <button className="btn" onClick={() => void load(SAMPLE_ARTICLE, '示例文章.md')}>
-                    载入示例文章
+                    去粘贴 Markdown
                   </button>
                 </div>
                 <a
@@ -1504,11 +1559,6 @@ export default function App() {
                       output.format === 'html' && output.html ? (
                         <div
                           className="rich-preview"
-                          style={
-                            wechatDark && platform === 'wechat' && darkSurface
-                              ? { background: darkSurface, borderColor: darkSurface }
-                              : undefined
-                          }
                           dangerouslySetInnerHTML={{ __html: richPreviewHtml }}
                         />
                       ) : (
@@ -1539,6 +1589,7 @@ export default function App() {
                         tone={tone}
                         providerReady={providerReady}
                         providerLabel={currentAI.providerLabel || digest.providerLabel}
+                        usageTotal={aiUsage}
                         onToneChange={setTone}
                         onGenerateDigest={generateDigest}
                         onCancel={cancelGenerate}
@@ -1694,6 +1745,7 @@ export default function App() {
           cfg={tail}
           account={account}
           themeId={themeId}
+          published={tailLibrary}
           onChange={changeTail}
           onAccountChange={changeAccount}
         />
@@ -1765,16 +1817,6 @@ export default function App() {
           />
         </Sheet>
       ) : null}
-
-      <Sheet id="palette" current={sheet}>
-        <PlatformPalette
-          open
-          onClose={closeSheet}
-          active={platform}
-          platforms={palettePlatforms}
-          onSelect={selectPlatform}
-        />
-      </Sheet>
 
       <ToastLayer
         items={toasts}

@@ -52,3 +52,10 @@ jobs:
         # 首屏 ≤ 180 KB gzip，任一懒加载 chunk ≤ 60 KB，JS+CSS 总量 ≤ 512 KB。
         # 必须在构建之后跑，读 dist/index.html 和 dist/assets。
         run: npm run check:bundle
+
+      - name: 安装 Playwright Chromium
+        # 只装 Chromium + 系统依赖；冒烟测试覆盖剪贴板、复制顺序和导出下载。
+        run: npx playwright install --with-deps chromium
+
+      - name: 浏览器冒烟
+        run: npm run test:e2e

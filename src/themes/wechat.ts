@@ -33,7 +33,7 @@ export type ThemeGroup = '极简' | '书卷' | '色块' | '商务'
 
 /** 标题形态：左竖线 / 零装饰 / 下划线 / 居中细线 / 色块 / 编号 */
 export type HeadingVariant = 'bar' | 'plain' | 'underline' | 'center' | 'block' | 'index'
-export type QuoteVariant = 'bar' | 'box' | 'plain'
+export type QuoteVariant = 'bar' | 'box' | 'plain' | 'pull'
 export type CodeVariant = 'light' | 'dark'
 export type TableVariant = 'bordered' | 'minimal'
 
@@ -71,10 +71,14 @@ interface ThemeSpec {
   lineHeight?: string
   letterSpacing?: string
   pSize?: string
+  /** 标题字重；默认 700，少数派那种克制的编辑风格用 600 */
+  headingWeight?: string
+  /** 加粗用正文色而不是强调色（红字加粗太抢） */
+  strongInk?: boolean
 }
 
 /* ------------------------------------------------------------------ */
-/* 深色预览                                                            */
+/* 深色变体                                                            */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -188,7 +192,7 @@ export function darkContrast(theme: HtmlTheme): { min: number; worst: string; pa
 function buildHeading(spec: ThemeSpec): HtmlTheme['heading'] {
   const p = spec.palette
   const base: StyleMap = {
-    'font-weight': '700',
+    'font-weight': spec.headingWeight ?? '700',
     color: p.heading,
     'line-height': '1.4',
     'letter-spacing': '0.3px',
@@ -288,6 +292,24 @@ function buildQuote(spec: ThemeSpec): { quote: StyleMap; quoteP: StyleMap } {
           'border-left': `2px solid ${p.line}`,
         },
         quoteP: { ...quoteP, 'font-style': 'italic' },
+      }
+
+    case 'pull':
+      // 编辑式引言：顶部一条朱红线，文字比正文大一号、字重更实；不用底色。
+      return {
+        quote: {
+          margin: '2em 0',
+          padding: '18px 0 0',
+          'border-top': `3px solid ${p.accent}`,
+          'background-color': 'transparent',
+        },
+        quoteP: {
+          margin: '0 0 0.6em',
+          color: p.heading,
+          'font-size': '17px',
+          'line-height': '1.8',
+          'font-weight': '600',
+        },
       }
   }
 }
@@ -438,7 +460,7 @@ function buildTheme(spec: ThemeSpec): HtmlTheme {
       ...(spec.indent ? { 'text-indent': '2em' } : {}),
     },
 
-    strong: { 'font-weight': '600', color: p.accent },
+    strong: { 'font-weight': '600', color: spec.strongInk ? p.heading : p.accent },
 
     em: { 'font-style': 'italic', color: p.heading },
 
@@ -545,19 +567,38 @@ function makeTheme(spec: ThemeSpec): HtmlTheme {
   return theme
 }
 
+/**
+ * 公众号主题统一采用少数派式排版：无装饰标题、编辑式引言、1.9 行高。
+ * 各主题只保留配色差异；要调排版，只改这一处。
+ */
+const WECHAT_LAYOUT = {
+  heading: 'plain',
+  quote: 'pull',
+  code: 'light',
+  table: 'minimal',
+  headingWeight: '600',
+  strongInk: true,
+  pSize: '16px',
+  lineHeight: '1.9',
+  letterSpacing: '0.4px',
+} satisfies Pick<
+  ThemeSpec,
+  'heading' | 'quote' | 'code' | 'table' | 'headingWeight' | 'strongInk' | 'pSize' | 'lineHeight' | 'letterSpacing'
+>
+
+function makeColorTheme(spec: Omit<ThemeSpec, keyof typeof WECHAT_LAYOUT>): HtmlTheme {
+  return makeTheme({ ...spec, ...WECHAT_LAYOUT })
+}
+
 /* ------------------------------------------------------------------ */
 /* 主题清单                                                            */
 /* ------------------------------------------------------------------ */
 
-export const paperTheme = makeTheme({
+export const paperTheme = makeColorTheme({
   id: 'paper',
   name: '纸白',
   group: '极简',
-    hint: '红色左竖线标题',
-  heading: 'bar',
-  quote: 'bar',
-  code: 'light',
-  table: 'bordered',
+  hint: '朱红点缀的干净纸面',
   palette: {
     bg: '#ffffff',
     text: '#3f3f3f',
@@ -573,17 +614,31 @@ export const paperTheme = makeTheme({
   },
 })
 
-const plainTheme = makeTheme({
+const sspaiTheme = makeColorTheme({
+  id: 'sspai',
+  name: '少数派',
+  group: '极简',
+  hint: '黑标题、朱红细线、大留白',
+  palette: {
+    bg: '#ffffff',
+    text: '#1f1f1f',
+    heading: '#0f0f0f',
+    secondary: '#6f7174',
+    accent: '#d2352b',
+    accentSoft: '#fdf1f0',
+    accentInk: '#a31314',
+    line: '#e8e8e8',
+    softBg: '#f7f7f7',
+    codeBg: '#f5f5f5',
+    codeText: '#333333',
+  },
+})
+
+const plainTheme = makeColorTheme({
   id: 'plain',
   name: '素页',
   group: '极简',
-  hint: '零装饰，只靠字号和留白',
-  heading: 'plain',
-  quote: 'plain',
-  code: 'light',
-  table: 'minimal',
-  lineHeight: '1.9',
-  letterSpacing: '0.8px',
+  hint: '纯黑灰白，克制到底',
   palette: {
     bg: '#ffffff',
     text: '#2f2f2f',
@@ -599,15 +654,11 @@ const plainTheme = makeTheme({
   },
 })
 
-const inkTheme = makeTheme({
+const inkTheme = makeColorTheme({
   id: 'ink',
   name: '墨线',
   group: '极简',
-    hint: '红色下划线标题',
-  heading: 'underline',
-  quote: 'bar',
-  code: 'light',
-  table: 'minimal',
+  hint: '蓝灰冷调',
   palette: {
     bg: '#ffffff',
     text: '#33383d',
@@ -623,19 +674,11 @@ const inkTheme = makeTheme({
   },
 })
 
-const serifTheme = makeTheme({
+const serifTheme = makeColorTheme({
   id: 'serif',
   name: '宋刻',
   group: '书卷',
-  hint: '衬线 + 首行缩进 + 居中标题',
-  heading: 'center',
-  quote: 'box',
-  code: 'light',
-  table: 'minimal',
-  serif: true,
-  indent: true,
-  lineHeight: '1.9',
-  letterSpacing: '0.6px',
+  hint: '暖棕书卷色',
   palette: {
     bg: '#fffefb',
     text: '#332f2a',
@@ -651,18 +694,11 @@ const serifTheme = makeTheme({
   },
 })
 
-export const sepiaTheme = makeTheme({
+export const sepiaTheme = makeColorTheme({
   id: 'sepia',
   name: '米黄',
   group: '书卷',
-    hint: '暖棕纸张与墨色正文',
-  heading: 'bar',
-  quote: 'bar',
-  code: 'light',
-  table: 'bordered',
-  serif: true,
-  indent: true,
-  lineHeight: '1.85',
+  hint: '暖米黄纸感',
   palette: {
     bg: '#fbf8f3',
     text: '#4a443c',
@@ -678,19 +714,11 @@ export const sepiaTheme = makeTheme({
   },
 })
 
-const pressTheme = makeTheme({
+const pressTheme = makeColorTheme({
   id: 'press',
   name: '铅字',
   group: '书卷',
-    hint: '粗横线分节标题',
-  heading: 'underline',
-  quote: 'plain',
-  code: 'light',
-  table: 'minimal',
-  serif: true,
-  indent: true,
-  lineHeight: '1.9',
-  letterSpacing: '0.4px',
+  hint: '黑白报纸感',
   palette: {
     bg: '#fdfcf8',
     text: '#26241f',
@@ -706,15 +734,11 @@ const pressTheme = makeTheme({
   },
 })
 
-const blockTheme = makeTheme({
+const blockTheme = makeColorTheme({
   id: 'block',
   name: '靛蓝',
   group: '色块',
-    hint: '标题带底色块',
-  heading: 'block',
-  quote: 'box',
-  code: 'light',
-  table: 'bordered',
+  hint: '靛蓝强调色',
   palette: {
     bg: '#ffffff',
     text: '#333a42',
@@ -730,15 +754,11 @@ const blockTheme = makeTheme({
   },
 })
 
-const indexTheme = makeTheme({
+const indexTheme = makeColorTheme({
   id: 'index',
-  name: '序号',
+  name: '琥珀',
   group: '色块',
-    hint: '标题带 01/02 编号',
-  heading: 'index',
-  quote: 'bar',
-  code: 'light',
-  table: 'minimal',
+  hint: '暖琥珀强调色',
   palette: {
     bg: '#ffffff',
     text: '#3b3733',
@@ -754,15 +774,11 @@ const indexTheme = makeTheme({
   },
 })
 
-const mintTheme = makeTheme({
+const mintTheme = makeColorTheme({
   id: 'mint',
   name: '薄荷',
   group: '色块',
-    hint: '浅绿圆角标题',
-  heading: 'block',
-  quote: 'box',
-  code: 'light',
-  table: 'minimal',
+  hint: '浅绿强调色',
   palette: {
     bg: '#fcfdfc',
     text: '#31403a',
@@ -778,15 +794,11 @@ const mintTheme = makeTheme({
   },
 })
 
-export const navyTheme = makeTheme({
+export const navyTheme = makeColorTheme({
   id: 'navy',
   name: '藏青',
   group: '商务',
-    hint: '深色代码块',
-  heading: 'bar',
-  quote: 'bar',
-  code: 'dark',
-  table: 'bordered',
+  hint: '藏青强调色',
   palette: {
     bg: '#ffffff',
     text: '#3a3a3a',
@@ -802,17 +814,11 @@ export const navyTheme = makeTheme({
   },
 })
 
-const slateTheme = makeTheme({
+const slateTheme = makeColorTheme({
   id: 'slate',
   name: '石墨',
   group: '商务',
-    hint: '无装饰标题 + 深色代码块',
-  heading: 'plain',
-  quote: 'box',
-  code: 'dark',
-  table: 'minimal',
-  lineHeight: '1.8',
-  letterSpacing: '0.6px',
+  hint: '石墨灰',
   palette: {
     bg: '#fbfbfc',
     text: '#34383d',
@@ -828,16 +834,11 @@ const slateTheme = makeTheme({
   },
 })
 
-const morandiTheme = makeTheme({
+const morandiTheme = makeColorTheme({
   id: 'morandi',
   name: '莫兰迪',
   group: '商务',
-    hint: '低饱和豆沙配色',
-  heading: 'underline',
-  quote: 'box',
-  code: 'light',
-  table: 'minimal',
-  lineHeight: '1.85',
+  hint: '低饱和豆沙色',
   palette: {
     bg: '#fdfcfa',
     text: '#4a423d',
@@ -854,6 +855,7 @@ const morandiTheme = makeTheme({
 })
 
 export const wechatThemes: HtmlTheme[] = [
+  sspaiTheme,
   paperTheme,
   plainTheme,
   inkTheme,
@@ -880,7 +882,7 @@ export const themeGroups: { name: ThemeGroup; themes: HtmlTheme[] }[] = (
  * 深色是微信客户端在读者侧自己转换出来的。
  */
 export function getWechatTheme(id: string, dark = false): HtmlTheme {
-  const base = wechatThemes.find((t) => t.id === id) ?? paperTheme
+  const base = wechatThemes.find((t) => t.id === id) ?? sspaiTheme
   return dark && base.dark ? base.dark : base
 }
 

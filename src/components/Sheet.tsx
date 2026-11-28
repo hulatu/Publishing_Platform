@@ -21,7 +21,6 @@ import { Suspense, type ReactNode } from 'react'
  */
 export type SheetId =
   | 'filter'
-  | 'palette'
   | 'readiness'
   | 'settings'
   | 'ledger'

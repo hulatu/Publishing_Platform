@@ -39,6 +39,8 @@ const CHECKS = [
   'compliance',
   'titles',
   'tail',
+  'aiexport',
+  'backup',
   'platforms',
   'drafts',
   'review',

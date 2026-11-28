@@ -21,7 +21,8 @@ import { preopenTab, publishUrlOf } from '../core/publish'
 import { splitByH2 } from '../core/split'
 import type { TailConfig } from '../core/tail'
 import { markCopied as markCopiedRecord, type ArticleLedger, type LedgerWrite } from '../core/ledger'
-import { isRewriteId } from '../ai/types'
+import { isRewriteId, rewriteIds, type PlatformAIStates } from '../ai/types'
+import { REWRITE_FILE_NAMES, rewriteMarkdown } from '../core/rewrite-markdown'
 import { convertPlatforms, loadConvertRenderer, type RenderOutput } from '../renderers'
 import { downloadBlob, safeFileName } from '../cards/export'
 
@@ -51,6 +52,8 @@ interface Options {
   themeId: string
   tail: TailConfig
   account: string
+  /** 已生成的 AI 文案；导出全平台时一起打包 */
+  platformStates: PlatformAIStates
   toast: Notify
 }
 
@@ -70,7 +73,7 @@ export interface CopyActions {
 
 export function useCopyActions({
   doc, output, articleKey, platform, ledger, applyLedger,
-  openOnCopy, hidden, themeId, tail, account, toast,
+  openOnCopy, hidden, themeId, tail, account, platformStates, toast,
 }: Options): CopyActions {
   const [zipping, setZipping] = useState(false)
   /**
@@ -161,21 +164,23 @@ export function useCopyActions({
     if (!output) return
 
     const payload = { html: output.html, text: output.text }
-    const finish = (channel: 'rich' | 'plain') => {
+    const finish = (channel: 'rich' | 'plain', openedTab: boolean) => {
       const persisted = articleKey ? applyLedger(markCopiedRecord(articleKey, platform)) : false
       const tail =
         persisted && !ledger[platform]?.at && !ledger[platform]?.copiedAt
           ? ' · 已记为待发布'
           : ''
+      // 真的开了标签才说 —— 被设置关掉或被弹窗拦截时不能骗用户
+      const opened = openedTab ? ' · 已打开发布页' : ''
       if (output.copyMode === 'rich') {
         toast(
           channel === 'rich'
-            ? `已复制富文本，直接粘进编辑器即可${tail}`
-            : `浏览器不支持富文本复制，已改为复制纯文本${tail}`,
+            ? `已复制富文本，直接粘进编辑器即可${tail}${opened}`
+            : `浏览器不支持富文本复制，已改为复制纯文本${tail}${opened}`,
           channel === 'rich' ? 'success' : 'info',
         )
       } else {
-        toast(`已复制${tail}`, 'success')
+        toast(`已复制${tail}${opened}`, 'success')
       }
     }
 
@@ -183,8 +188,9 @@ export function useCopyActions({
     const channel = copySync(output.copyMode, payload)
     if (channel) {
       // 2) 复制已经落地，这时候再开标签，焦点被抢走也无所谓了
-      openPublishFor(platform)?.commit()
-      finish(channel)
+      const tab = openPublishFor(platform)
+      tab?.commit()
+      finish(channel, Boolean(tab))
       return
     }
 
@@ -195,8 +201,9 @@ export function useCopyActions({
     void (async () => {
       try {
         const mode = await copyByMode(output.copyMode, payload)
-        finish(mode)
-        openPublishFor(platform)?.commit()
+        const tab = openPublishFor(platform)
+        tab?.commit()
+        finish(mode, Boolean(tab))
       } catch {
         toast(COPY_FAILED, 'error')
       }
@@ -238,9 +245,9 @@ export function useCopyActions({
    * 逐个点「下载」会被浏览器拦（多个文件要授权一次），也麻烦。这里一次渲染
    * 7 个平台，文件名带序号，解压后按名称排序就是侧栏的顺序。
    *
-   * 只导转换平台：AI 改写的 4 个平台没有确定性产物（要先调模型），
-   * 配图是 PNG，走各自的导出入口。隐藏的平台不导 —— 隐藏本来就表示「我不发这家」。
-   */
+   * 转换平台之外，**已经生成**的 AI 文案也一起放进 `ai/`（不重新调模型，
+   * 未生成 / 生成中的平台跳过）；配图是 PNG，走各自的导出入口。
+   * 隐藏的平台不导 —— 隐藏本来就表示「我不发这家」。 */
   const doExportAllPlatforms = useCallback(async () => {
     if (!doc) return
     const list = convertPlatforms.filter((p) => !hidden.has(p.id))
@@ -262,15 +269,29 @@ export function useCopyActions({
         zip.file(`${String(i + 1).padStart(2, '0')}-${safeFileName(p.name)}-${slug}.${ext}`, out.primary)
       }
 
+      let aiCount = 0
+      for (const id of rewriteIds) {
+        if (hidden.has(id)) continue
+        const state = platformStates[id]
+        if (state.status !== 'done' || !state.result) continue
+        const md = rewriteMarkdown(id, state.result)
+        if (!md) continue
+        zip.file(`ai/${REWRITE_FILE_NAMES[id]}-${slug}.md`, md)
+        aiCount++
+      }
+
       const blob = await zip.generateAsync({ type: 'blob' })
       downloadBlob(blob, `${slug}-全平台.zip`)
-      toast(`已导出 ${list.length} 个平台的产物`, 'success')
+      toast(
+        `已导出 ${list.length} 个转换平台${aiCount > 0 ? ` + ${aiCount} 个 AI 文案` : ''}`,
+        'success',
+      )
     } catch (e) {
       toast(`打包失败：${e instanceof Error ? e.message : String(e)}`, 'error')
     } finally {
       setZipping(false)
     }
-  }, [doc, hidden, themeId, tail, account, toast])
+  }, [doc, hidden, themeId, tail, account, platformStates, toast])
 
   const doSplitExport = useCallback(async () => {
     if (!doc) return
